@@ -25,9 +25,14 @@ class Assignment(BaseModel):
     value: str | None = None
 
 
+DEFAULT_DATABASE = Path(__file__).resolve().parent.parent / 'data' / 'supplenze.sqlite'
+
+
 def create_app(path=None, seed=None):
     app = FastAPI(title='Supplenze')
-    store = Store(path or os.environ.get('DATABASE_PATH', '/tmp/supplenze.sqlite'))
+    database = Path(path or os.environ.get('DATABASE_PATH', DEFAULT_DATABASE))
+    database.parent.mkdir(parents=True, exist_ok=True)
+    store = Store(str(database))
     with store.connect() as db:
         if store.read(db, 'dataset') is None and seed:
             import json

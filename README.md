@@ -5,10 +5,13 @@ Small school substitution planner migrated from `references/`. React + TypeScrip
 ## Run
 
 ```sh
-LOCAL_UID=$(id -u) LOCAL_GID=$(id -g) docker compose up --build -d
+sudo dnf install podman-compose   # the provider behind `podman compose`
+LOCAL_UID=$(id -u) LOCAL_GID=$(id -g) podman compose up --build -d
 ```
 
-Open http://localhost:8000. The supplied timetable is imported on first startup only. All operational data and subsequent timetable imports live in `./data/supplenze.sqlite`, in the local `data` folder beside `compose.yaml`. Rebuilds, restarts, and `docker compose down` retain this folder. Back it up before deleting or replacing it. Compose runs the app with your host UID/GID so it can write the folder; these default to 1000 if omitted. The `:Z` mount option supports SELinux hosts.
+Open http://localhost:8000. The supplied timetable is imported on first startup only. All operational data and subsequent timetable imports live in `./data/supplenze.sqlite`, in the local `data` folder beside `compose.yaml`. Rebuilds, restarts, and `podman compose down` retain this folder. Back it up before deleting or replacing it. Compose runs the app with your host UID/GID so it can write the folder; these default to 1000 if omitted. The `:Z` mount option supports SELinux hosts.
+
+`compose.yaml` targets rootless Podman: `userns_mode: keep-id` maps your host user to the same UID inside the container, which is what lets the app write `./data`. Rootful Docker rejects `keep-id`; if you use Docker instead, remove that one line and run `LOCAL_UID=$(id -u) LOCAL_GID=$(id -g) docker compose up --build -d`.
 
 For development (Python 3.12+, Node 24):
 
@@ -22,7 +25,7 @@ npm ci
 npm run dev
 ```
 
-Development defaults to `/tmp/supplenze.sqlite`; set `DATABASE_PATH` to a permanent location if needed. `TIMETABLE_PATH` sets the initial JSON, `STATIC_PATH` the built frontend directory.
+Development defaults to the same `data/supplenze.sqlite` the container uses, so entries are visible from both; set `DATABASE_PATH` to override. `TIMETABLE_PATH` sets the initial JSON, `STATIC_PATH` the built frontend directory.
 
 ## Use and migration
 
@@ -56,4 +59,4 @@ Tests cover the real dataset, co-teaching/campus/period, absence and booking con
 
 Deployment binds localhost by default. There is no authentication: keep it on a trusted administrative machine/network; add an authenticated reverse proxy before wider access. Concurrent edits are safe from lost writes; screens refresh after edits/date changes, not by live push.
 
-Verification in this environment: 15 backend tests passed before the additional concurrent-assignment test was added; the final TypeScript/Vite build passed. The image built with Podman. A subsequent test rerun and container startup were declined, so the additional concurrency test and container restart/Compose execution were not verified. The browser flow (absence → candidates → assignment → reload) was checked with the supplied timetable.
+Verification in this environment: 15 backend tests passed before the additional concurrent-assignment test was added; the final TypeScript/Vite build passed. The image built with Podman, and rootless Compose execution was confirmed with `podman compose up --build -d`, `down`, and restart: the app served HTTP 200 and retained `./data/supplenze.sqlite` across restarts. A rerun of the additional concurrent-assignment test was not repeated. The browser flow (absence → candidates → assignment → reload) was checked with the supplied timetable.
