@@ -1,0 +1,59 @@
+# Supplenze
+
+Small school substitution planner migrated from `references/`. React + TypeScript + Vite, FastAPI, SQLite, one deployment container. Italian UI, seven periods, Monday–Friday timetable.
+
+## Run
+
+```sh
+LOCAL_UID=$(id -u) LOCAL_GID=$(id -g) docker compose up --build -d
+```
+
+Open http://localhost:8000. The supplied timetable is imported on first startup only. All operational data and subsequent timetable imports live in `./data/supplenze.sqlite`, in the local `data` folder beside `compose.yaml`. Rebuilds, restarts, and `docker compose down` retain this folder. Back it up before deleting or replacing it. Compose runs the app with your host UID/GID so it can write the folder; these default to 1000 if omitted. The `:Z` mount option supports SELinux hosts.
+
+For development (Python 3.12+, Node 24):
+
+```sh
+python -m venv .venv
+.venv/bin/pip install -r backend/requirements.txt httpx==0.28.1
+.venv/bin/uvicorn backend.main:app --reload
+# another terminal
+cd frontend
+npm ci
+npm run dev
+```
+
+Development defaults to `/tmp/supplenze.sqlite`; set `DATABASE_PATH` to a permanent location if needed. `TIMETABLE_PATH` sets the initial JSON, `STATIC_PATH` the built frontend directory.
+
+## Use and migration
+
+Search for teachers or classes, select periods, optionally apply through an end date. Add manual availability with its campus. Click a substitution to see ranked candidates, including disabled absent/already assigned candidates. Use campus filters and the theme switch. The calendar dots mark absences/classes out.
+
+To migrate prototype data, first export “Esporta supplenze” in the original browser/prototype, then use “Importa supplenze” here. This replaces the operational archive; export a backup first. IDs must match. There is no automatic access to another application's localStorage. JSON timetable uploads use the supplied `docenti`/`orario` format and preserve all absences, manual availability, classes out, and assignments. Teacher names may change; IDs must not be reused for different people. Missing teachers are retained as retired historical references. Invalid imports roll back completely. Existing invalid assignments are retained and explicitly flagged for review, rather than silently deleted.
+
+Back up the SQLite database with SQLite's online backup API or stop the container before copying the local `data` folder (include WAL files if copying a running database). Archive export covers operational records; retain the timetable separately for a full restore.
+
+## Rules and structure
+
+- `backend/domain.py`: pure rules, no React, HTTP, SQLite, or storage access. Separate `eligibility`, `rank_candidate`, `validate_assignment`; centralized `PRIORITIES` and deterministic load/name/ID tie breaks.
+- `backend/storage.py`: SQLite JSON documents, transactional writes. A small school does not need an ORM or a repository hierarchy. Every mutation acquires a write transaction before reading current state, avoiding lost updates and double booking.
+- `backend/main.py`: validated HTTP boundaries and orchestration. `/docs` documents the API.
+- `frontend/src/main.tsx` and `CandidateDrawer.tsx`: presentation and interaction; backend supplies rows, eligibility, ranking, validation, and default availability hours. Original CSS retained.
+
+Preserved priorities: existing co-teacher; same-campus POT/manual availability/released class; UTC/UTS/DI.S; release of support co-teaching; director at central campus; entry/exit; other-campus choices; unknown campus last. Ties use assignments today, total recorded assignments, name, ID. “Total” follows the prototype's all-recorded-dates count, not a newly invented school-year boundary.
+
+DI.S is availability. UTC is central-campus technical duty; UTS branch-campus duty. POT/DI.S with no campus remain unknown. Empty slots are not availability. Co-teaching requires the same class, period **and known campus**, correcting the prototype's class-only check. Support teachers can still be released from another class (the prototype's TC behavior). Manual availability overrides timetable duties as in the prototype, but cannot override absence or an existing assignment. Multi-day default availability is calculated separately for each date, correcting the prototype's use of the first day's schedule.
+
+Cross-campus choices remain selectable, with muted colors; transfer times and authorization rules were not supplied. Director and entry/exit choices require human verification. Entry/exit is only available at the first/last effective scheduled class period of the selected weekday. Assignments invalidated by later changes are flagged. Conflicting assignments must be removed or corrected; the system does not automatically rearrange them. No banked hours are implemented. Dataset anomalies are displayed; potentially duplicate people (e.g. Antonelli d003/d154) are not merged automatically.
+
+## Verify
+
+```sh
+.venv/bin/python -m unittest discover -s backend/tests -v
+npm --prefix frontend run build
+```
+
+Tests cover the real dataset, co-teaching/campus/period, absence and booking conflicts, blank/manual availability, class release, ranking and load tie breaks, transactional import rollback, archive validation, restart persistence, timetable updates and multi-day behavior.
+
+Deployment binds localhost by default. There is no authentication: keep it on a trusted administrative machine/network; add an authenticated reverse proxy before wider access. Concurrent edits are safe from lost writes; screens refresh after edits/date changes, not by live push.
+
+Verification in this environment: 15 backend tests passed before the additional concurrent-assignment test was added; the final TypeScript/Vite build passed. The image built with Podman. A subsequent test rerun and container startup were declined, so the additional concurrency test and container restart/Compose execution were not verified. The browser flow (absence → candidates → assignment → reload) was checked with the supplied timetable.

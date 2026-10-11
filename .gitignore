@@ -1,0 +1,53 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node / Vite / TypeScript
+node_modules/
+dist/
+*.tsbuildinfo
+.vite/
+
+# Operational data / SQLite (keep the folder, ignore its contents)
+/data/*
+!/data/.gitkeep
+*.sqlite*
+*.db
+*.db-shm
+*.db-wal
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editors / OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# Local tooling and reference material
+.agents/
+.codex/
+.aws/
+references/
+TODO.md
