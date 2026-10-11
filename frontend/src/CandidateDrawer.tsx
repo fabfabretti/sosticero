@@ -73,7 +73,7 @@ export function CandidateDrawer({
             {open.h}ª ora, classe {open.c}
           </b>
           <p>
-            Sostituisce {name(open.id)} · {open.sede || "sede non indicata"}
+            Sostituisce {open.ids.map(name).join(" / ")} · {open.sede || "sede non indicata"}
           </p>
         </div>
         <button ref={close} className="x" aria-label="Chiudi" onClick={onClose}>

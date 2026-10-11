@@ -65,7 +65,7 @@ function app() {
   return { render, requests };
 }
 const settle = () => new Promise(resolve => setImmediate(resolve));
-const row = { k: 'r', id: 't', h: 1, c: '1A', sede: 'centrale' };
+const row = { k: 'r', id: 't', ids: ['t'], h: 1, c: '1A', aula: null, sede: 'centrale' };
 const data = {
   dataset: { teachers: {}, classes: [], warnings: [] },
   state: { abs: {}, cf: {}, dis: {}, disSites: {}, asg: {} },
@@ -125,4 +125,38 @@ test('saving closes immediately and ignores pending slot responses', async () =>
   a.requests[3].resolve([]);
   await settle();
   assert.ok(drawer(a));
+});
+
+test('co-absent teachers render as one merged label', async () => {
+  const a = app();
+  a.render();
+  a.requests.shift().resolve({
+    dataset: {
+      teachers: {
+        d056: { name: 'Domaschi Alberto' },
+        d134: { name: 'Savelli Luca' },
+      },
+      classes: [],
+      warnings: [],
+    },
+    state: { abs: {}, cf: {}, dis: {}, disSites: {}, asg: {} },
+    rows: [
+      {
+        k: 'd056|7|3FB',
+        id: 'd056',
+        ids: ['d056', 'd134'],
+        h: 7,
+        c: '3FB',
+        aula: 'A39C',
+        sede: 'centrale',
+      },
+    ],
+    issues: [],
+  });
+  await settle();
+  const cells = a.render().filter(n => n.type === 'td');
+  assert.ok(
+    cells.some(n => n.props.children === 'Domaschi Alberto / Savelli Luca'),
+    'merged label is rendered in one cell',
+  );
 });

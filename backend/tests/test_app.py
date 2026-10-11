@@ -63,6 +63,31 @@ class RulesTest(unittest.TestCase):
         self.state['cf'][DAY] = {}
         self.assertEqual(len(rows(self.ds, self.state, DAY)), 2)
 
+    def test_co_absent_teachers_merge_into_one_row(self):
+        self.state['abs'][DAY] = {'absent': [2], 'co': [2]}
+        rs = rows(self.ds, self.state, DAY)
+        self.assertEqual(len(rs), 1)
+        self.assertEqual(rs[0]['ids'], ['absent', 'co'])
+        self.assertEqual((rs[0]['id'], rs[0]['k']), ('absent', 'absent|2|1A'))
+        ids = [c['id'] for c in candidates(self.ds, self.state, DAY, rs[0])]
+        self.assertNotIn('absent', ids)
+        self.assertNotIn('co', ids)
+
+    def test_three_co_absent_teachers_merge_into_one_row(self):
+        data = fixture()
+        data['docenti'].append({'id': 'co2', 'nome_originale': 'co2', 'ruolo': 'curricolare'})
+        data['orario'].append(dict(docente='co2', giorno='lun', ora=2, classi=['1A'], sede='centrale', attivita_originale=''))
+        ds = normalize_dataset(data)
+        state = copy.deepcopy(EMPTY)
+        state['abs'][DAY] = {'absent': [2], 'co': [2], 'co2': [2]}
+        rs = rows(ds, state, DAY)
+        self.assertEqual(len(rs), 1)
+        self.assertEqual(rs[0]['ids'], ['absent', 'co', 'co2'])
+        self.assertEqual(rs[0]['k'], 'absent|2|1A')
+
+    def test_present_co_teacher_remains_candidate(self):
+        self.assertEqual(next(c for c in self.cs() if c['id'] == 'co')['ty'], 'C')
+
     def test_tie_break_uses_daily_then_total_load(self):
         self.state['dis'][DAY] = {'blank': [2]}
         self.state['disSites'][DAY] = {'blank': 'centrale'}

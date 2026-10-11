@@ -545,7 +545,7 @@ function App() {
                     .filter((r) => r.h === h)
                     .map((r) => (
                       <tr key={r.k}>
-                        <td>{name(r.id)}</td>
+                        <td>{r.ids.map(name).join(" / ")}</td>
                         <td className="c">{r.c}</td>
                         <td className="room-cell">
                           <b>{r.aula}</b>

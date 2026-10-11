@@ -7,6 +7,7 @@ export type Teacher = {
 };
 export type Row = {
   id: string;
+  ids: string[];
   h: number;
   c: string;
   k: string;

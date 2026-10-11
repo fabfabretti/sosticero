@@ -66,14 +66,21 @@ def class_out(state, day, cls, hour, exclude=''):
 
 
 def rows(ds, state, day):
-    result = []
+    groups = {}
     for i, hours in state['abs'].get(day, {}).items():
         for h in hours:
             l = lesson(ds, i, day, h)
             for c in l['classes'] if l else []:
                 k = f'{i}|{h}|{c}'
                 if not class_out(state, day, c, h, k):
-                    result.append(dict(id=i, h=h, c=c, k=k, aula=l['room'], sede=l['site']))
+                    groups.setdefault((h, c), []).append((i, l))
+    result = []
+    for (h, c), members in groups.items():
+        # One class and period is one room: co-absent teachers share one row.
+        members.sort(key=lambda m: (ds['teachers'][m[0]]['name'].casefold(), m[0]))
+        canon = min(members, key=lambda m: m[0])
+        result.append(dict(id=canon[0], ids=[m[0] for m in members], h=h, c=c,
+                           k=f'{canon[0]}|{h}|{c}', aula=canon[1]['room'], sede=canon[1]['site']))
     return sorted(result, key=lambda r: (r['h'], r['c'], ds['teachers'][r['id']]['name']))
 
 
@@ -85,7 +92,7 @@ def rank_candidate(candidate, row):
 
 def eligibility(ds, state, day, row, teacher):
     i, h = teacher['id'], row['h']
-    if i == row['id']:
+    if i in row['ids']:
         return None
     l = lesson(ds, i, day, h)
     manual = h in state['dis'].get(day, {}).get(i, [])
