@@ -45,6 +45,7 @@ function App() {
     [busy, setBusy] = useState(false),
     [selected, setSelected] = useState(0);
   const request = useRef(0);
+  const candidateRequest = useRef(0);
   const refresh = async () => {
     const n = ++request.current;
     try {
@@ -55,15 +56,17 @@ function App() {
     }
   };
   useEffect(() => {
+    ++candidateRequest.current;
     setOpen(undefined);
     void refresh();
   }, [day]);
   const mutate = async (url: string, body: unknown) => {
+    ++candidateRequest.current;
+    setOpen(undefined);
     setBusy(true);
     setError("");
     try {
       await api(url, body);
-      setOpen(undefined);
       await refresh();
     } catch (e) {
       setError(String(e));
@@ -72,15 +75,19 @@ function App() {
     }
   };
   const choose = async (r: Row) => {
+    if (busy) return;
+    const n = ++candidateRequest.current;
     setError("");
     try {
       const c = await api<Candidate[]>(
         "candidates?" + new URLSearchParams({ day, key: r.k }),
       );
-      setCands(c);
-      setOpen(r);
+      if (n === candidateRequest.current) {
+        setCands(c);
+        setOpen(r);
+      }
     } catch (e) {
-      setError(String(e));
+      if (n === candidateRequest.current) setError(String(e));
     }
   };
   const name = (id: string) =>
@@ -594,7 +601,10 @@ function App() {
           current={assigned[open.k]?.v}
           busy={busy}
           name={name}
-          onClose={() => setOpen(undefined)}
+          onClose={() => {
+            ++candidateRequest.current;
+            setOpen(undefined);
+          }}
           onAssign={(value) =>
             void mutate("assignments", { day, key: open.k, value })
           }
