@@ -17,6 +17,14 @@ const category = (c: Candidate) =>
     DIR: "dir",
     SPECIAL: "special",
   })[c.ty] || "unknown";
+const roleLabel = (r?: string) =>
+  r
+    ? r === "curricolare"
+      ? "Curricolare"
+      : r === "sostegno"
+        ? "Sostegno"
+        : r
+    : "";
 export function CandidateDrawer({
   open,
   cands,
@@ -86,9 +94,10 @@ export function CandidateDrawer({
           return (
             <button
               key={c.id}
-              disabled={!!c.why || busy}
+              disabled={!!c.why || busy || c.enable === false}
               className={
                 "c1" +
+                (c.enable === false ? " off" : "") +
                 (cross ? " cross-site" : "") +
                 (current === c.id ? " sel" : "")
               }
@@ -118,6 +127,32 @@ export function CandidateDrawer({
                   {c.tag}
                   {cross ? " · altra sede" : ""}
                 </span>
+                {c.clsWeek && (
+                  <span className="prof">
+                    <span className="cdc">
+                      {roleLabel(c.role)}
+                      {c.cdcName
+                        ? (c.role ? " · " : "") +
+                          (c.cdc ? c.cdc + " " : "") +
+                          c.cdcName
+                        : ""}
+                    </span>
+                    <span className="cls">
+                      {c.clsWeek.map((x) => (
+                        <span
+                          key={x}
+                          className={"chip" + (x === open.c ? " in" : "")}
+                        >
+                          {x}
+                        </span>
+                      ))}
+                    </span>
+                    {c.inClass && <b className="badge">Già in {open.c}</b>}
+                  </span>
+                )}
+                {c.ty === "SPECIAL" && c.info && (
+                  <em className="info">{c.info}</em>
+                )}
               </span>
               <span className="ct">
                 <b>{c.total}</b> h assegnate

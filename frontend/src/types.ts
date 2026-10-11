@@ -3,6 +3,7 @@ export type Teacher = {
   name: string;
   code: string;
   role: string;
+  classe_concorso?: string;
   retired?: boolean;
 };
 export type Row = {
@@ -23,6 +24,13 @@ export type Candidate = {
   tag: string;
   today: number;
   total: number;
+  role?: string;
+  cdc?: string;
+  cdcName?: string;
+  clsWeek?: string[];
+  inClass?: boolean;
+  enable?: boolean;
+  info?: string;
 };
 export type Assignment = { v: string; t: string; c: string };
 export type Data = {
@@ -40,4 +48,5 @@ export type Data = {
   };
   rows: Row[];
   issues: { key: string; message: string }[];
+  autoDis: Record<string, Record<string, Record<number, string[]>>>;
 };

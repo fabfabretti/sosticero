@@ -248,6 +248,124 @@ function App() {
         </button>
       </div>
     ));
+  const renderDis = () => {
+    const manual = entries("dis");
+    const auto = data?.autoDis?.[day] || {};
+    return [
+      ...Object.keys(manual),
+      ...Object.keys(auto),
+    ]
+      .filter((v, i, a) => a.indexOf(v) === i)
+      .map((id) => {
+      const hs = manual[id] || [];
+      const reasons = auto[id] || {};
+      const hasManual = hs.length > 0;
+      const toggled = (h: number) =>
+        hs.includes(h) ? hs.filter((x) => x !== h) : [...hs, h];
+      return (
+        <div className="rw" key={"dis" + id}>
+          <button
+            className="n"
+            title={name(id)}
+            disabled={!hasManual}
+            onClick={() =>
+              void mutate("entries", {
+                day,
+                group: "dis",
+                id,
+                hours: hs.length === 7 ? [] : hours,
+                site: data?.state.disSites[day]?.[id],
+              })
+            }
+          >
+            {Object.keys(reasons).length > 0 && (
+              <i className="auto-dot" title="Disponibilità automatica" />
+            )}
+            {name(id)}
+          </button>
+          <div className="hrs">
+            {hours.map((h) => {
+              const locked = reasons[h] !== undefined;
+              return (
+                <button
+                  key={h}
+                  aria-label={`${name(id)}, ${h}ª ora`}
+                  aria-pressed={hs.includes(h)}
+                  className={
+                    (hs.includes(h) ? "on " : "") + (locked ? "auto" : "")
+                  }
+                  disabled={locked}
+                  title={
+                    locked
+                      ? "Automatico: " + reasons[h].join(", ")
+                      : undefined
+                  }
+                  onClick={() =>
+                    void mutate("entries", {
+                      day,
+                      group: "dis",
+                      id,
+                      hours: toggled(h),
+                      site: data?.state.disSites[day]?.[id],
+                    })
+                  }
+                >
+                  {h}
+                </button>
+              );
+            })}
+          </div>
+          {hasManual && (
+            <select
+              data-dis-site={id}
+              aria-label={"Sede di " + name(id)}
+              value={data?.state.disSites[day]?.[id] || ""}
+              onChange={(e) =>
+                void mutate("entries", {
+                  day,
+                  group: "dis",
+                  id,
+                  hours: hs,
+                  site: e.target.value,
+                })
+              }
+            >
+              <option value="">?</option>
+              <option value="centrale">C</option>
+              <option value="succursale">S</option>
+            </select>
+          )}
+          {Object.keys(data?.state.dis || {}).some(
+            (d) => d > day && data?.state.dis[d][id],
+          ) && (
+            <button
+              className="x"
+              aria-label="Togli anche dai giorni successivi"
+              onClick={() =>
+                void mutate("entries", {
+                  day,
+                  group: "dis",
+                  id,
+                  future: true,
+                })
+              }
+            >
+              »
+            </button>
+          )}
+          {hasManual && (
+            <button
+              className="x"
+              aria-label={"Rimuovi " + name(id)}
+              onClick={() => void mutate("entries", { day, group: "dis", id })}
+            >
+              ×
+            </button>
+          )}
+        </div>
+      );
+    });
+  };
   const offset = (month.getDay() + 6) % 7,
     n = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
   const rs =
@@ -466,7 +584,7 @@ function App() {
             {renderEntries("abs")}
             {renderEntries("cf")}
             <h2>A disposizione</h2>
-            {renderEntries("dis")}
+            {renderDis()}
           </div>
         </aside>
         <main>

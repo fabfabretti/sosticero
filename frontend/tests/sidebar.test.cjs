@@ -71,10 +71,12 @@ const data = {
   state: { abs: {}, cf: {}, dis: {}, disSites: {}, asg: {} },
   rows: [row], issues: [],
 };
-async function loaded() {
+const now = new Date();
+const todayYmd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+async function loaded(over = {}) {
   const a = app();
   a.render();
-  a.requests.shift().resolve(data);
+  a.requests.shift().resolve({ ...data, ...over });
   await settle();
   return a;
 }
@@ -125,6 +127,59 @@ test('saving closes immediately and ignores pending slot responses', async () =>
   a.requests[3].resolve([]);
   await settle();
   assert.ok(drawer(a));
+});
+
+test('drawer candidates carry profile and entry/exit enable flags', async () => {
+  const a = await loaded();
+  slot(a).props.onClick();
+  a.requests.shift().resolve([
+    {
+      id: 'co', name: 'Co', ty: 'C', loc: 'centrale', why: '', tag: 'Compresenza',
+      today: 0, total: 0, role: 'ITP', cdc: 'B016',
+      cdcName: 'Laboratori di scienze e tecnologie informatiche',
+      clsWeek: ['1A', '3B'], inClass: true,
+    },
+    {
+      id: 'ENTRA', name: 'Entra dopo', ty: 'SPECIAL', loc: null, why: '',
+      tag: 'Da verificare', today: 0, total: 0, enable: false,
+      info: 'La classe entra alle 1 ed esce alle 7',
+    },
+  ]);
+  await settle();
+  const d = drawer(a);
+  const ent = d.props.cands.find(c => c.id === 'ENTRA');
+  assert.equal(d.props.cands[0].role, 'ITP');
+  assert.ok(d.props.cands[0].cdcName.includes('informatiche'));
+  assert.equal(ent.enable, false);
+  assert.ok(ent.info.includes('entra alle 1'));
+});
+
+test('auto availability hours lock while other hours toggle manual', async () => {
+  const teacher = { name: 'Auto T', role: 'curricolare', classe_concorso: 'A041' };
+  const base = {
+    dataset: { teachers: { auto: teacher }, classes: [], warnings: [] },
+    state: { abs: {}, cf: {}, dis: {}, disSites: {}, asg: {} },
+    rows: [],
+    issues: [],
+    autoDis: { [todayYmd]: { auto: { 2: ['1A entra dopo'], 3: ['1A esce prima'] } } },
+  };
+  const a = await loaded(base);
+  const hour = label => a.render().find(n => n.props['aria-label'] === label);
+  const locked = hour('Auto T, 2ª ora');
+  assert.equal(locked.props.disabled, true);
+  assert.ok(String(locked.props.title).includes('entra dopo'));
+  const free = hour('Auto T, 4ª ora');
+  assert.equal(free.props.disabled, false);
+  free.props.onClick();
+  a.requests.shift().resolve({});
+  await settle();
+  a.requests.shift().resolve({
+    ...base,
+    state: { abs: {}, cf: {}, dis: { [todayYmd]: { auto: [4] } }, disSites: {}, asg: {} },
+  });
+  await settle();
+  assert.equal(hour('Auto T, 4ª ora').props['aria-pressed'], true);
+  assert.equal(hour('Auto T, 2ª ora').props.disabled, true);
 });
 
 test('co-absent teachers render as one merged label', async () => {

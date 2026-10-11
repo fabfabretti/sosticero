@@ -740,3 +740,74 @@ td.none {
 .archive-actions label:hover {
   background: var(--soft);
 }
+/* Profilo candidato: ruolo, classe di concorso, classi della settimana */
+.c1 .m .prof {
+  display: block;
+  margin-top: 4px;
+}
+.c1 .m .cdc {
+  display: block;
+  font-size: 12px;
+  color: var(--mute);
+}
+.c1 .m .cls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-top: 3px;
+}
+.c1 .m .cls .chip {
+  font-size: 10.5px;
+  line-height: 1.6;
+  padding: 0 5px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  color: var(--mute);
+}
+.c1 .m .cls .chip.in {
+  background: var(--soft);
+  color: var(--ink);
+  border-color: var(--acc);
+  font-weight: 600;
+}
+.c1 .m .badge {
+  display: inline-block;
+  margin-top: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #155b32;
+  background: #d7f4df;
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+/* Entrata/uscita sempre visibili ma non applicabili: attenuate, senza barrato */
+.c1.off {
+  opacity: 0.55;
+}
+.c1.off .m b,
+.c1.off .ct {
+  text-decoration: none;
+}
+.c1 .m .info {
+  display: block;
+  font-style: normal;
+  font-size: 11.5px;
+  color: var(--mute);
+  margin-top: 2px;
+}
+/* Disponibilità automatica: ore bloccate in sidebar */
+.hrs button.auto {
+  background: var(--soft);
+  border-color: var(--acc);
+  color: var(--acc);
+  font-weight: 600;
+  cursor: not-allowed;
+}
+.rw .n .auto-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--acc);
+  margin-right: 5px;
+}

@@ -4,7 +4,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, StrictInt
-from .domain import normalize_dataset, rows, candidates, validate_assignment, default_availability, HOURS, SITES
+from .domain import normalize_dataset, rows, candidates, validate_assignment, default_availability, auto_availability, HOURS, SITES
 from .storage import Store, EMPTY
 
 
@@ -61,7 +61,7 @@ def create_app(path=None, seed=None):
                 validate_assignment(ds, state, d, k, a['v'])
             except ValueError as e:
                 issues.append({'key': k, 'message': str(e)})
-        return dict(dataset=ds, state=state, rows=rs, issues=issues)
+        return dict(dataset=ds, state=state, rows=rs, issues=issues, autoDis={d: auto_availability(ds, state, d)})
 
     @app.post('/api/timetable')
     def import_timetable(data: dict):

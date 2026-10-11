@@ -11,6 +11,38 @@ PRIORITIES = {'C': (0, 0, 0), 'POT': (10, 50, 70), 'D': (10, 50, 70),
               'TC': (20, 60, 74), 'DIR': (30, 65, 76), 'SPECIAL': (40, 40, 40)}
 LABELS = {'C': 'Compresenza', 'POT': 'POT', 'D': 'A disposizione', 'UTC': 'UTC',
           'UTS': 'UTS', 'DIS': 'DI.S', 'TC': 'Rottura compresenza', 'DIR': 'Dirigente', 'SPECIAL': 'Entrata / uscita'}
+# Denominazioni ufficiali classi di concorso (A/B: DPR 19/2016, AS: DM 255/2023). Codici non in tabella restano così come sono.
+CDC_NAMES = {
+    'A020': 'Fisica',
+    'A021': 'Geografia',
+    'A026': 'Matematica',
+    'A034': 'Scienze e tecnologie chimiche',
+    'A037': 'Costruzioni, tecnologie e tecniche di rappresentazione grafica',
+    'A040': 'Tecnologie elettriche ed elettroniche',
+    'A041': 'Scienze e tecnologie informatiche',
+    'A042': 'Scienze e tecnologie meccaniche',
+    'A045': 'Scienze economico-aziendali',
+    'A046': 'Scienze giuridico-economiche',
+    'A047': 'Scienze matematiche applicate',
+    'A050': 'Scienze naturali, chimiche e biologiche',
+    'A051': 'Scienze e tecnologie agrarie',
+    'AB24': 'Lingue e culture straniere - inglese (secondaria di II grado)',
+    'AC24': 'Lingue e culture straniere - spagnolo (secondaria di II grado)',
+    'AS12': 'Discipline letterarie (secondaria di II grado)',
+    'AS2A': 'Lingue e culture straniere - francese (secondaria di II grado)',
+    'AS2B': 'Lingue e culture straniere - inglese (secondaria di II grado)',
+    'AS2D': 'Lingue e culture straniere - tedesco (secondaria di II grado)',
+    'AS48': 'Scienze motorie e sportive',
+    'ADSS': 'Sostegno (secondaria di II grado)',
+    'SOS': 'Sostegno',
+    'IRC': 'Insegnamento della religione cattolica',
+    'B003': 'Laboratori di fisica',
+    'B012': 'Laboratori di scienze e tecnologie chimiche e microbiologiche',
+    'B014': 'Laboratori di scienze e tecnologie delle costruzioni',
+    'B015': 'Laboratori di scienze e tecnologie elettriche ed elettroniche',
+    'B016': 'Laboratori di scienze e tecnologie informatiche',
+    'B017': 'Laboratori di scienze e tecnologie meccaniche',
+}
 
 
 def normalize_dataset(data):
@@ -23,10 +55,11 @@ def normalize_dataset(data):
         i = t.get('id')
         if not isinstance(i, str) or not i or i in teachers or '|' in i:
             raise ValueError('ID docente mancante, duplicato o non valido.')
-        if any(t.get(k) is not None and not isinstance(t[k], str) for k in ('nome_originale', 'sigla_untis', 'ruolo')):
+        if any(t.get(k) is not None and not isinstance(t[k], str) for k in ('nome_originale', 'sigla_untis', 'ruolo', 'classe_concorso')):
             raise ValueError('Anagrafica docente non valida.')
         teachers[i] = dict(id=i, name=t.get('nome_originale') or t.get('sigla_untis') or i,
-                           code=t.get('sigla_untis', ''), role=t.get('ruolo', 'curricolare'))
+                           code=t.get('sigla_untis', ''), role=t.get('ruolo', 'curricolare'),
+                           classe_concorso=t.get('classe_concorso', ''))
     for l in data['orario']:
         if not isinstance(l, dict):
             raise ValueError('Lezione non valida.')
@@ -118,12 +151,25 @@ def eligibility(ds, state, day, row, teacher):
 
 
 def candidates(ds, state, day, row):
-    result = [c for t in ds['teachers'].values() if (c := eligibility(ds, state, day, row, t))]
+    weekly = {}
+    for k, l in ds['lessons'].items():
+        weekly.setdefault(k.split('|')[0], set()).update(l['classes'])
+    result = []
+    for t in ds['teachers'].values():
+        c = eligibility(ds, state, day, row, t)
+        if not c:
+            continue
+        cls = sorted(weekly.get(t['id'], set()))
+        cdc = t.get('classe_concorso', '')
+        result.append(dict(c, role=t['role'], cdc=cdc, cdcName=CDC_NAMES.get(cdc, cdc),
+                           clsWeek=cls, inClass=row['c'] in cls))
     result.append(dict(id='DIR', name='Dirigente', ty='DIR', loc='centrale', why='', tag='Opzione manuale, da verificare'))
     effective = [h for h in HOURS if any(row['c'] in (lesson(ds, i, day, h) or {}).get('classes', []) for i in ds['teachers']) and not class_out(state, day, row['c'], h, row['k'])]
-    for i, title, boundary in [('ENTRA', 'Entra dopo', effective[:1]), ('ESCE', 'Esce prima', effective[-1:])]:
-        if row['h'] in boundary:
-            result.append(dict(id=i, name=title, ty='SPECIAL', loc=None, why='', tag='Da verificare'))
+    if effective:
+        info = f'La classe entra alle {effective[0]} ed esce alle {effective[-1]}'
+        for cid, title, boundary in [('ENTRA', 'Entra dopo', effective[0]), ('ESCE', 'Esce prima', effective[-1])]:
+            result.append(dict(id=cid, name=title, ty='SPECIAL', loc=None, why='', tag='Da verificare',
+                               enable=row['h'] == boundary, info=info))
     for c in result:
         c['today'] = sum(a['v'] == c['id'] for a in state['asg'].get(day, {}).values())
         c['total'] = sum(a['v'] == c['id'] for assignments in state['asg'].values() for a in assignments.values())
@@ -138,7 +184,43 @@ def validate_assignment(ds, state, day, key, value):
     c = next((c for c in candidates(ds, state, day, row) if c['id'] == value), None)
     if not c or c['why']:
         raise ValueError(c['why'] if c else 'Candidato non disponibile.')
+    if value == 'ENTRA' and not c.get('enable'):
+        raise ValueError('Entra dopo disponibile solo alla prima ora effettiva della classe.')
+    if value == 'ESCE' and not c.get('enable'):
+        raise ValueError('Esce prima disponibile solo all’ultima ora effettiva della classe.')
     return dict(v=value, t=c['ty'], c=row['c'])
+
+
+def out_reason(state, day, cls, hour):
+    for k, a in state['asg'].get(day, {}).items():
+        if a['c'] == cls and int(k.split('|')[1]) == hour and a['v'] in ('ENTRA', 'ESCE'):
+            return f'{cls} entra dopo' if a['v'] == 'ENTRA' else f'{cls} esce prima'
+    return f'{cls} classe fuori'
+
+
+def auto_availability(ds, state, day):
+    """Ore/cause in cui un docente è libero perché tutte le sue classi dell'ora sono fuori."""
+    result = {}
+    for i, t in ds['teachers'].items():
+        if t.get('retired'):
+            continue
+        hours = {}
+        for h in HOURS:
+            l = lesson(ds, i, day, h)
+            if (not l or not l['classes'] or h in state['abs'].get(day, {}).get(i, [])
+                    or any(a['v'] == i and int(k.split('|')[1]) == h for k, a in state['asg'].get(day, {}).items())):
+                continue
+            reasons = []
+            for c in l['classes']:
+                if class_out(state, day, c, h):
+                    reasons.append(out_reason(state, day, c, h))
+                else:
+                    break
+            else:
+                hours[h] = reasons
+        if hours:
+            result[i] = hours
+    return result
 
 
 def default_availability(ds, teacher, day):
