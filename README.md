@@ -52,11 +52,12 @@ Cross-campus choices remain selectable, with muted colors; transfer times and au
 
 ```sh
 .venv/bin/python -m unittest discover -s backend/tests -v
+npm --prefix frontend test
 npm --prefix frontend run build
 ```
 
-Tests cover the real dataset, co-teaching/campus/period, absence and booking conflicts, blank/manual availability, class release, ranking and load tie breaks, transactional import rollback, archive validation, restart persistence, timetable updates and multi-day behavior.
+Backend tests cover the real dataset, co-teaching/campus/period, absence and booking conflicts, blank/manual availability, class release, ranking and load tie breaks, transactional import rollback, archive validation, restart persistence, timetable updates and multi-day behavior. Frontend tests (`node --test`) drive the real `App` handlers with deferred fetches, covering candidate-response ordering, day-change discards, and save-closes-immediately.
 
 Deployment binds localhost by default. There is no authentication: keep it on a trusted administrative machine/network; add an authenticated reverse proxy before wider access. Concurrent edits are safe from lost writes; screens refresh after edits/date changes, not by live push.
 
-Verification in this environment: 15 backend tests passed before the additional concurrent-assignment test was added; the final TypeScript/Vite build passed. The image built with Podman, and rootless Compose execution was confirmed with `podman compose up --build -d`, `down`, and restart: the app served HTTP 200 and retained `./data/supplenze.sqlite` across restarts. A rerun of the additional concurrent-assignment test was not repeated. The browser flow (absence → candidates → assignment → reload) was checked with the supplied timetable.
+Verification in this environment: 16 backend tests pass (including the concurrent-assignment case) and the frontend `node --test` suite (3 cases) passes; the TypeScript/Vite build passed. The image built with Podman, and rootless Compose execution was confirmed with `podman compose up --build -d`, `down`, and restart: the app served HTTP 200 and retained `./data/supplenze.sqlite` across restarts. The browser flow (absence → candidates → assignment → reload) was checked with the supplied timetable.
