@@ -35,6 +35,16 @@ To migrate prototype data, first export “Esporta supplenze” in the original 
 
 Back up the SQLite database with SQLite's online backup API or stop the container before copying the local `data` folder (include WAL files if copying a running database). Archive export covers operational records; retain the timetable separately for a full restore.
 
+### Automatic backups
+
+The app automatically creates a backup of the database on startup if no backup has been made on the same calendar day. Backups are stored in `./data/backups/` (configurable via `BACKUP_DIR`) with timestamped filenames like `supplenze-YYYY-MM-DDTHH-MM-SS.sqlite`. 
+
+Retention policy (configurable via environment variables): backups older than `BACKUP_RETENTION_DAYS` (default: 7) are deleted unless they are among the `BACKUP_RETENTION_COUNT` (default: 10) most recent backups - whichever constraint keeps them. Automatic startup backups can be disabled with `BACKUP_ON_STARTUP=false`.
+
+You can manage backups via:
+- **Settings UI** (in the app under Settings → "Backup e ripristino"): view available backups, create manual backups, and restore from a selected backup. Restoring requires explicit confirmation via a hard confirmation dialog; this operation overwrites current data and cannot be undone.
+- **API**: `GET /api/backups` lists backups, `POST /api/backups` creates a manual backup, `POST /api/backups/restore` restores from a backup (requires `{"filename": "...", "confirm": true}`).
+
 The dataset and the operational state live in separate documents. Uploading a timetable JSON rewrites only `dataset`; absences, manual availability, classes out and assignments in `state` are never touched. To refresh the timetable after a new field becomes available (for example the `classe_concorso` names added to the candidate drawer), back up `data/supplenze.sqlite` first, then upload the **same** timetable file via “Carica database JSON”: the re-import keeps every existing entry intact.
 
 ## Rules and structure

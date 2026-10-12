@@ -180,6 +180,7 @@ function Settings() {
         </div>
         <div className="db-status">Dati salvati nel database SQLite.</div>
       </section>
+      <BackupSection />
     </section>
   );
 }
@@ -807,6 +808,199 @@ function Supplenze() {
         />
       )}
     </>
+  );
+}
+
+function BackupSection() {
+  const [backups, setBackups] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [confirming, setConfirming] = useState<any | null>(null);
+
+  const loadBackups = async () => {
+    setError("");
+    try {
+      const res = await fetch("/api/backups");
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        throw new Error(e.detail || "Errore caricamento backup");
+      }
+      setBackups(await res.json());
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
+  useEffect(() => {
+    void loadBackups();
+  }, []);
+
+  const createBackup = async () => {
+    setLoading(true);
+    setError("");
+    setSuccess("");
+    try {
+      const res = await fetch("/api/backups", { method: "POST" });
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        throw new Error(e.detail || "Errore creazione backup");
+      }
+      setSuccess("Backup creato con successo");
+      await loadBackups();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const restoreBackup = async (filename: string) => {
+    setLoading(true);
+    setError("");
+    setSuccess("");
+    try {
+      const res = await fetch("/api/backups/restore", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filename, confirm: true }),
+      });
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        throw new Error(e.detail || "Errore ripristino backup");
+      }
+      setSuccess("Backup ripristinato con successo");
+      setConfirming(null);
+      await loadBackups();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatSize = (bytes: number) => {
+    if (bytes < 1024) return bytes + " B";
+    const kb = bytes / 1024;
+    if (kb < 1024) return kb.toFixed(1) + " KB";
+    const mb = kb / 1024;
+    return mb.toFixed(2) + " MB";
+  };
+
+  const formatDate = (iso: string) => {
+    try {
+      return new Date(iso).toLocaleString("it-IT");
+    } catch {
+      return iso;
+    }
+  };
+
+  return (
+    <section className="backup-section" style={{ marginTop: "2rem" }}>
+      <h2>Backup e ripristino</h2>
+      {error && (
+        <p role="alert" style={{ color: "#c34242" }}>
+          {error}
+        </p>
+      )}
+      {success && (
+        <p role="status" style={{ color: "#4a9" }}>
+          {success}
+        </p>
+      )}
+      <div style={{ marginBottom: "1rem" }}>
+        <button onClick={() => void createBackup()} disabled={loading}>
+          Crea backup manuale
+        </button>
+      </div>
+      <div>
+        <h3>Backups disponibili</h3>
+        {backups.length === 0 ? (
+          <p>Nessun backup disponibile</p>
+        ) : (
+          <ul style={{ listStyle: "none", padding: 0 }}>
+            {backups.map((b) => (
+              <li
+                key={b.filename}
+                style={{
+                  border: "1px solid var(--border, #ddd)",
+                  padding: "0.5rem 1rem",
+                  marginBottom: "0.5rem",
+                  borderRadius: "4px",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
+                <div>
+                  <div style={{ fontWeight: "bold" }}>{b.filename}</div>
+                  <div style={{ fontSize: "0.9em", opacity: 0.8 }}>
+                    {formatDate(b.created_at)} · {formatSize(b.size)}
+                  </div>
+                </div>
+                <button
+                  onClick={() => setConfirming(b)}
+                  disabled={loading}
+                  style={{ background: "#c34242", color: "#fff" }}
+                >
+                  Ripristina
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      {confirming && (
+        <div
+          className="confirm-overlay"
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0,0,0,0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+          }}
+        >
+          <div
+            className="confirm-dialog"
+            style={{
+              background: "var(--bg, #fff)",
+              padding: "2rem",
+              borderRadius: "8px",
+              maxWidth: "600px",
+              margin: "1rem",
+              boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
+            }}
+          >
+            <h3 style={{ color: "#c34242" }}>Attenzione: ripristino backup</h3>
+            <p>
+              Ripristinare il backup <strong>{confirming.filename}</strong>?
+            </p>
+            <p>
+              <strong>I dati attuali verranno sovrascritti.</strong> Questa
+              operazione non è annullabile.
+            </p>
+            <div style={{ marginTop: "2rem", display: "flex", gap: "1rem" }}>
+              <button
+                onClick={() => restoreBackup(confirming.filename)}
+                disabled={loading}
+                style={{ background: "#c34242", color: "#fff" }}
+              >
+                {loading ? "Ripristinando..." : "Conferma ripristino"}
+              </button>
+              <button onClick={() => setConfirming(null)} disabled={loading}>
+                Annulla
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 createRoot(document.getElementById("root")!).render(<App />);

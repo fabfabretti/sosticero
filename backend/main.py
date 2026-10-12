@@ -1,11 +1,12 @@
 import os
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, StrictInt
 from .domain import normalize_dataset, rows, candidates, validate_assignment, default_availability, auto_availability, HOURS, SITES
 from .storage import Store, EMPTY
+from . import backup
 
 
 class Edit(BaseModel):
@@ -25,6 +26,11 @@ class Assignment(BaseModel):
     value: str | None = None
 
 
+class RestoreRequest(BaseModel):
+    filename: str
+    confirm: bool = False
+
+
 DEFAULT_DATABASE = Path(__file__).resolve().parent.parent / 'data' / 'supplenze.sqlite'
 
 
@@ -32,11 +38,35 @@ def create_app(path=None, seed=None):
     app = FastAPI(title='Supplenze')
     database = Path(path or os.environ.get('DATABASE_PATH', DEFAULT_DATABASE))
     database.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Backup configuration
+    backup_dir = Path(os.environ.get('BACKUP_DIR', str(database.parent / 'backups')))
+    retention_count = int(os.environ.get('BACKUP_RETENTION_COUNT', '10'))
+    retention_days = int(os.environ.get('BACKUP_RETENTION_DAYS', '7'))
+    backup_on_startup = os.environ.get('BACKUP_ON_STARTUP', 'true').lower() == 'true'
+    
     store = Store(str(database))
     with store.connect() as db:
         if store.read(db, 'dataset') is None and seed:
             import json
             store.write(db, 'dataset', normalize_dataset(json.loads(Path(seed).read_text())))
+    
+    # Perform startup backup if enabled
+    if backup_on_startup and database.exists():
+        try:
+            today = datetime.now().date()
+            # Check if backup already exists for today
+            backups = backup.list_backups(str(backup_dir))
+            today_backed_up = any(
+                datetime.fromisoformat(b['created_at']).date() == today
+                for b in backups
+            )
+            if not today_backed_up:
+                backup.backup_database(str(database), str(backup_dir))
+                backup.prune_backups(str(backup_dir), retention_count, retention_days)
+        except Exception as e:
+            # Don't prevent app from starting on backup failure
+            print(f'Backup failed: {e}')
 
     @app.exception_handler(ValueError)
     async def invalid(_, exc):
@@ -168,6 +198,40 @@ def create_app(path=None, seed=None):
                             raise ValueError('Assegnazione non valida.')
             store.write(db, 'state', state)
         return {'ok': True}
+
+    @app.get('/api/backups')
+    def list_backups_endpoint():
+        try:
+            return backup.list_backups(str(backup_dir))
+        except Exception as e:
+            raise ValueError(str(e))
+
+    @app.post('/api/backups')
+    def create_backup_endpoint():
+        try:
+            res = backup.backup_database(str(database), str(backup_dir))
+            backup.prune_backups(str(backup_dir), retention_count, retention_days)
+            return res
+        except Exception as e:
+            raise ValueError(str(e))
+
+    @app.post('/api/backups/restore')
+    def restore_backup_endpoint(req: RestoreRequest):
+        try:
+            if not req.confirm:
+                raise ValueError('Conferma richiesta per il ripristino')
+            backups = backup.list_backups(str(backup_dir))
+            backup_path = None
+            for b in backups:
+                if b['filename'] == req.filename:
+                    backup_path = b['path']
+                    break
+            if not backup_path:
+                raise ValueError('Backup non trovato')
+            backup.restore_backup(str(database), backup_path)
+            return {'ok': True}
+        except Exception as e:
+            raise ValueError(str(e))
 
     static = Path(os.environ.get('STATIC_PATH', 'frontend/dist'))
     if static.exists():
