@@ -36,10 +36,12 @@ export type Assignment = { v: string; t: string; c: string };
 export type Data = {
   dataset: {
     teachers: Record<string, Teacher>;
+    lessons: Record<string, { classes: string[] }>;
     classes: string[];
     warnings: unknown[];
   };
   state: {
+    permessi?: Record<string, Record<string, number[]>>;
     abs: Record<string, Record<string, number[]>>;
     cf: Record<string, Record<string, number[]>>;
     dis: Record<string, Record<string, number[]>>;

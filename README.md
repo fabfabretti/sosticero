@@ -35,6 +35,12 @@ To migrate prototype data, first export “Esporta supplenze” in the original 
 
 Back up the SQLite database with SQLite's online backup API or stop the container before copying the local `data` folder (include WAL files if copying a running database). Archive export covers operational records; retain the timetable separately for a full restore.
 
+### Permessi
+
+The Permessi register records one teacher/date with selected periods, an optional request date and Ore da recuperare. The form sits in a compact right sidebar beside the table. The daily maximum is half the scheduled periods rounded down, including POT, DIS and every scheduled activity. Selected unscheduled periods show an accessible warning but may be saved within that maximum. Permit hours automatically appear as locked absences in Supplenze; deleting a permit preserves any separately recorded manual absence. Recovery accounting is deferred.
+
+Archive schema 1 includes an optional `permessi` date/teacher/periods map and `permitRequests` date/teacher/request-date map. Older archives import with an empty register. Imports validate references and periods atomically without rechecking historical entitlement against the current timetable. Database backups include permits. Older application versions can discard this field: do not round-trip new archives through them.
+
 ### Automatic backups
 
 The app automatically creates a backup of the database on startup if no backup has been made on the same calendar day. Backups are stored in `./data/backups/` (configurable via `BACKUP_DIR`) with timestamped filenames like `supplenze-YYYY-MM-DDTHH-MM-SS.sqlite`. 

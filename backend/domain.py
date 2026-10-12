@@ -98,9 +98,20 @@ def class_out(state, day, cls, hour, exclude=''):
         for k, a in state['asg'].get(day, {}).items())
 
 
+def absences(state, day):
+    manual = state['abs'].get(day, {})
+    permits = state.get('permessi', {}).get(day, {})
+    return {i: sorted(set(manual.get(i, []) + permits.get(i, []))) for i in manual.keys() | permits.keys()}
+
+
+def validate_permit(ds, teacher, hours):
+    if teacher not in ds['teachers'] or not isinstance(hours, list) or not hours or any(type(h) is not int or h not in HOURS for h in hours) or len(set(hours)) != len(hours):
+        raise ValueError('Docente o ore di permesso non validi.')
+
+
 def rows(ds, state, day):
     groups = {}
-    for i, hours in state['abs'].get(day, {}).items():
+    for i, hours in absences(state, day).items():
         for h in hours:
             l = lesson(ds, i, day, h)
             for c in l['classes'] if l else []:
@@ -144,7 +155,7 @@ def eligibility(ds, state, day, row, teacher):
         return None
     loc = state['disSites'].get(day, {}).get(i) if manual else None
     loc = loc or ('centrale' if ty == 'UTC' else 'succursale' if ty == 'UTS' else l['site'] if l else None)
-    why = 'Assente' if h in state['abs'].get(day, {}).get(i, []) else ''
+    why = 'Assente' if h in absences(state, day).get(i, []) else ''
     if not why and any(k != row['k'] and int(k.split('|')[1]) == h and a['v'] == i for k, a in state['asg'].get(day, {}).items()):
         why = 'Già assegnato in questa ora'
     return dict(id=i, name=teacher['name'], ty=ty, loc=loc, why=why, tag=why or LABELS[ty])
@@ -207,7 +218,7 @@ def auto_availability(ds, state, day):
         hours = {}
         for h in HOURS:
             l = lesson(ds, i, day, h)
-            if (not l or not l['classes'] or h in state['abs'].get(day, {}).get(i, [])
+            if (not l or not l['classes'] or h in absences(state, day).get(i, [])
                     or any(a['v'] == i and int(k.split('|')[1]) == h for k, a in state['asg'].get(day, {}).items())):
                 continue
             reasons = []

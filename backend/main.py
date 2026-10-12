@@ -4,7 +4,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, StrictInt
-from .domain import normalize_dataset, rows, candidates, validate_assignment, default_availability, auto_availability, HOURS, SITES
+from .domain import normalize_dataset, rows, candidates, validate_assignment, default_availability, auto_availability, HOURS, SITES, lesson, validate_permit
 from .storage import Store, EMPTY
 from . import backup
 
@@ -18,6 +18,15 @@ class Edit(BaseModel):
     site: str | None = None
     future: bool = False
     defaults: bool = False
+
+
+class Permit(BaseModel):
+    requested_on: date | None = None
+    day: date
+    id: str
+    hours: list[StrictInt] | None = None
+    original_day: date | None = None
+    original_id: str | None = None
 
 
 class Assignment(BaseModel):
@@ -77,7 +86,10 @@ def create_app(path=None, seed=None):
         ds = store.read(db, 'dataset')
         if ds is None:
             raise ValueError('Carica prima un orario.')
-        return ds, store.read(db, 'state', EMPTY)
+        state = store.read(db, 'state', EMPTY)
+        state.setdefault('permessi', {})
+        state.setdefault('permitRequests', {})
+        return ds, state
 
     @app.get('/api/day/{day}')
     def get_day(day: date):
@@ -92,6 +104,46 @@ def create_app(path=None, seed=None):
             except ValueError as e:
                 issues.append({'key': k, 'message': str(e)})
         return dict(dataset=ds, state=state, rows=rs, issues=issues, autoDis={d: auto_availability(ds, state, d)})
+
+    @app.get('/api/permessi')
+    def get_permits():
+        with store.connect() as db:
+            ds, state = load(db)
+        return dict(dataset=ds, permessi=state['permessi'], permitRequests=state['permitRequests'])
+
+    @app.post('/api/permessi')
+    def save_permit(e: Permit):
+        if (e.original_day is None) != (e.original_id is None):
+            raise ValueError('Riferimento originale incompleto.')
+        d = e.day.isoformat()
+        source = (e.original_day.isoformat(), e.original_id) if e.original_day else None
+        with store.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            ds, state = load(db)
+            permits = state['permessi']
+            if source and source[1] not in permits.get(source[0], {}):
+                raise ValueError('Permesso originale non più presente.')
+            if e.hours is None:
+                permits.get(d, {}).pop(e.id, None)
+                state['permitRequests'].get(d, {}).pop(e.id, None)
+            else:
+                validate_permit(ds, e.id, e.hours)
+                if ds['teachers'][e.id].get('retired') and (not source or source[1] != e.id):
+                    raise ValueError('Docente non più in servizio.')
+                if e.id in permits.get(d, {}) and source != (d, e.id):
+                    raise ValueError('Permesso già presente: modifica la registrazione esistente.')
+                maximum = sum(lesson(ds, e.id, d, h) is not None for h in HOURS) // 2
+                if len(e.hours) > maximum:
+                    raise ValueError(f'Massimo giornaliero: {maximum} ore di permesso.')
+                if source:
+                    permits[source[0]].pop(source[1])
+                    state['permitRequests'].get(source[0], {}).pop(source[1], None)
+                permits.setdefault(d, {})[e.id] = sorted(e.hours)
+                state['permitRequests'].get(d, {}).pop(e.id, None)
+                if e.requested_on:
+                    state['permitRequests'].setdefault(d, {})[e.id] = e.requested_on.isoformat()
+            store.write(db, 'state', state)
+        return {'ok': True}
 
     @app.post('/api/timetable')
     def import_timetable(data: dict):
@@ -188,7 +240,13 @@ def create_app(path=None, seed=None):
                     if not isinstance(entries, dict):
                         raise ValueError('Archivio non valido.')
                     for i, value in entries.items():
-                        if group in ('abs', 'dis', 'cf'):
+                        if group == 'permitRequests':
+                            if i not in state['permessi'].get(d, {}) or not isinstance(value, str):
+                                raise ValueError('Data richiesta senza permesso valido.')
+                            date.fromisoformat(value)
+                        elif group == 'permessi':
+                            validate_permit(ds, i, value)
+                        elif group in ('abs', 'dis', 'cf'):
                             if i not in (ds['classes'] if group == 'cf' else ds['teachers']) or not isinstance(value, list) or any(type(h) is not int or h not in HOURS for h in value):
                                 raise ValueError('Ore o riferimento non valido.')
                         elif group == 'disSites':

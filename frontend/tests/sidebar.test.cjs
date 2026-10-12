@@ -50,10 +50,10 @@ function app() {
   runInNewContext(code, {
     exports: {}, URLSearchParams, Date,
     document: { getElementById: () => ({}) },
-    fetch(url) {
+    fetch(url, options) {
       return new Promise(resolve => requests.push({
-        url,
-        resolve: data => resolve({ ok: true, json: async () => data }),
+        url, options,
+        resolve: (data, ok = true) => resolve({ ok, json: async () => data }),
       }));
     },
     require(id) {
@@ -279,7 +279,6 @@ test('future tabs show placeholder screens and mark their tab current', () => {
   const a = app();
   a.render();
   for (const [route, label] of [
-    ['/permessi', 'Permessi'],
     ['/banca-ore', 'Banca ore'],
     ['/stats', 'Stats'],
   ]) {
@@ -306,4 +305,109 @@ test('credits footer shows only at the end of Settings', () => {
   assert.ok(!a.render().some(n => n.props?.className === 'credits'));
   a.go('/permessi');
   assert.ok(!a.render().some(n => n.props?.className === 'credits'));
+});
+
+const permitData = {
+  dataset: { teachers: { t: { id: 't', name: 'Contartase', role: 'curricolare' } }, lessons: Object.fromEntries([1,2,3,4,5].map(h => ['t|lun|' + h, { classes: h === 3 || h === 4 ? [] : ['1A'] }])) },
+  permessi: {},
+};
+async function permitsLoaded(records = {}) {
+  const a = app();
+  a.go('/permessi'); a.render();
+  assert.equal(a.requests[0].url, '/api/permessi');
+  a.requests.shift().resolve({ ...permitData, permessi: records });
+  await settle();
+  return a;
+}
+const permitTeacher = a => a.render().find(n => n.type === 'input' && n.props['aria-label'] === 'Cerca docente');
+const permitDay = a => a.render().find(n => n.props?.['aria-label'] === 'Data permesso');
+const permitHour = (a, h) => a.render().find(n => n.type === 'button' && n.props['aria-label'] === `Permesso ${h}ª ora`);
+const permitForm = a => a.render().find(n => n.type === 'form');
+const clickText = (a, text) => a.render().find(n => n.type === 'button' && n.props.children === text).props.onClick();
+
+test('permit form warns about unscheduled periods and saves them within limit', async () => {
+  const a = await permitsLoaded();
+  assert.ok(!a.render().some(n => n.props?.className === 'stub'));
+  permitTeacher(a).props.onChange({ target: { value: 'cont' } });
+  permitTeacher(a).props.onKeyDown({ key: 'Enter', preventDefault() {} });
+  permitDay(a).props.onChange({ target: { value: '2026-10-12' } });
+  permitHour(a, 3).props.onClick(); permitHour(a, 4).props.onClick();
+  assert.equal(a.render().filter(n => n.props?.className === 'warning-icon').length, 0, 'scheduled POT/DIS have no warning');
+  permitHour(a, 3).props.onClick(); permitHour(a, 4).props.onClick();
+  permitHour(a, 6).props.onClick(); permitHour(a, 7).props.onClick();
+  assert.equal(a.render().filter(n => n.props?.className === 'warning-icon').length, 2);
+  assert.ok(a.render().some(n => n.props?.tabIndex === 0 && n.props['aria-label']?.includes('nessuna attività')));
+  permitForm(a).props.onSubmit({ preventDefault() {} });
+  const req = a.requests.shift();
+  assert.deepEqual(JSON.parse(req.options.body), { day: '2026-10-12', id: 't', requested_on: null, hours: [6,7] });
+  req.resolve({ ok: true }); await settle();
+  a.requests.shift().resolve({ ...permitData, permessi: { '2026-10-12': { t: [6,7] } } }); await settle();
+  assert.equal(a.render().filter(n => n.props?.className === 'permit-period').length, 2);
+  assert.ok(a.render().some(n => n.type === 'td' && n.props.children === 2));
+});
+
+test('permit errors preserve form; editing supplies original identity and deletion is explicit', async () => {
+  const a = await permitsLoaded({ '2026-10-12': { t: [2,3] } });
+  a.render().find(n => n.props?.['aria-label'] === 'Modifica permesso di Contartase').props.onClick();
+  assert.equal(permitTeacher(a).props.value, 'Contartase');
+  assert.equal(permitDay(a).props.value, '2026-10-12');
+  permitForm(a).props.onSubmit({ preventDefault() {} });
+  const req = a.requests.shift();
+  assert.equal(JSON.parse(req.options.body).original_id, 't');
+  req.resolve({ detail: 'Permesso già presente: modifica la registrazione esistente.' }, false); await settle();
+  assert.ok(a.render().some(n => n.props?.role === 'alert' && n.props.children.includes('già presente')));
+  assert.equal(permitTeacher(a).props.value, 'Contartase');
+  a.render().find(n => n.props?.['aria-label'] === 'Rimuovi permesso di Contartase').props.onClick();
+  assert.deepEqual(JSON.parse(a.requests.shift().options.body), { day: '2026-10-12', id: 't', hours: null });
+});
+
+test('permit absences lock and keep manual control payloads separate', async () => {
+  const a = await loaded({ dataset: permitData.dataset, state: { ...data.state, abs: { [todayYmd]: { t: [2] } }, permessi: { [todayYmd]: { t: [2,3] } } } });
+  const button = h => a.render().find(n => n.type === 'button' && n.props['aria-label'] === `Contartase, ${h}ª ora`);
+  assert.equal(button(2).props.disabled, true);
+  assert.equal(button(3).props['aria-pressed'], true);
+  assert.equal(button(4).props.disabled, false);
+  button(4).props.onClick();
+  assert.deepEqual(JSON.parse(a.requests.shift().options.body).hours, [2,4]);
+  a.render().find(n => n.type === 'button' && n.props?.className === 'n' && n.props.children === 'Contartase').props.onClick();
+  assert.deepEqual(JSON.parse(a.requests.shift().options.body).hours, [1,2,3,4,5,6,7]);
+  a.render().find(n => n.type === 'button' && n.props['aria-label'] === 'Rimuovi Contartase').props.onClick();
+  assert.equal(JSON.parse(a.requests.shift().options.body).hours, undefined);
+  const only = await loaded({ dataset: permitData.dataset, state: { ...data.state, permessi: { [todayYmd]: { t: [2] } } } });
+  assert.equal(only.render().find(n => n.type === 'button' && n.props['aria-label'] === 'Rimuovi Contartase').props.disabled, true);
+});
+
+test('permit search supports keyboard selection and immediately warns above the daily limit', async () => {
+  const a = await permitsLoaded();
+  permitTeacher(a).props.onChange({ target: { value: 'cont' } });
+  permitTeacher(a).props.onKeyDown({ key: 'Enter', preventDefault() {} });
+  assert.equal(permitTeacher(a).props.value, 'Contartase');
+  permitDay(a).props.onChange({ target: { value: '2026-10-12' } });
+  for (const h of [1,2,3]) permitHour(a,h).props.onClick();
+  assert.equal(a.render().filter(n => n.props?.className === 'warning-icon').length, 3);
+  assert.ok(a.render().some(n => n.props?.role === 'alert'));
+  assert.equal(a.render().find(n => n.props?.className === 'permit-save').props.disabled, true);
+  permitForm(a).props.onSubmit({ preventDefault() {} });
+  assert.equal(a.requests.length, 0);
+  permitHour(a,3).props.onClick();
+  assert.equal(a.render().filter(n => n.props?.className === 'warning-icon').length, 0);
+  assert.equal(a.render().find(n => n.props?.className === 'permit-save').props.disabled, false);
+});
+
+test('request date is optional, submitted and restored when editing', async () => {
+  const a = await permitsLoaded();
+  permitTeacher(a).props.onChange({ target: { value: 'cont' } });
+  permitTeacher(a).props.onKeyDown({ key: 'Enter', preventDefault() {} });
+  permitDay(a).props.onChange({ target: { value: '2026-10-12' } });
+  a.render().find(n => n.props?.['aria-label'] === 'Data richiesta').props.onChange({ target: { value: '2026-10-09' } });
+  permitHour(a,2).props.onClick();
+  permitForm(a).props.onSubmit({ preventDefault() {} });
+  const req = a.requests.shift();
+  assert.equal(JSON.parse(req.options.body).requested_on, '2026-10-09');
+  req.resolve({ ok: true }); await settle();
+  a.requests.shift().resolve({ ...permitData, permessi: { '2026-10-12': { t: [2] } }, permitRequests: { '2026-10-12': { t: '2026-10-09' } } }); await settle();
+  assert.ok(a.render().some(n => n.type === 'td' && n.props.children === '09/10/2026'));
+  a.render().find(n => n.props?.['aria-label'] === 'Modifica permesso di Contartase').props.onClick();
+  assert.equal(a.render().find(n => n.props?.['aria-label'] === 'Data richiesta').props.value, '2026-10-09');
+  assert.ok(a.render().some(n => n.props?.className === 'permit-feedback'));
 });

@@ -882,3 +882,41 @@ td.none {
   font-size: 13px;
   text-align: center;
 }
+
+.permessi { grid-template-columns: 410px minmax(0, 1fr); }
+.permessi > aside { border-right: 1px solid var(--line); }
+.permessi > main { width: 100%; margin-inline: auto; }
+.permit-form { margin: 0; }
+.permit-form h2 { margin-top: 0; }
+.permit-form fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: 12px; }
+.permit-form label { display: grid; gap: 6px; }
+.permit-form input { width: 100%; }
+.permit-form .sub { flex-basis: 100%; margin: 0; }
+.permit-hours { margin-top: 6px; }
+.permit-hours button { width: 24px; height: 24px; }
+.permit-save { background: var(--acc); color: var(--on); border-radius: 3px; padding: 6px 8px; font-size: 13px; }
+.permit-save:disabled { opacity: .5; cursor: not-allowed; }
+.permit-table { overflow-x: auto; }
+.permit-period { display: inline-flex; gap: 4px; align-items: center; margin-right: 12px; }
+.permit-actions button { padding: 8px; }
+.hour-help { display: inline-block; position: relative; }
+.hour-help [role="tooltip"] { display: none; position: absolute; bottom: 100%; left: 0; z-index: 20; width: 230px; padding: 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--pan); color: var(--ink); font-size: 13px; font-weight: normal; box-shadow: 0 4px 12px #0002; }
+.hour-help:hover [role="tooltip"], .hour-help:focus [role="tooltip"], .hour-help:focus-within [role="tooltip"] { display: block; }
+.hour-help:focus-visible { outline: 2px solid var(--acc); outline-offset: 3px; }
+.warning-icon { width: 18px; height: 18px; color: #a65b00; vertical-align: middle; }
+.permit-form [role="alert"] { color: #c34242; }
+@media (max-width: 900px) { .permessi { grid-template-columns: 1fr; } .permessi > aside { order: 0; border-left: 0; } }
+.permessi thead th:last-child { display: table-cell; }
+.permit-hours { flex-wrap: wrap; gap: 8px; }
+
+.permit-teacher { min-width: 0; }
+.permit-teacher > label { margin-bottom: 6px; }
+.permit-hour { position: relative; }
+.permit-hour > .hour-help { position: absolute; top: 28px; left: 50%; transform: translateX(-50%); }
+.permit-period { position: relative; padding-bottom: 22px; }
+.permit-period > .hour-help { position: absolute; top: 24px; left: 50%; transform: translateX(-50%); }
+
+.permit-form .permit-hours { height: 48px; gap: 8px; flex-wrap: nowrap; }
+.permit-feedback { height: 80px; overflow-y: auto; margin-top: 12px; font-size: 13px; }
+.permit-feedback p { margin: 0; }
+.permit-form .sub { font-size: 12px; }

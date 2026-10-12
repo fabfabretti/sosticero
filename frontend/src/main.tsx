@@ -4,6 +4,11 @@ import "./style.css";
 import type { Row, Candidate, Data } from "./types";
 import { CandidateDrawer } from "./CandidateDrawer";
 import { HashRouter, Link, useLocation } from "react-router";
+const norm = (s: string) =>
+    s
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f.\s]/g, "");
 const hours = [1, 2, 3, 4, 5, 6, 7];
 const localDate = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -85,6 +90,120 @@ function Stub({ label }: { label: string }) {
     </section>
   );
 }
+function HourHelp({ text, children }: { text: string; children: React.ReactNode }) {
+  return <span className="hour-help" tabIndex={0} aria-label={text}>
+    {children}<span role="tooltip">{text}</span>
+  </span>;
+}
+function Permessi() {
+  const [data, setData] = useState<{ dataset: Data["dataset"]; permessi: Record<string, Record<string, number[]>>; permitRequests?: Record<string, Record<string, string>> }>();
+  const [day, setDay] = useState(localDate(new Date()));
+  const [requestedOn, setRequestedOn] = useState("");
+  const [teacher, setTeacher] = useState("");
+  const [query, setQuery] = useState("");
+  const [suggestionIndex, setSuggestionIndex] = useState(0);
+  const [selected, setSelected] = useState<number[]>([]);
+  const [original, setOriginal] = useState<{ day: string; id: string }>();
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const refresh = async () => setData(await api("permessi"));
+  useEffect(() => { void refresh().catch(e => setError(String(e))); }, []);
+  const scheduled = (id: string, date: string, h: number) => {
+    const weekday = ["dom", "lun", "mar", "mer", "gio", "ven", "sab"][new Date(date + "T12:00").getDay()];
+    return !!data?.dataset.lessons[`${id}|${weekday}|${h}`];
+  };
+  const maximum = Math.floor(hours.filter(h => scheduled(teacher, day, h)).length / 2);
+  const overLimit = !!teacher && selected.length > maximum;
+  const suggestions = query && !teacher
+    ? Object.values(data?.dataset.teachers || {})
+        .filter(t => (!t.retired || t.id === original?.id) && norm(t.name + " " + (t.code || "")).includes(norm(query)))
+        .sort((a, b) => Number(!norm(a.name).startsWith(norm(query))) - Number(!norm(b.name).startsWith(norm(query))) || a.name.localeCompare(b.name))
+        .slice(0, 6)
+    : [];
+  const selectTeacher = (id: string) => {
+    setTeacher(id);
+    setQuery(data?.dataset.teachers[id]?.name || id);
+  };
+  const reset = () => {
+    setRequestedOn("");
+    setOriginal(undefined);
+    setTeacher("");
+    setQuery("");
+    setSelected([]);
+  };
+  const save = async (body: unknown) => {
+    setBusy(true);
+    setError("");
+    try {
+      await api("permessi", body);
+      await refresh();
+      reset();
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const records = Object.entries(data?.permessi || {}).flatMap(([date, teachers]) =>
+    Object.entries(teachers).map(([id, periods]) => ({ date, id, periods })),
+  ).sort((a, b) => b.date.localeCompare(a.date) || (data?.dataset.teachers[a.id]?.name || a.id).localeCompare(data?.dataset.teachers[b.id]?.name || b.id));
+  const warning = (text: string) => <HourHelp text={text}>
+    <svg className="warning-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 22 21H2Z" fill="none" stroke="currentColor" strokeWidth="2"/><path d="M12 9v5m0 3v1" stroke="currentColor" strokeWidth="2"/></svg>
+  </HourHelp>;
+  return <div className="app permessi">
+    <aside>
+    <form className="permit-form" onSubmit={e => { e.preventDefault(); if (overLimit || !teacher) return; void save({ day, id: teacher, requested_on: requestedOn || null, hours: selected, ...(original ? { original_day: original.day, original_id: original.id } : {}) }); }}>
+      <h2>{original ? "Modifica permesso" : "Aggiungi permesso"}</h2>
+      <fieldset disabled={busy || !data}>
+        <div className="permit-teacher">
+          <label htmlFor="permit-teacher">Docente</label>
+          <div className="sw">
+            <input id="permit-teacher" aria-label="Cerca docente" placeholder="Docente, es. ros" autoComplete="off" value={query}
+              onChange={e => { setQuery(e.target.value); setTeacher(""); setSuggestionIndex(0); }}
+              onKeyDown={e => {
+                if (e.key === "Escape") { setQuery(""); setTeacher(""); }
+                if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                  e.preventDefault();
+                  setSuggestionIndex((suggestionIndex + (e.key === "ArrowDown" ? 1 : suggestions.length - 1)) % Math.max(1, suggestions.length));
+                }
+                if (e.key === "Enter" && suggestions[suggestionIndex]) { e.preventDefault(); selectTeacher(suggestions[suggestionIndex].id); }
+              }} />
+            {!!suggestions.length && <div className="sug">{suggestions.map((t, i) =>
+              <button key={t.id} type="button" className={suggestionIndex === i ? "on" : ""} onClick={() => selectTeacher(t.id)}>{t.name}<small>docente</small></button>
+            )}</div>}
+          </div>
+        </div>
+        <label>Data permesso<input required aria-label="Data permesso" type="date" value={day} onChange={e => setDay(e.target.value)} /></label>
+        <label>Data richiesta (facoltativa)<input aria-label="Data richiesta" type="date" value={requestedOn} onChange={e => setRequestedOn(e.target.value)} /></label>
+        <div><span>Ore di permesso</span><div className="hrs permit-hours">{hours.map(h => <span className="permit-hour" key={h}>
+          <button type="button" aria-label={`Permesso ${h}ª ora`} aria-pressed={selected.includes(h)} className={selected.includes(h) ? "on" : ""} onClick={() => setSelected(selected.includes(h) ? selected.filter(v => v !== h) : [...selected, h])}>{h}</button>
+          {teacher && selected.includes(h) && (overLimit || !scheduled(teacher, day, h)) && warning([overLimit ? `Massimo giornaliero: ${maximum} ore di permesso; selezionate ${selected.length}.` : "", !scheduled(teacher, day, h) ? `${h}ª ora: nessuna attività prevista nell’orario per questa ora.` : ""].filter(Boolean).join(" "))}
+        </span>)}</div></div>
+
+        <p className="sub">Massimo giornaliero: {maximum} ore · Selezionate: {selected.length}. Sono comprese tutte le attività in orario, inclusi POT e DIS.</p>
+        <button className="permit-save" type="submit" disabled={!teacher || !day || !selected.length || overLimit}>{busy ? "Salvataggio…" : "Salva permesso"}</button>
+        {original && <button type="button" onClick={reset}>Annulla modifica</button>}
+      </fieldset>
+      <div className="permit-feedback" aria-live="polite">{(error || overLimit) && <p role="alert">{error || `Superato il massimo giornaliero di ${maximum} ore di permesso.`}</p>}</div>
+    </form>
+    </aside>
+    <main>
+    <h1>Permessi</h1>
+    <p className="sub">Registra le ore di permesso e consulta le ore da recuperare.</p>
+    {!data && !error && <p role="status">Caricamento…</p>}
+    <div className="permit-table"><table><thead><tr>{["Docente", "Data permesso", "Data richiesta", "Ore di permesso", "Ore da recuperare", "Azioni"].map(title => <th key={title}>{title}</th>)}</tr></thead>
+      <tbody>{records.map(r => <tr key={r.date + r.id}>
+        <td>{data?.dataset.teachers[r.id]?.name || r.id}</td><td>{r.date.split("-").reverse().join("/")}</td>
+        <td>{data?.permitRequests?.[r.date]?.[r.id]?.split("-").reverse().join("/") || "—"}</td>
+        <td>{r.periods.map(h => <span className="permit-period" key={h}>{h}ª{!scheduled(r.id, r.date, h) && warning(`${h}ª ora: nessuna attività prevista nell’orario per questa ora`)}</span>)}</td><td>{r.periods.length}</td>
+        <td className="permit-actions"><button className="lk" aria-label={`Modifica permesso di ${data?.dataset.teachers[r.id]?.name || r.id}`} title="Modifica permesso" disabled={busy} onClick={() => { setDay(r.date); setRequestedOn(data?.permitRequests?.[r.date]?.[r.id] || ""); selectTeacher(r.id); setSelected(r.periods); setOriginal({ day: r.date, id: r.id }); setError(""); }}><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15Z" fill="none" stroke="currentColor" strokeWidth="1.6"/></svg></button>
+        <button className="x" aria-label={`Rimuovi permesso di ${data?.dataset.teachers[r.id]?.name || r.id}`} title="Rimuovi permesso" disabled={busy} onClick={() => void save({ day: r.date, id: r.id, hours: null })}>×</button></td>
+      </tr>)}</tbody></table></div>
+    {data && !records.length && <p className="none">Nessun permesso registrato.</p>}
+    </main>
+  </div>;
+}
+
 function Settings() {
   const [data, setData] = useState<Data>(),
     [error, setError] = useState("");
@@ -192,6 +311,8 @@ function Shell() {
       <TopBar current={tab.path} />
       {tab.path === "/" ? (
         <Supplenze />
+      ) : tab.path === "/permessi" ? (
+        <Permessi />
       ) : tab.path === "/settings" ? (
         <Settings />
       ) : (
@@ -279,11 +400,6 @@ function Supplenze() {
     { DIR: "Dirigente", ENTRA: "Entra dopo", ESCE: "Esce prima" }[id] ||
     id;
   const entries = (g: "abs" | "cf" | "dis") => data?.state[g][day] || {};
-  const norm = (s: string) =>
-    s
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f.\s]/g, "");
   const suggestions =
     query && data
       ? [
@@ -327,75 +443,86 @@ function Supplenze() {
     document.getElementById("q")?.focus();
   };
   const renderEntries = (g: "abs" | "cf" | "dis") =>
-    Object.entries(entries(g)).map(([id, hs]) => (
-      <div className="rw" key={g + id}>
-        <button
-          className="n"
-          title={name(id)}
-          onClick={() =>
-            void mutate("entries", {
-              day,
-              group: g,
-              id,
-              hours: hs.length === 7 ? [] : hours,
-              site: data?.state.disSites[day]?.[id],
-            })
-          }
-        >
-          {g === "cf" ? "Classe " + id : name(id)}
-        </button>
-        <div className="hrs">
-          {hours.map((h) => (
-            <button
-              key={h}
-              aria-label={`${name(id)}, ${h}ª ora`}
-              aria-pressed={hs.includes(h)}
-              className={hs.includes(h) ? "on" : ""}
-              onClick={() =>
-                void mutate("entries", {
-                  day,
-                  group: g,
-                  id,
-                  hours: hs.includes(h)
-                    ? hs.filter((x) => x !== h)
-                    : [...hs, h],
-                  site: data?.state.disSites[day]?.[id],
-                })
-              }
-            >
-              {h}
-            </button>
-          ))}
-        </div>
-        {g === "dis" && (
-          <select
-            data-dis-site={id}
-            aria-label={"Sede di " + name(id)}
-            value={data?.state.disSites[day]?.[id] || ""}
-            onChange={(e) =>
+    Object.keys({ ...entries(g), ...(g === "abs" ? data?.state.permessi?.[day] : {}) }).map((id) => {
+      const hs = entries(g)[id] || [];
+      const permit = g === "abs" ? data?.state.permessi?.[day]?.[id] || [] : [];
+      return (
+        <div className="rw" key={g + id}>
+          <button
+            className="n"
+            title={name(id)}
+            disabled={g === "abs" && !Object.hasOwn(entries(g), id)}
+            onClick={() =>
               void mutate("entries", {
                 day,
                 group: g,
                 id,
-                hours: hs,
-                site: e.target.value,
+                hours: hs.length === 7 ? [] : hours,
+                site: data?.state.disSites[day]?.[id],
               })
             }
           >
-            <option value="">?</option>
-            <option value="centrale">C</option>
-            <option value="succursale">S</option>
-          </select>
-        )}
-        <button
-          className="x"
-          aria-label={"Rimuovi " + name(id)}
-          onClick={() => void mutate("entries", { day, group: g, id })}
-        >
-          ×
-        </button>
-      </div>
-    ));
+            {g === "cf" ? "Classe " + id : name(id)}
+          </button>
+          <div className="hrs">
+            {hours.map((h) => (
+              <span key={h} className={permit.includes(h) ? "hour-help" : undefined} tabIndex={permit.includes(h) ? 0 : undefined} aria-label={permit.includes(h) ? `${name(id)}, ${h}ª ora: Permesso` : undefined}>
+              <button
+                key={h}
+                aria-label={`${name(id)}, ${h}ª ora`}
+                aria-pressed={hs.includes(h) || permit.includes(h)}
+                className={(hs.includes(h) || permit.includes(h) ? "on " : "") + (permit.includes(h) ? "auto" : "")}
+                disabled={permit.includes(h)}
+                title={permit.includes(h) ? "Permesso: modifica dalla pagina Permessi" : undefined}
+                onClick={() =>
+                  void mutate("entries", {
+                    day,
+                    group: g,
+                    id,
+                    hours: hs.includes(h)
+                      ? hs.filter((x) => x !== h)
+                      : [...hs, h],
+                    site: data?.state.disSites[day]?.[id],
+                  })
+                }
+              >
+                {h}
+              </button>
+              {permit.includes(h) && <span role="tooltip">Permesso: modifica dalla pagina Permessi</span>}
+              </span>
+            ))}
+          </div>
+          {g === "dis" && (
+            <select
+              data-dis-site={id}
+              aria-label={"Sede di " + name(id)}
+              value={data?.state.disSites[day]?.[id] || ""}
+              onChange={(e) =>
+                void mutate("entries", {
+                  day,
+                  group: g,
+                  id,
+                  hours: hs,
+                  site: e.target.value,
+                })
+              }
+            >
+              <option value="">?</option>
+              <option value="centrale">C</option>
+              <option value="succursale">S</option>
+            </select>
+          )}
+          <button
+            className="x"
+            aria-label={"Rimuovi " + name(id)}
+            disabled={g === "abs" && !Object.hasOwn(entries(g), id)}
+            onClick={() => void mutate("entries", { day, group: g, id })}
+          >
+            ×
+          </button>
+        </div>
+      );
+    });
   const renderDis = () => {
     const manual = entries("dis");
     const auto = data?.autoDis?.[day] || {};
@@ -555,7 +682,7 @@ function Supplenze() {
                     onClick={() => setDay(d)}
                   >
                     {i + 1}
-                    {Object.keys(data?.state.abs[d] || {}).length +
+                    {Object.keys({ ...data?.state.abs[d], ...data?.state.permessi?.[d] }).length +
                       Object.keys(data?.state.cf[d] || {}).length >
                       0 && <i />}
                   </button>
