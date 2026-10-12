@@ -305,19 +305,6 @@ function Supplenze() {
             <option value="succursale">S</option>
           </select>
         )}
-        {Object.keys(data?.state[g] || {}).some(
-          (d) => d > day && data?.state[g][d][id],
-        ) && (
-          <button
-            className="x"
-            aria-label="Togli anche dai giorni successivi"
-            onClick={() =>
-              void mutate("entries", { day, group: g, id, future: true })
-            }
-          >
-            »
-          </button>
-        )}
         <button
           className="x"
           aria-label={"Rimuovi " + name(id)}
@@ -413,24 +400,6 @@ function Supplenze() {
               <option value="centrale">C</option>
               <option value="succursale">S</option>
             </select>
-          )}
-          {Object.keys(data?.state.dis || {}).some(
-            (d) => d > day && data?.state.dis[d][id],
-          ) && (
-            <button
-              className="x"
-              aria-label="Togli anche dai giorni successivi"
-              onClick={() =>
-                void mutate("entries", {
-                  day,
-                  group: "dis",
-                  id,
-                  future: true,
-                })
-              }
-            >
-              »
-            </button>
           )}
           {hasManual && (
             <button
