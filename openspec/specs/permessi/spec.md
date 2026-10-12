@@ -100,3 +100,17 @@ Users SHALL be able to record, edit or clear the date a permit was requested. Th
 - **WHEN** a permit is saved with request date 2026-10-09
 - **THEN** the register and edit form show that date after reload and archive round trip
 - **AND** clearing it leaves the permit valid
+
+
+### Requirement: Sort the permit register by dates
+The register SHALL initially show permits by descending permit date. The permit date and request date column headers SHALL allow selecting the sort field and toggling ascending or descending order, with the current direction exposed visually and accessibly. Permits without a request date SHALL remain last when sorting by request date in either direction.
+
+#### Scenario: Toggle permit date ordering
+- **WHEN** the user activates the permit date header
+- **THEN** the register switches between oldest-first and newest-first order
+
+#### Scenario: Sort optional request dates
+- **WHEN** the user activates the request date header
+- **THEN** the register sorts by request date, initially newest-first
+- **AND** subsequent activations reverse the direction
+- **AND** permits without a request date remain last

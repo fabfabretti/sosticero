@@ -5,7 +5,7 @@ const { runInNewContext } = require('node:vm');
 const ts = require('typescript');
 
 // Run the actual App handlers with deferred HTTP responses and minimal hook storage.
-function app() {
+function app(localStorage = { getItem: () => null, setItem() {} }) {
   const effects = [], requests = [], comps = new Map();
   let App, pathname = '/', current = null;
   const envelope = () => {
@@ -17,7 +17,7 @@ function app() {
     useState(initial) {
       const e = envelope();
       const i = e.count++;
-      if (!(i in e.slots)) e.slots[i] = { value: initial };
+      if (!(i in e.slots)) e.slots[i] = { value: typeof initial === 'function' ? initial() : initial };
       return [e.slots[i].value, value => { e.slots[i] = { value }; }];
     },
     useRef(initial) {
@@ -48,7 +48,7 @@ function app() {
     compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
   }).outputText;
   runInNewContext(code, {
-    exports: {}, URLSearchParams, Date,
+    exports: {}, URLSearchParams, Date, localStorage,
     document: { getElementById: () => ({}) },
     fetch(url, options) {
       return new Promise(resolve => requests.push({
@@ -410,4 +410,39 @@ test('request date is optional, submitted and restored when editing', async () =
   a.render().find(n => n.props?.['aria-label'] === 'Modifica permesso di Contartase').props.onClick();
   assert.equal(a.render().find(n => n.props?.['aria-label'] === 'Data richiesta').props.value, '2026-10-09');
   assert.ok(a.render().some(n => n.props?.className === 'permit-feedback'));
+});
+
+
+test('campus preference survives reopening and tolerates unavailable or invalid storage', () => {
+  let saved = null;
+  const storage = { getItem: () => saved, setItem: (_, value) => { saved = value; } };
+  const a = app(storage);
+  clickText(a, 'Succursale'); a.render();
+  assert.equal(saved, 'succursale');
+  const reopened = app(storage);
+  assert.equal(reopened.render().find(n => n.type === 'button' && n.props.children === 'Succursale').props['aria-pressed'], true);
+  saved = 'invalid';
+  assert.equal(app(storage).render().find(n => n.type === 'button' && n.props.children === 'Entrambe').props['aria-pressed'], true);
+  const blocked = app({ getItem() { throw Error(); }, setItem() { throw Error(); } });
+  clickText(blocked, 'Centrale');
+  assert.equal(blocked.render().find(n => n.type === 'button' && n.props.children === 'Centrale').props['aria-pressed'], true);
+});
+
+test('permit date headers toggle sorting, with missing request dates always last', async () => {
+  const a = app(); a.go('/permessi'); a.render();
+  a.requests.shift().resolve({ ...permitData,
+    permessi: { '2026-10-10': { t: [1] }, '2026-10-11': { t: [1] }, '2026-10-12': { t: [1] } },
+    permitRequests: { '2026-10-10': { t: '2026-10-09' }, '2026-10-12': { t: '2026-10-08' } },
+  });
+  await settle();
+  const dates = () => a.render().filter(n => n.type === 'td' && /^1[012]\/10\/2026$/.test(n.props.children)).map(n => n.props.children);
+  const sortBy = field => a.render().find(n => n.type === 'button' && n.props.children?.[0] === field).props.onClick();
+  assert.deepEqual(dates(), ['12/10/2026', '11/10/2026', '10/10/2026']);
+  sortBy('Data permesso');
+  assert.deepEqual(dates(), ['10/10/2026', '11/10/2026', '12/10/2026']);
+  sortBy('Data richiesta');
+  assert.deepEqual(dates(), ['10/10/2026', '12/10/2026', '11/10/2026']);
+  sortBy('Data richiesta');
+  assert.deepEqual(dates(), ['12/10/2026', '10/10/2026', '11/10/2026']);
+  assert.ok(a.render().some(n => n.type === 'th' && n.props['aria-sort'] === 'ascending'));
 });

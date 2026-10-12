@@ -96,6 +96,7 @@ function HourHelp({ text, children }: { text: string; children: React.ReactNode 
   </span>;
 }
 function Permessi() {
+  const [sort, setSort] = useState<{ field: "date" | "requested"; ascending: boolean }>({ field: "date", ascending: false });
   const [data, setData] = useState<{ dataset: Data["dataset"]; permessi: Record<string, Record<string, number[]>>; permitRequests?: Record<string, Record<string, string>> }>();
   const [day, setDay] = useState(localDate(new Date()));
   const [requestedOn, setRequestedOn] = useState("");
@@ -145,8 +146,11 @@ function Permessi() {
     }
   };
   const records = Object.entries(data?.permessi || {}).flatMap(([date, teachers]) =>
-    Object.entries(teachers).map(([id, periods]) => ({ date, id, periods })),
-  ).sort((a, b) => b.date.localeCompare(a.date) || (data?.dataset.teachers[a.id]?.name || a.id).localeCompare(data?.dataset.teachers[b.id]?.name || b.id));
+    Object.entries(teachers).map(([id, periods]) => ({ date, id, periods, requested: data?.permitRequests?.[date]?.[id] || "" })),
+  ).sort((a, b) => {
+    const left = a[sort.field], right = b[sort.field];
+    return Number(!left) - Number(!right) || (sort.ascending ? 1 : -1) * left.localeCompare(right) || b.date.localeCompare(a.date) || (data?.dataset.teachers[a.id]?.name || a.id).localeCompare(data?.dataset.teachers[b.id]?.name || b.id);
+  });
   const warning = (text: string) => <HourHelp text={text}>
     <svg className="warning-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 22 21H2Z" fill="none" stroke="currentColor" strokeWidth="2"/><path d="M12 9v5m0 3v1" stroke="currentColor" strokeWidth="2"/></svg>
   </HourHelp>;
@@ -191,7 +195,7 @@ function Permessi() {
     <h1>Permessi</h1>
     <p className="sub">Registra le ore di permesso e consulta le ore da recuperare.</p>
     {!data && !error && <p role="status">Caricamento…</p>}
-    <div className="permit-table"><table><thead><tr>{["Docente", "Data permesso", "Data richiesta", "Ore di permesso", "Ore da recuperare", "Azioni"].map(title => <th key={title}>{title}</th>)}</tr></thead>
+    <div className="permit-table"><table><thead><tr><th>Docente</th>{([ ["date", "Data permesso"], ["requested", "Data richiesta"] ] as const).map(([field, title]) => <th key={field} aria-sort={sort.field === field ? (sort.ascending ? "ascending" : "descending") : "none"}><button className="lk" onClick={() => setSort({ field, ascending: sort.field === field ? !sort.ascending : false })}>{title}{sort.field === field ? (sort.ascending ? " ↑" : " ↓") : " ↕"}</button></th>)}{["Ore di permesso", "Ore da recuperare", "Azioni"].map(title => <th key={title}>{title}</th>)}</tr></thead>
       <tbody>{records.map(r => <tr key={r.date + r.id}>
         <td>{data?.dataset.teachers[r.id]?.name || r.id}</td><td>{r.date.split("-").reverse().join("/")}</td>
         <td>{data?.permitRequests?.[r.date]?.[r.id]?.split("-").reverse().join("/") || "—"}</td>
@@ -344,13 +348,21 @@ function Supplenze() {
     [multi, setMulti] = useState(false),
     [until, setUntil] = useState(""),
     [site, setSite] = useState("centrale"),
-    [filter, setFilter] = useState("all"),
+    [filter, setFilter] = useState(() => {
+      try {
+        const saved = localStorage.getItem("supplenze-campus");
+        return saved === "centrale" || saved === "succursale" ? saved : "all";
+      } catch { return "all"; }
+    }),
     [open, setOpen] = useState<Row>(),
     [cands, setCands] = useState<Candidate[]>([]),
     [busy, setBusy] = useState(false),
     [selected, setSelected] = useState(0);
   const request = useRef(0);
   const candidateRequest = useRef(0);
+  useEffect(() => {
+    try { localStorage.setItem("supplenze-campus", filter); } catch { /* Browser storage may be unavailable. */ }
+  }, [filter]);
   const refresh = async () => {
     const n = ++request.current;
     try {

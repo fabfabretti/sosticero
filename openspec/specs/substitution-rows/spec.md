@@ -55,3 +55,21 @@ Merging SHALL apply to co-teachers regardless of role, including curricolare, IT
 #### Scenario: Sostegno absence merges
 - **WHEN** a sostegno co-teacher is absent together with another co-teacher for the same class and period
 - **THEN** they share one substitution row
+
+### Requirement: Center the substitution table
+The Supplenze main content SHALL be horizontally centered in the space beside the sidebar, retaining the existing content width and responsive layout.
+
+#### Scenario: Desktop alignment
+- **WHEN** the sidebar and table appear side by side
+- **THEN** the main content is centered in the remaining space
+
+### Requirement: Remember the campus view
+Supplenze SHALL remember the last selected campus view (Entrambe, Centrale, or Succursale) in browser storage and restore it when reopened. Missing, invalid, or inaccessible storage SHALL fall back to Entrambe without preventing use of the controls.
+
+#### Scenario: Reopen a campus view
+- **WHEN** the user selects Succursale and later reopens the app in the same browser
+- **THEN** Succursale remains selected
+
+#### Scenario: Storage is unavailable
+- **WHEN** browser storage cannot be read or written
+- **THEN** the view starts with Entrambe and campus selection continues to work

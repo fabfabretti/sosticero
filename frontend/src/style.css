@@ -885,7 +885,7 @@ td.none {
 
 .permessi { grid-template-columns: 410px minmax(0, 1fr); }
 .permessi > aside { border-right: 1px solid var(--line); }
-.permessi > main { width: 100%; margin-inline: auto; }
+.app > main { width: 100%; margin-inline: auto; }
 .permit-form { margin: 0; }
 .permit-form h2 { margin-top: 0; }
 .permit-form fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: 12px; }
