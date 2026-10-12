@@ -7,7 +7,7 @@ const ts = require('typescript');
 // Run the actual App handlers with deferred HTTP responses and minimal hook storage.
 function app() {
   const slots = [], effects = [], requests = [];
-  let cursor = 0, App;
+  let cursor = 0, App, pathname = '/';
   const react = {
     useState(initial) {
       const i = cursor++;
@@ -25,6 +25,15 @@ function app() {
     },
   };
   const jsx = (type, props) => ({ type, props });
+  // Pass-through react-router so routes render through the mock.
+  const router = {
+    HashRouter: ({ children }) => children,
+    Link: ({ to, children, ...rest }) => ({
+      type: 'a',
+      props: { ...rest, href: '#' + to, children },
+    }),
+    useLocation: () => ({ pathname }),
+  };
   const code = ts.transpileModule(readFileSync('src/main.tsx', 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
   }).outputText;
@@ -44,25 +53,28 @@ function app() {
         createRoot: () => ({ render: element => { App = element.type; } }),
       };
       if (id === './CandidateDrawer') return { CandidateDrawer: 'drawer' };
+      if (id === 'react-router') return router;
       if (id.endsWith('.css')) return {};
       throw Error(id);
     },
   });
   function render() {
     cursor = 0;
-    const tree = App();
-    effects.splice(0).forEach(fn => fn());
     const nodes = [];
+    // Descend into function components so routed screens are visible to tests;
+    // string/null nodes are collected and their children walked as before.
     function walk(node) {
       if (Array.isArray(node)) return node.forEach(walk);
       if (!node || typeof node !== 'object') return;
+      if (typeof node.type === 'function') return walk(node.type(node.props || {}));
       nodes.push(node);
       walk(node.props?.children);
     }
-    walk(tree);
+    walk({ type: App, props: {} });
+    effects.splice(0).forEach(fn => fn());
     return nodes;
   }
-  return { render, requests };
+  return { render, requests, go: p => { pathname = p; } };
 }
 const settle = () => new Promise(resolve => setImmediate(resolve));
 const row = { k: 'r', id: 't', ids: ['t'], h: 1, c: '1A', aula: null, sede: 'centrale' };
@@ -214,4 +226,64 @@ test('co-absent teachers render as one merged label', async () => {
     cells.some(n => n.props.children === 'Domaschi Alberto / Savelli Luca'),
     'merged label is rendered in one cell',
   );
+});
+
+const tabLinks = a => a.render().filter(n => n.type === 'a' && n.props?.href?.startsWith('#/'));
+const currentTab = a => tabLinks(a).find(l => l.props.className === 'on');
+
+test('shell shows brand, glasses icon and five tabs, defaulting to Supplenze', async () => {
+  const a = await loaded();
+  assert.ok(a.render().find(n => n.props?.className === 'bar'), 'top bar present');
+  const svg = a.render().find(n => n.type === 'svg' && n.props?.viewBox === '0 0 24 24');
+  assert.ok(svg, 'glasses icon rendered');
+  assert.equal(svg.props.children.props.stroke, 'currentColor', 'icon themes with currentColor');
+  const links = tabLinks(a);
+  assert.deepEqual(links.map(l => [l.props.href, l.props.children]), [
+    ['#/', 'Supplenze'],
+    ['#/permessi', 'Permessi'],
+    ['#/banca-ore', 'Banca ore'],
+    ['#/stats', 'Stats'],
+    ['#/settings', 'Settings'],
+  ]);
+  assert.equal(currentTab(a).props.href, '#/', 'home tab is current');
+  assert.ok(a.render().some(n => n.props?.className === 'fill ph'), 'substitution screen renders');
+});
+
+test('unknown route falls back to Supplenze', async () => {
+  const a = await loaded();
+  a.go('/nope');
+  const nodes = a.render();
+  assert.ok(nodes.some(n => n.props?.className === 'fill ph'), 'substitution screen shown');
+  assert.equal(currentTab(a).props.href, '#/');
+});
+
+test('future tabs show placeholder screens and mark their tab current', () => {
+  const a = app();
+  a.render();
+  for (const [route, label] of [
+    ['/permessi', 'Permessi'],
+    ['/banca-ore', 'Banca ore'],
+    ['/stats', 'Stats'],
+    ['/settings', 'Settings'],
+  ]) {
+    a.go(route);
+    assert.ok(a.render().find(n => n.props?.className === 'stub'), route + ' shows a placeholder');
+    assert.equal(a.render().find(n => n.type === 'h1').props.children, label);
+    assert.equal(currentTab(a).props.href, '#' + route, route + ' tab is current');
+  }
+  a.go('/');
+  assert.ok(!a.render().some(n => n.props?.className === 'stub'), 'Supplenze is not a placeholder');
+});
+
+test('credits footer shows only at the end of Settings', () => {
+  const a = app();
+  a.render();
+  a.go('/settings');
+  const f = a.render().find(n => n.props?.className === 'credits');
+  assert.ok(f, 'credits footer on settings');
+  assert.ok(String(f.props.children).includes('Big Pickle'));
+  a.go('/');
+  assert.ok(!a.render().some(n => n.props?.className === 'credits'));
+  a.go('/permessi');
+  assert.ok(!a.render().some(n => n.props?.className === 'credits'));
 });

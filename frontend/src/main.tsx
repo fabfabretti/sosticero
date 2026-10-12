@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import "./style.css";
 import type { Row, Candidate, Data } from "./types";
 import { CandidateDrawer } from "./CandidateDrawer";
+import { HashRouter, Link, useLocation } from "react-router";
 const hours = [1, 2, 3, 4, 5, 6, 7];
 const localDate = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -26,7 +27,85 @@ async function api<T>(url: string, body?: unknown): Promise<T> {
     );
   return data;
 }
+const TABS = [
+  { path: "/", label: "Supplenze" },
+  { path: "/permessi", label: "Permessi" },
+  { path: "/banca-ore", label: "Banca ore" },
+  { path: "/stats", label: "Stats" },
+  { path: "/settings", label: "Settings" },
+];
+// Unknown routes fall back to Supplenze (home).
+const screenFor = (pathname: string) =>
+  TABS.find((t) => t.path === pathname) || TABS[0];
+function Glasses() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <g
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <circle cx="7" cy="14" r="3.3" />
+        <circle cx="17" cy="14" r="3.3" />
+        <path d="M10.3 13.5a2 2 0 0 1 3.4 0" />
+        <path d="M3.7 12.6 5.2 9.2" />
+        <path d="M20.3 12.6 18.8 9.2" />
+      </g>
+    </svg>
+  );
+}
+function TopBar({ current }: { current: string }) {
+  return (
+    <header className="bar">
+      <span className="brand">
+        <Glasses /> Sosticero
+      </span>
+      <nav className="tabs">
+        {TABS.map((t) => (
+          <Link
+            key={t.path}
+            to={t.path}
+            className={t.path === current ? "on" : ""}
+            aria-current={t.path === current ? "page" : undefined}
+          >
+            {t.label}
+          </Link>
+        ))}
+      </nav>
+    </header>
+  );
+}
+function Stub({ label }: { label: string }) {
+  return (
+    <section className="stub">
+      <h1>{label}</h1>
+      <p className="sub">Pagina in preparazione.</p>
+    </section>
+  );
+}
+function Shell() {
+  const { pathname } = useLocation();
+  const tab = screenFor(pathname);
+  return (
+    <div className="shell">
+      <TopBar current={tab.path} />
+      {tab.path === "/" ? <Supplenze /> : <Stub label={tab.label} />}
+      {tab.path === "/settings" && (
+        <footer className="credits">by Fabs 🤝🏻 Big Pickle, 2026</footer>
+      )}
+    </div>
+  );
+}
 function App() {
+  return (
+    <HashRouter>
+      <Shell />
+    </HashRouter>
+  );
+}
+function Supplenze() {
   const [day, setDay] = useState(localDate(new Date())),
     [month, setMonth] = useState(
       new Date(new Date().getFullYear(), new Date().getMonth(), 1),
