@@ -6,22 +6,32 @@ const ts = require('typescript');
 
 // Run the actual App handlers with deferred HTTP responses and minimal hook storage.
 function app() {
-  const slots = [], effects = [], requests = [];
-  let cursor = 0, App, pathname = '/';
+  const effects = [], requests = [], comps = new Map();
+  let App, pathname = '/', current = null;
+  const envelope = () => {
+    let e = comps.get(current);
+    if (!e) comps.set(current, (e = { slots: [], count: 0 }));
+    return e;
+  };
   const react = {
     useState(initial) {
-      const i = cursor++;
-      if (!(i in slots)) slots[i] = initial;
-      return [slots[i], value => { slots[i] = value; }];
+      const e = envelope();
+      const i = e.count++;
+      if (!(i in e.slots)) e.slots[i] = { value: initial };
+      return [e.slots[i].value, value => { e.slots[i] = { value }; }];
     },
     useRef(initial) {
-      const i = cursor++;
-      return slots[i] ??= { current: initial };
+      const e = envelope();
+      const i = e.count++;
+      if (!(i in e.slots)) e.slots[i] = { value: { current: initial } };
+      return e.slots[i].value;
     },
     useEffect(fn, deps) {
-      const i = cursor++;
-      if (!slots[i] || deps.some((d, j) => d !== slots[i][j])) effects.push(fn);
-      slots[i] = deps;
+      const e = envelope();
+      const i = e.count++;
+      if (!(i in e.slots) || deps.some((d, j) => d !== e.slots[i].value[j]))
+        effects.push(fn);
+      e.slots[i] = { value: deps };
     },
   };
   const jsx = (type, props) => ({ type, props });
@@ -59,14 +69,22 @@ function app() {
     },
   });
   function render() {
-    cursor = 0;
+    for (const e of comps.values()) e.count = 0;
     const nodes = [];
     // Descend into function components so routed screens are visible to tests;
     // string/null nodes are collected and their children walked as before.
     function walk(node) {
       if (Array.isArray(node)) return node.forEach(walk);
       if (!node || typeof node !== 'object') return;
-      if (typeof node.type === 'function') return walk(node.type(node.props || {}));
+      if (typeof node.type === 'function') {
+        const prev = current;
+        current = node.type;
+        try {
+          return walk(node.type(node.props || {}));
+        } finally {
+          current = prev;
+        }
+      }
       nodes.push(node);
       walk(node.props?.children);
     }
@@ -264,13 +282,15 @@ test('future tabs show placeholder screens and mark their tab current', () => {
     ['/permessi', 'Permessi'],
     ['/banca-ore', 'Banca ore'],
     ['/stats', 'Stats'],
-    ['/settings', 'Settings'],
   ]) {
     a.go(route);
     assert.ok(a.render().find(n => n.props?.className === 'stub'), route + ' shows a placeholder');
     assert.equal(a.render().find(n => n.type === 'h1').props.children, label);
     assert.equal(currentTab(a).props.href, '#' + route, route + ' tab is current');
   }
+  a.go('/settings');
+  assert.ok(a.render().find(n => n.props?.className === 'settings'), 'settings shows the management screen');
+  assert.equal(currentTab(a).props.href, '#/settings');
   a.go('/');
   assert.ok(!a.render().some(n => n.props?.className === 'stub'), 'Supplenze is not a placeholder');
 });

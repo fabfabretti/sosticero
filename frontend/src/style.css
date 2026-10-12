@@ -870,7 +870,8 @@ td.none {
   color: var(--ink);
   font-weight: 600;
 }
-.stub {
+.stub,
+.settings {
   flex: 1;
   padding: 26px 34px;
 }

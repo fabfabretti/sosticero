@@ -85,13 +85,117 @@ function Stub({ label }: { label: string }) {
     </section>
   );
 }
+function Settings() {
+  const [data, setData] = useState<Data>(),
+    [error, setError] = useState("");
+  const request = useRef(0);
+  const refresh = async () => {
+    const n = ++request.current;
+    try {
+      const d = await api<Data>("day/" + localDate(new Date()));
+      if (n === request.current) setData(d);
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+  useEffect(() => {
+    void refresh();
+  }, []);
+  const upload = async (file: File | undefined, target: string) => {
+    if (!file) return;
+    try {
+      await api(target, JSON.parse(await file.text()));
+      await refresh();
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+  const exportData = async () => {
+    try {
+      const b = await api("export");
+      const url = URL.createObjectURL(
+        new Blob([JSON.stringify(b, null, 2)], { type: "application/json" }),
+      );
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "supplenze-salvate.json";
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+  return (
+    <section className="settings">
+      <h1>Settings</h1>
+      {error && (
+        <p role="alert" style={{ color: "#c34242" }}>
+          {error}
+        </p>
+      )}
+      <section className="dataset">
+        <label className="upload-btn">
+          Carica database JSON
+          <input
+            type="file"
+            hidden
+            accept=".json"
+            onChange={(e) => void upload(e.target.files?.[0], "timetable")}
+          />
+        </label>
+        <div className="db-status">
+          {data
+            ? `${Object.keys(data.dataset.teachers).length} docenti · ${data.dataset.classes.length} classi`
+            : "Caricamento…"}
+        </div>
+        {!!data?.dataset.warnings.length && (
+          <details className="db-status">
+            <summary>{data.dataset.warnings.length} anomalie da verificare</summary>
+            <pre style={{ whiteSpace: "pre-wrap" }}>
+              {JSON.stringify(data.dataset.warnings, null, 2)}
+            </pre>
+          </details>
+        )}
+        <div className="archive-actions">
+          <button onClick={() => void exportData()}>Esporta supplenze</button>
+          <label>
+            Importa supplenze
+            <input
+              hidden
+              type="file"
+              accept=".json"
+              onChange={(e) => void upload(e.target.files?.[0], "import")}
+            />
+          </label>
+          <button
+            onClick={() => {
+              document.documentElement.dataset.theme =
+                document.documentElement.dataset.theme === "dark"
+                  ? "light"
+                  : "dark";
+            }}
+          >
+            Chiaro / scuro
+          </button>
+        </div>
+        <div className="db-status">Dati salvati nel database SQLite.</div>
+      </section>
+    </section>
+  );
+}
 function Shell() {
   const { pathname } = useLocation();
   const tab = screenFor(pathname);
   return (
     <div className="shell">
       <TopBar current={tab.path} />
-      {tab.path === "/" ? <Supplenze /> : <Stub label={tab.label} />}
+      {tab.path === "/" ? (
+        <Supplenze />
+      ) : tab.path === "/settings" ? (
+        <Settings />
+      ) : (
+        <Stub label={tab.label} />
+      )}
       {tab.path === "/settings" && (
         <footer className="credits">by Fabs 🤝🏻 Big Pickle, 2026</footer>
       )}
@@ -220,29 +324,6 @@ function Supplenze() {
     setMulti(false);
     setSelected(0);
     document.getElementById("q")?.focus();
-  };
-  const upload = async (file: File | undefined, target: string) => {
-    if (!file) return;
-    try {
-      await mutate(target, JSON.parse(await file.text()));
-    } catch (e) {
-      setError(String(e));
-    }
-  };
-  const exportData = async () => {
-    try {
-      const b = await api("export");
-      const url = URL.createObjectURL(
-        new Blob([JSON.stringify(b, null, 2)], { type: "application/json" }),
-      );
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "supplenze-salvate.json";
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-    } catch (e) {
-      setError(String(e));
-    }
   };
   const renderEntries = (g: "abs" | "cf" | "dis") =>
     Object.entries(entries(g)).map(([id, hs]) => (
@@ -423,57 +504,6 @@ function Supplenze() {
     <>
       <div className="app" aria-busy={busy} inert={busy || !!open}>
         <aside>
-          <section className="dataset">
-            <label className="upload-btn">
-              Carica database JSON
-              <input
-                type="file"
-                hidden
-                accept=".json"
-                onChange={(e) => void upload(e.target.files?.[0], "timetable")}
-              />
-            </label>
-            <div className="db-status">
-              {data
-                ? `${Object.keys(data.dataset.teachers).length} docenti · ${data.dataset.classes.length} classi`
-                : "Caricamento…"}
-            </div>
-            {!!data?.dataset.warnings.length && (
-              <details className="db-status">
-                <summary>
-                  {data.dataset.warnings.length} anomalie da verificare
-                </summary>
-                <pre style={{ whiteSpace: "pre-wrap" }}>
-                  {JSON.stringify(data.dataset.warnings, null, 2)}
-                </pre>
-              </details>
-            )}
-            <div className="archive-actions">
-              <button onClick={() => void exportData()}>
-                Esporta supplenze
-              </button>
-              <label>
-                Importa supplenze
-                <input
-                  hidden
-                  type="file"
-                  accept=".json"
-                  onChange={(e) => void upload(e.target.files?.[0], "import")}
-                />
-              </label>
-              <button
-                onClick={() => {
-                  document.documentElement.dataset.theme =
-                    document.documentElement.dataset.theme === "dark"
-                      ? "light"
-                      : "dark";
-                }}
-              >
-                Chiaro / scuro
-              </button>
-            </div>
-            <div className="db-status">Dati salvati nel database SQLite.</div>
-          </section>
           <div>
             <div className="cal-h">
               <button
