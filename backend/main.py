@@ -397,4 +397,4 @@ def create_app(path=None, seed=None):
     return app
 
 
-app = create_app(seed=os.environ.get('TIMETABLE_PATH', 'references/orari.json'))
+app = create_app(seed=os.environ.get('TIMETABLE_PATH'))

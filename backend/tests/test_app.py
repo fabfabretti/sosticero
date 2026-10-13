@@ -279,11 +279,10 @@ class PersistenceTest(unittest.TestCase):
         self.assertIn('autoDis', d)
         self.assertEqual(d['autoDis'][DAY]['support']['2'], ['2A classe fuori'])  # keys sono stringhe nel JSON
 
-    def test_real_dataset(self):
-        import json
-        r=self.client.post('/api/timetable',json=json.loads(Path('references/orari.json').read_text()))
-        self.assertEqual(r.status_code,200,r.text)
-        self.assertGreaterEqual(len(self.client.get('/api/day/'+DAY).json()['dataset']['teachers']),155)
+    def test_timetable_upload(self):
+        r = self.client.post('/api/timetable', json=fixture())
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(len(self.client.get('/api/day/'+DAY).json()['dataset']['teachers']), 8)
 
 
 if __name__=='__main__': unittest.main()

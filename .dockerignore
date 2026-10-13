@@ -4,3 +4,9 @@ frontend/node_modules
 frontend/dist
 **/__pycache__
 data
+references
+.agents
+.codex
+.aws
+.env
+.env.*

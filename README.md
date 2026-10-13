@@ -1,115 +1,184 @@
-# Supplenze
+# <img src="frontend/public/favicon.svg" width="36" height="36" alt=""> Supplenze
 
-Small school substitution planner migrated from `references/`. React + TypeScript + Vite, FastAPI, SQLite, one deployment container. Italian UI, seven periods, Monday–Friday timetable.
+A local web app for planning teacher substitutions, tracking short leave and recovery hours, and understanding where cover is needed. Built for an Italian school with two campuses, a Monday–Friday timetable, and up to seven periods a day. The interface is in Italian. My desperation is Italian as well.
 
-## Run
+> [!NOTE]
+> **This project was vibecoded.** It also contains some fixes specific to this school, at the moment. I hope to be able to generalize this once my desperation will slow down. Thank you for your time.
+
+## Screenshots
+
+Dark mode, using fictional teachers and records created in an isolated demo database.
+
+**Daily substitution planner**
+
+![Dark-mode planner showing fictional absences, campuses, and substitute assignments](docs/screenshots/planner-dark.jpg)
+
+**Statistics and coverage**
+
+![Dark-mode statistics showing demand, coverage, trends, and heatmap for fictional records](docs/screenshots/stats-dark.jpg)
+
+## What you can do
+
+### Plan the school day
+
+- Browse dates in a calendar and search for teachers or classes.
+- Record teacher absences for individual periods or across several days.
+- Record classes that are away, making their teachers available where appropriate.
+- Add manual teacher availability and choose its campus.
+- See the classes needing cover, grouped by period, with room and campus information.
+- Filter between Centrale, Succursale, or both campuses.
+- Treat several absent co-teachers in the same class and period as one cover requirement.
+
+### Find and assign substitutes
+
+Open a cover requirement to see ranked candidates, their timetable context, teaching subject, campus, and recorded substitution workload. The ranking is currently fixed, but I hope to make it flexible in the future.
+
+Absent or already assigned teachers are blocked. Candidates at the other campus are distinguished, and occupied teachers can appear as exceptional choices when the configured rules allow them. Exceptional assignments require confirmation. A blank timetable slot alone does not make a teacher available for ordinary cover.
+
+You can assign a substitute, record late entry or early exit at the class’s effective timetable boundary, or explicitly mark a period **Scoperta** when no substitute was found. Existing assignments that become inconsistent after an edit are flagged for review. The app suggests choices; the person planning cover makes the final decision.
+
+### Manage short leave and recovery
+
+The **Permessi** register records a teacher’s leave date, selected periods, and optional request date. Leave automatically appears as a locked absence in the substitution planner. The daily limit is half the teacher’s scheduled periods, rounded down.
+
+**RP — Recupero permesso** offers eligible teachers for otherwise unscheduled periods when they owe recovery hours. Each RP assignment pays back one hour from the oldest eligible permit. The register shows recovered hours, remaining debt, recovery assignments, and expired debt. The recovery window is one calendar month, inclusive, with month-end dates clamped to the last day of the following month. Adjacent lessons, gaps, and cross-campus travel restrictions affect RP eligibility. (Obviously, this is tailored to this specific school at the moment. Hope to generalize this as well).
+
+### Understand demand and coverage
+
+**Stats** offers totals, daily averages, trends, weekday and period comparisons, and an interactive day-by-period heatmap. Filter by campus and by all recorded dates, this week, this month, or a custom range. Export CSV or open a printable report.
+
+Statistics distinguish absent teachers, absent teacher-periods, and class-periods needing cover. They also distinguish substitute cover, explicit uncovered outcomes, late entry, early exit, and pending decisions. Averages use **days with recorded absences or permits**, not every school day. “Ore di classe scoperta” measures cover demand, including periods subsequently covered;
+
+### Configure and protect your records
+
+- Import your timetable as JSON; no real timetable or school database is bundled.
+- Configure each hour type’s availability, visibility among candidates, and school membership.
+- Switch between light and dark themes.
+- Export and import the operational archive as JSON.
+- Create database backups, view available snapshots, and restore one from Settings.
+- Keep automatic startup backups, with configurable retention.
+- Authenticate... no, not yet. But I'll add it. Soon. I promise..... (Same for concurrent use...)
+
+Timetable updates preserve operational records. Keep teacher IDs stable: an existing ID must continue to identify the same person. Removed teachers remain as historical references. Archive import replaces operational records; backup restore replaces the database. Back up before either operation.
+
+## Deploy on Linux
+
+Clone this repository and run the commands below from its root. Open **http://localhost:8000**, go to **Settings**, and choose **Carica database JSON** to upload your timetable.
+
+
+### Podman
+
+Install Podman and a Compose provider (`podman-compose` or another provider supported by your distribution), then:
 
 ```sh
-sudo dnf install podman-compose   # the provider behind `podman compose`
-LOCAL_UID=$(id -u) LOCAL_GID=$(id -g) podman compose up --build -d
+mkdir -p data
+LOCAL_UID=$(id -u) LOCAL_GID=$(id -g) podman compose up -d --build --force-recreate
 ```
 
-Open http://localhost:8000. The supplied timetable is imported on first startup only. All operational data and subsequent timetable imports live in `./data/supplenze.sqlite`, in the local `data` folder beside `compose.yaml`. Rebuilds, restarts, and `podman compose down` retain this folder. Back it up before deleting or replacing it. Compose runs the app with your host UID/GID so it can write the folder; these default to 1000 if omitted. The `:Z` mount option supports SELinux hosts.
+The supplied `compose.yaml` supports rootless Podman and SELinux. Data stays in `./data`, outside the container. To stop: `podman compose down`. To update: pull the new code and repeat the command above.
 
-`compose.yaml` targets rootless Podman: `userns_mode: keep-id` maps your host user to the same UID inside the container, which is what lets the app write `./data`. Rootful Docker rejects `keep-id`; if you use Docker instead, remove that one line and run `LOCAL_UID=$(id -u) LOCAL_GID=$(id -g) docker compose up --build -d`.
+### Docker
 
-For development (Python 3.12+, Node 24):
+Install Docker Engine, then:
 
 ```sh
-python -m venv .venv
-.venv/bin/pip install -r backend/requirements.txt httpx==0.28.1
-.venv/bin/uvicorn backend.main:app --reload
-# another terminal
-cd frontend
-npm ci
-npm run dev
+mkdir -p data
+docker build -t supplenze .
+docker run -d --name supplenze --restart unless-stopped \
+  --user "$(id -u):$(id -g)" \
+  -p 127.0.0.1:8000:8000 \
+  -v "$PWD/data:/data:Z" \
+  supplenze
 ```
 
-For development, explicitly set `DATABASE_PATH` to an isolated temporary database. Never use the operational database for behavioral verification. `TIMETABLE_PATH` sets the initial JSON, `STATIC_PATH` the built frontend directory.
+Use `sudo` for Docker commands if your installation requires it. To update, rebuild the image, run `docker rm -f supplenze`, and repeat the `docker run` command. The mounted data directory survives container removal.
 
-## Use and migration
+The supplied Compose file uses Podman’s `userns_mode: keep-id`; Docker users should use the commands above. (I'll add Docker Compose at some point. Sadly I am now a Fedora girl, so my lovely Docker is on pause until further setups on my end.)
 
-Search for teachers or classes, select periods, optionally apply through an end date. Add manual availability with its campus. Click a substitution to see ranked candidates, including disabled absent/already assigned candidates. Use campus filters and the theme switch. The calendar dots mark absences/classes out.
+### Without containers
 
-To migrate prototype data, first export “Esporta supplenze” in the original browser/prototype, then use “Importa supplenze” here. This replaces the operational archive; export a backup first. IDs must match. There is no automatic access to another application's localStorage. JSON timetable uploads use the supplied `docenti`/`orario` format and preserve all absences, manual availability, classes out, and assignments. Teacher names may change; IDs must not be reused for different people. Missing teachers are retained as retired historical references. Invalid imports roll back completely. Existing invalid assignments are retained and explicitly flagged for review, rather than silently deleted.
-
-Back up the SQLite database with SQLite's online backup API or stop the container before copying the local `data` folder (include WAL files if copying a running database). Archive export covers operational records; retain the timetable separately for a full restore.
-
-### Permessi
-
-The Permessi register records one teacher/date with selected periods and an optional request date. The form sits in the left sidebar. The daily maximum is half the scheduled periods rounded down, including every activity. Unscheduled periods show an accessible warning but can be saved within that maximum. Permit periods remain locked absences in Supplenze.
-
-**RP — Recupero permesso** is available in otherwise unscheduled periods while a teacher has eligible hours owed. Ordinary availability (including POT, manual availability and class-out release) retains its category and does not recover permit hours. Convenient RP hours appear first; other RP hours appear last. Convenient means adjacent to teaching or inside a teaching gap. Cross-campus transfers on either side require an intervallo at 2–3 or 4–5; absence, booking conflicts and scheduled commitments remain blocked.
-
-Each RP assignment recovers one hour from the oldest eligible permit, with a permanent link. The recovery deadline is one calendar month after the permit date, inclusive, clamped to month-end (31 January becomes 28/29 February). Eligibility uses the substitution date, allowing retrospective entry. Future assignments reserve hours immediately. The register shows deadline, recovered total, dates/periods and remaining hours, highlighting teachers with debt and labelling expired debt Scadute. Expired debt remains visible but cannot fund new RP assignments. Deleting or replacing RP restores its linked hour; review flags and timetable imports do not silently refund hours. Resolve linked assignments before deleting a recovered permit or making edits that invalidate its recovery history.
-
-Archive **schema 2** preserves stable `permitIds` metadata and each RP assignment's `permitId`, alongside permits, request dates, settings and statistics. Schema-1 archives without recovery data remain importable and receive stable identities. Invalid references, ownership, date windows or over-recovery reject the whole import. Startup migration adds identities without changing existing operational records. Database backups include all recovery data. Older versions reject schema-2 archives: do not run an older application against the upgraded database; keep a pre-upgrade backup for rollback (restoring it loses later changes).
-
-### Automatic backups
-
-The app automatically creates a backup of the database on startup if no backup has been made on the same calendar day. Backups are stored in `./data/backups/` (configurable via `BACKUP_DIR`) with timestamped filenames like `supplenze-YYYY-MM-DDTHH-MM-SS.sqlite`. 
-
-Retention policy (configurable via environment variables): backups older than `BACKUP_RETENTION_DAYS` (default: 7) are deleted unless they are among the `BACKUP_RETENTION_COUNT` (default: 10) most recent backups - whichever constraint keeps them. Automatic startup backups can be disabled with `BACKUP_ON_STARTUP=false`.
-
-You can manage backups via:
-- **Settings UI** (in the app under Settings → "Backup e ripristino"): view available backups, create manual backups, and restore from a selected backup. Restoring requires explicit confirmation via a hard confirmation dialog; this operation overwrites current data and cannot be undone.
-- **API**: `GET /api/backups` lists backups, `POST /api/backups` creates a manual backup, `POST /api/backups/restore` restores from a backup (requires `{"filename": "...", "confirm": true}`).
-
-The dataset and the operational state live in separate documents. Uploading a timetable JSON rewrites only `dataset`; absences, manual availability, classes out and assignments in `state` are never touched. To refresh the timetable after a new field becomes available (for example the `classe_concorso` names added to the candidate drawer), back up `data/supplenze.sqlite` first, then upload the **same** timetable file via “Carica database JSON”: the re-import keeps every existing entry intact.
-
-## Rules and structure
-
-- `backend/domain.py`: pure rules, no React, HTTP, SQLite, or storage access. Separate `eligibility`, `rank_candidate`, `validate_assignment`; centralized `PRIORITIES` and deterministic load/name/ID tie breaks.
-- `backend/storage.py`: SQLite JSON documents, transactional writes. A small school does not need an ORM or a repository hierarchy. Every mutation acquires a write transaction before reading current state, avoiding lost updates and double booking.
-- `backend/main.py`: validated HTTP boundaries and orchestration. `/docs` documents the API.
-- `frontend/src/main.tsx` and `CandidateDrawer.tsx`: presentation and interaction; backend supplies rows, eligibility, ranking, validation, and default availability hours. Original CSS retained.
-
-Preserved priorities: existing co-teacher; same-campus POT/manual availability/released class; UTC/UTS/DI.S; release of support co-teaching; director at central campus; entry/exit; other-campus choices; unknown campus last. Ties use assignments today, total recorded assignments, name, ID. “Total” follows the prototype's all-recorded-dates count, not a newly invented school-year boundary.
-
-DI.S is availability. UTC is central-campus technical duty; UTS branch-campus duty. POT/DI.S with no campus remain unknown. Empty slots are not availability. Co-teaching requires the same class, period **and known campus**, correcting the prototype's class-only check. Support teachers can still be released from another class (the prototype's TC behavior). Manual availability overrides timetable duties as in the prototype, but cannot override absence or an existing assignment. Multi-day default availability is calculated separately for each date, correcting the prototype's use of the first day's schedule.
-
-Cross-campus choices remain selectable, with muted colors; transfer times and authorization rules were not supplied. Director and entry/exit choices require human verification. Entry/exit options are always shown and each labels the class's effective entry/exit hour, but assigning them is only possible at the first/last effective scheduled class period of the selected weekday; choosing ESCE at the last hour makes it available at the previous hour too (chain). Assignments invalidated by later changes are flagged. Co-teachers absent together for the same class and period share one substitution row, since one room needs one substitute; a substitution left under a non-canonical key is flagged for review rather than migrated. Conflicting assignments must be removed or corrected; the system does not automatically rearrange them. No banked hours are implemented. Dataset anomalies are displayed; potentially duplicate people (e.g. Antonelli d003/d154) are not merged automatically.
-
-## Verify
+Install Python 3.12+ with virtual environment support and Node.js 24 with npm, then:
 
 ```sh
-DATABASE_PATH=/tmp/sosticero-tests-module.sqlite BACKUP_ON_STARTUP=false .venv/bin/python -m unittest discover -s backend/tests -v
-npm --prefix frontend test
+python3 -m venv .venv
+.venv/bin/pip install -r backend/requirements.txt
+npm --prefix frontend ci
 npm --prefix frontend run build
+mkdir -p data
+DATABASE_PATH="$PWD/data/supplenze.sqlite" \
+  .venv/bin/uvicorn backend.main:app --host 127.0.0.1 --port 8000
 ```
 
-Backend tests cover the real dataset, co-teaching/campus/period, absence and booking conflicts, blank/manual availability, class release, ranking and load tie breaks, transactional import rollback, archive validation, restart persistence, timetable updates and multi-day behavior. Frontend tests (`node --test`) drive the real `App` handlers with deferred fetches, covering candidate-response ordering, day-change discards, and save-closes-immediately.
+Keep the terminal open, or run that final command through your usual service manager. This serves the built frontend and API together. To update, install dependencies and build again, then restart the server.
 
-Deployment binds localhost by default. There is no authentication: keep it on a trusted administrative machine/network; add an authenticated reverse proxy before wider access. Concurrent edits are safe from lost writes; screens refresh after edits/date changes, not by live push.
+## Timetable format
 
-Verification in this environment: 16 backend tests pass (including the concurrent-assignment case) and the frontend `node --test` suite (3 cases) passes; the TypeScript/Vite build passed. The image built with Podman, and rootless Compose execution was confirmed with `podman compose up --build -d`, `down`, and restart: the app served HTTP 200 and retained `./data/supplenze.sqlite` across restarts. The browser flow (absence → candidates → assignment → reload) was checked with the supplied timetable.
+Upload a JSON object containing `docenti` (teachers) and `orario` (weekly timetable entries). Here is a minimal fictional example:
 
-### Tipi di ora
+```json
+{
+  "docenti": [
+    {
+      "id": "teacher-1",
+      "nome_originale": "Docente Esempio",
+      "ruolo": "curricolare",
+      "classe_concorso": "A026"
+    }
+  ],
+  "orario": [
+    {
+      "docente": "teacher-1",
+      "giorno": "lun",
+      "ora": 1,
+      "classi": ["1A"],
+      "sede": "centrale",
+      "aula": "101"
+    }
+  ]
+}
+```
 
-Settings → Tipi di ora lists imported sigle and derived Lezione, Compresenza ITP, Sostegno and A disposizione types. Each row independently controls **Disponibile per supplenze**, **Mostra tra i candidati**, and **Presso questa scuola**. Changes apply globally to every matching teacher/hour/date. School membership is descriptive; it does not change campus, ranking or eligibility. Unknown codes begin hidden and unavailable, with school membership marked Da verificare. GM begins outside this school; ITP and sostegno begin visible as occupied fallbacks. POT/UTC/UTS/DIS retain their initial availability.
+Days are `lun`, `mar`, `mer`, `gio`, and `ven`; periods are integers from 1 to 7. Campus values are `centrale` or `succursale`; omit the field when unknown. Each teacher needs a unique, stable ID, and each teacher/day/period combination can appear only once. List multiple classes in one entry where needed. Optional `attivita_riconosciute` (an array of codes) and `attivita_originale` (text) describe timetable activities. Review imported hour types in Settings before using candidate recommendations.
 
-Visible occupied candidates appear under Solo in caso di necessità and require Usa comunque confirmation. Absence, double booking and hidden/retired teachers remain blocked. Existing assignments survive policy changes. Colors are selected once and saved. Reimport the original timetable to recover codes discarded by older imports; settings and existing operational records survive reimport.
+There is no spreadsheet or Untis file importer: convert your timetable to this JSON structure before uploading it.
 
-`GET /api/hour-types` returns the inventory and reimport indicator. `POST /api/hour-types` updates one row with `id`, `available`, `visible`, and `school`. Schema-1 JSON archives now include optional `hourTypes` and exceptional assignment metadata; legacy archives leave current settings unchanged. Invalid archives roll back atomically. Database snapshots include settings and colors. Older application versions may discard the new archive fields: avoid round-tripping through them.
+## Data and backups
 
-## Statistics and uncovered periods
+The default database is **`data/supplenze.sqlite`**. Container deployments store everything under the mounted `./data` directory, including backups in `data/backups/`. Restarting or rebuilding the container keeps these records; deleting the directory does not.
 
-Stats reports absence and cover demand by Centrale, Succursale or Totale, with All, This week, This month and inclusive custom periods. Presets use Europe/Rome and a Monday-based week; future dates are excluded. All averages divide by **days with at least one recorded manual absence or permit**, not all school days. Campus views use the same dates and include campus-specific zeroes. Weekday averages and heatmap cells divide by recorded occurrences of that weekday. A period without observations has no average.
+An automatic backup is created at startup when none exists for that calendar day.
 
-The three workload units differ: absent teachers are unique per date (their period total is expressed as giorni-docente), absent teacher-hours deduplicate manual/permit overlap, and demand counts one class/period even when several co-teachers are absent. Hours mean timetable periods, not clock hours. A teacher may count at both campuses but only once in Totale; campus teacher headcounts therefore need not add up. Unknown campus belongs only to Totale and is disclosed separately.
+Optional environment variables:
 
-Supplenze offers **Scoperta** when no substitute was found. It is an explicit emergency outcome, leaves the class present and does not release other teachers. Clear it to return to pending, or replace it when cover is found. Stats distinguishes covered, uncovered, late entry, early exit and pending. Coverage is covered periods divided by total demand; pending does not imply an unsupervised class. Entry/exit periods remain in demand. Exceptional cover is a subset of covered types, not an additional total. Invalid/orphan assignments are disclosed separately and do not count as valid cover.
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `DATABASE_PATH` | SQLite database location | `data/supplenze.sqlite` (containers: `/data/supplenze.sqlite`) |
+| `BACKUP_DIR` | Snapshot directory | `backups/` beside the database |
+| `BACKUP_ON_STARTUP` | Enable startup backups | `true` |
+| `BACKUP_RETENTION_DAYS` | Retention age in days | `7` |
+| `BACKUP_RETENTION_COUNT` | Minimum recent snapshots to keep | `10` |
+| `TIMETABLE_PATH` | Optional local JSON to seed a new database | Unset; upload through Settings |
+| `STATIC_PATH` | Built frontend directory | `frontend/dist` |
 
-A versioned `statistics` SQLite document saves date-specific absence context, campus and class-period outcomes. Operational corrections synchronize facts in the same transaction; unchanged facts survive timetable replacement. Initial migration and legacy JSON imports reconstruct missing facts once using the available timetable and label them as reconstructed: this cannot prove the historical campus/timetable was identical. Absence periods with no lesson are retained with unknown campus. New absence slots added after a timetable change use that new timetable; existing slots retain their context.
+Set these in your shell for a native deployment, with `-e` for Docker, or through an explicitly selected Compose configuration for Podman.
 
-Schema-2 archive exports contain `statistics` (also accepted in legacy schema-1 archives); imports validate the facts against operational records atomically. Legacy archives without this document are reconstructed. Database backups retain facts. Older application versions may discard facts or reject the UNCOVERED assignment value; keep a pre-upgrade backup and avoid archive round trips through older versions.
+## Development and limitations
 
-`GET /api/stats?campus=total&period=all` is read-only. Campus accepts `total`, `centrale`, `succursale`; period accepts `all`, `week`, `month`, `custom`. Custom requires ISO `start` and `end` dates and rejects reversed intervals. Responses include resolved bounds, recorded-day count, totals, averages, coverage percentage, daily/weekday/hour/heatmap series, coverage types, exceptional subset, class demand, worst days, global unknown-campus and assignment-issue counts, and absence-fact provenance. CSV includes the same filters, denominator, units and caveats; use Stampa report for a browser-printable report with chart values.
+React + TypeScript + Vite frontend; FastAPI backend; SQLite storage. No cloud account or external database is required. The API documentation is available at `/docs` while the app is running.
 
-Stampa report first opens an on-page print preview with all numerical tables expanded and filters hidden. From there choose Stampa to open the browser print dialog, or return to the interactive dashboard.
+> [!Important] The rules reflect one school’s workflow, rather than every contract or institution. Campus transfers, exceptional cover, and entry/exit decisions need human review. Dataset anomalies are shown for review; potentially duplicate people are not merged automatically. Screens refresh after edits and date changes; there is no live synchronization between browsers. Concurrent database writes are transactional, but users may need to refresh to see another person’s edits.
 
-Stats uses the same segmented controls and calendar styling as Supplenze. Daily averages lead the compact summary; period totals remain secondary. Tutto, Questa settimana and Questo mese highlight the corresponding dates. Click a first and last day for a custom inclusive range, navigating months if needed; reversed clicks are ordered automatically. All three workload measures appear together with legends: lines for the daily trend and single-series bars of class-period demand for weekday and hour averages. A visible summary note explains that absent teacher-periods include activities without classes (such as POT), while cover demand counts class-periods and merges co-absent teachers. Heatmap measures use buttons; methodology and data-quality details expand on demand and remain included in print preview.
+To run the tests after installing the dependencies above:
 
-The primary measure is labelled **Ore di classe scoperta**: class-period demand caused by absence, including periods later covered. **Senza supplente** identifies only explicitly recorded emergency uncovered outcomes. The heatmap places weekdays in columns and periods in rows.
+```sh
+.venv/bin/pip install httpx==0.28.1
+DATABASE_PATH="$(mktemp -d)/tests.sqlite" BACKUP_ON_STARTUP=false \
+  .venv/bin/python -m unittest discover -s backend/tests
+npm --prefix frontend test
+```
 
-Hover or focus a Giorno × ora cell to see the dated counts behind its average for the active campus, reporting period and measure. Included dates with zero counts appear as zero; unrecorded dates are excluded. Long lists scroll and Escape dismisses the tooltip. The Stats API exposes these values as each heatmap cell's `observations` list.
+Always use an isolated database for development. See [AGENTS.md](AGENTS.md) for this repository’s data protection and deployment rules. Planning documents and detailed behavior specifications live under [openspec/](openspec/).
+
+## License
+
+Copyright © 2026 fabfabretti. Licensed under the **GNU Affero General Public License, version 3 only** (`AGPL-3.0-only`). See [LICENSE.md](LICENSE.md) for the full terms.
