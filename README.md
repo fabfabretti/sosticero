@@ -1,4 +1,4 @@
-# <img src="frontend/public/favicon.svg" width="36" height="36" alt=""> Supplenze
+# <img src="frontend/public/favicon.svg" width="36" height="36" alt=""> Sosticero
 
 A local web app for planning teacher substitutions, tracking short leave and recovery hours, and understanding where cover is needed. Built for an Italian school with two campuses, a Monday–Friday timetable, and up to seven periods a day. The interface is in Italian. My desperation is Italian as well.
 
@@ -60,6 +60,17 @@ Statistics distinguish absent teachers, absent teacher-periods, and class-period
 - Authenticate... no, not yet. But I'll add it. Soon. I promise..... (Same for concurrent use...)
 
 Timetable updates preserve operational records. Keep teacher IDs stable: an existing ID must continue to identify the same person. Removed teachers remain as historical references. Archive import replaces operational records; backup restore replaces the database. Back up before either operation.
+
+## Deploy on Windows
+
+No Python, Node, Docker, or WSL required. Download the latest `Sosticero_<date>.exe` from the repository's **Actions → Windows exe** artifacts (built manually by the maintainer), put it in a normal folder such as `Documents\Sosticero`, and double-click it.
+
+- Put it **outside `Program Files`** (that folder is read-only, and the app stores its data beside the exe).
+- A console window opens and your browser opens **http://localhost:8000**. Closing the console stops the app.
+- If Windows shows "Windows protected your PC", click **More info** → **Run anyway**; the app is unsigned.
+- Everything the app saves lives in a `data` folder beside the exe, backups included. To update, replace the exe and keep that folder.
+
+Then go to **Settings** and choose **Carica database JSON** to upload your timetable.
 
 ## Deploy on Linux
 
@@ -144,7 +155,7 @@ There is no spreadsheet or Untis file importer: convert your timetable to this J
 
 ## Data and backups
 
-The default database is **`data/supplenze.sqlite`**. Container deployments store everything under the mounted `./data` directory, including backups in `data/backups/`. Restarting or rebuilding the container keeps these records; deleting the directory does not.
+The default database is **`data/supplenze.sqlite`**. Container deployments store everything under the mounted `./data` directory, including backups in `data/backups/`; the prebuilt Windows app keeps the same files in a `data` folder beside the exe. Restarting or rebuilding the container keeps these records; deleting the directory does not.
 
 An automatic backup is created at startup when none exists for that calendar day.
 
