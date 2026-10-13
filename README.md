@@ -25,7 +25,7 @@ npm ci
 npm run dev
 ```
 
-Development defaults to the same `data/supplenze.sqlite` the container uses, so entries are visible from both; set `DATABASE_PATH` to override. `TIMETABLE_PATH` sets the initial JSON, `STATIC_PATH` the built frontend directory.
+For development, explicitly set `DATABASE_PATH` to an isolated temporary database. Never use the operational database for behavioral verification. `TIMETABLE_PATH` sets the initial JSON, `STATIC_PATH` the built frontend directory.
 
 ## Use and migration
 
@@ -37,9 +37,13 @@ Back up the SQLite database with SQLite's online backup API or stop the containe
 
 ### Permessi
 
-The Permessi register records one teacher/date with selected periods, an optional request date and Ore da recuperare. The form sits in a compact right sidebar beside the table. The daily maximum is half the scheduled periods rounded down, including POT, DIS and every scheduled activity. Selected unscheduled periods show an accessible warning but may be saved within that maximum. Permit hours automatically appear as locked absences in Supplenze; deleting a permit preserves any separately recorded manual absence. Recovery accounting is deferred.
+The Permessi register records one teacher/date with selected periods and an optional request date. The form sits in the left sidebar. The daily maximum is half the scheduled periods rounded down, including every activity. Unscheduled periods show an accessible warning but can be saved within that maximum. Permit periods remain locked absences in Supplenze.
 
-Archive schema 1 includes an optional `permessi` date/teacher/periods map and `permitRequests` date/teacher/request-date map. Older archives import with an empty register. Imports validate references and periods atomically without rechecking historical entitlement against the current timetable. Database backups include permits. Older application versions can discard this field: do not round-trip new archives through them.
+**RP — Recupero permesso** is available in otherwise unscheduled periods while a teacher has eligible hours owed. Ordinary availability (including POT, manual availability and class-out release) retains its category and does not recover permit hours. Convenient RP hours appear first; other RP hours appear last. Convenient means adjacent to teaching or inside a teaching gap. Cross-campus transfers on either side require an intervallo at 2–3 or 4–5; absence, booking conflicts and scheduled commitments remain blocked.
+
+Each RP assignment recovers one hour from the oldest eligible permit, with a permanent link. The recovery deadline is one calendar month after the permit date, inclusive, clamped to month-end (31 January becomes 28/29 February). Eligibility uses the substitution date, allowing retrospective entry. Future assignments reserve hours immediately. The register shows deadline, recovered total, dates/periods and remaining hours, highlighting teachers with debt and labelling expired debt Scadute. Expired debt remains visible but cannot fund new RP assignments. Deleting or replacing RP restores its linked hour; review flags and timetable imports do not silently refund hours. Resolve linked assignments before deleting a recovered permit or making edits that invalidate its recovery history.
+
+Archive **schema 2** preserves stable `permitIds` metadata and each RP assignment's `permitId`, alongside permits, request dates, settings and statistics. Schema-1 archives without recovery data remain importable and receive stable identities. Invalid references, ownership, date windows or over-recovery reject the whole import. Startup migration adds identities without changing existing operational records. Database backups include all recovery data. Older versions reject schema-2 archives: do not run an older application against the upgraded database; keep a pre-upgrade backup for rollback (restoring it loses later changes).
 
 ### Automatic backups
 
@@ -69,7 +73,7 @@ Cross-campus choices remain selectable, with muted colors; transfer times and au
 ## Verify
 
 ```sh
-.venv/bin/python -m unittest discover -s backend/tests -v
+DATABASE_PATH=/tmp/sosticero-tests-module.sqlite BACKUP_ON_STARTUP=false .venv/bin/python -m unittest discover -s backend/tests -v
 npm --prefix frontend test
 npm --prefix frontend run build
 ```
@@ -98,7 +102,7 @@ Supplenze offers **Scoperta** when no substitute was found. It is an explicit em
 
 A versioned `statistics` SQLite document saves date-specific absence context, campus and class-period outcomes. Operational corrections synchronize facts in the same transaction; unchanged facts survive timetable replacement. Initial migration and legacy JSON imports reconstruct missing facts once using the available timetable and label them as reconstructed: this cannot prove the historical campus/timetable was identical. Absence periods with no lesson are retained with unknown campus. New absence slots added after a timetable change use that new timetable; existing slots retain their context.
 
-Schema-1 archive exports now contain optional `statistics`; imports validate the facts against operational records atomically. Legacy archives without this document are reconstructed. Database backups retain facts. Older application versions may discard facts or reject the UNCOVERED assignment value; keep a pre-upgrade backup and avoid archive round trips through older versions.
+Schema-2 archive exports contain `statistics` (also accepted in legacy schema-1 archives); imports validate the facts against operational records atomically. Legacy archives without this document are reconstructed. Database backups retain facts. Older application versions may discard facts or reject the UNCOVERED assignment value; keep a pre-upgrade backup and avoid archive round trips through older versions.
 
 `GET /api/stats?campus=total&period=all` is read-only. Campus accepts `total`, `centrale`, `succursale`; period accepts `all`, `week`, `month`, `custom`. Custom requires ISO `start` and `end` dates and rejects reversed intervals. Responses include resolved bounds, recorded-day count, totals, averages, coverage percentage, daily/weekday/hour/heatmap series, coverage types, exceptional subset, class demand, worst days, global unknown-campus and assignment-issue counts, and absence-fact provenance. CSV includes the same filters, denominator, units and caveats; use Stampa report for a browser-printable report with chart values.
 

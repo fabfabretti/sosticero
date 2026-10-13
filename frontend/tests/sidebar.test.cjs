@@ -94,7 +94,13 @@ function app(localStorage = { getItem: () => null, setItem() {} }) {
     effects.splice(0).forEach(fn => fn());
     return nodes;
   }
-  return { render, requests, go: p => { pathname = p; } };
+  return { render, requests, go: p => {
+    const screen = path => ['/permessi', '/settings', '/stats', '/banca-ore'].includes(path) ? path : '/';
+    if (screen(p) !== screen(pathname)) for (const component of comps.keys()) {
+      if (['Supplenze', 'Permessi', 'Settings', 'BackupSection'].includes(component?.name)) comps.delete(component);
+    }
+    pathname = p;
+  } };
 }
 const settle = () => new Promise(resolve => setImmediate(resolve));
 const row = { k: 'r', id: 't', ids: ['t'], h: 1, c: '1A', aula: null, sede: 'centrale' };
@@ -369,7 +375,7 @@ test('permit form warns about unscheduled periods and saves them within limit', 
   req.resolve({ ok: true }); await settle();
   a.requests.shift().resolve({ ...permitData, permessi: { '2026-10-12': { t: [6,7] } } }); await settle();
   assert.equal(a.render().filter(n => n.props?.className === 'permit-period').length, 2);
-  assert.ok(a.render().some(n => n.type === 'td' && n.props.children === 2));
+  assert.ok(a.render().some(n => n.type === 'td' && n.props.children?.[0] === 2));
 });
 
 test('permit errors preserve form; editing supplies original identity and deletion is explicit', async () => {
@@ -471,4 +477,24 @@ test('permit date headers toggle sorting, with missing request dates always last
   sortBy('Data richiesta');
   assert.deepEqual(dates(), ['12/10/2026', '10/10/2026', '11/10/2026']);
   assert.ok(a.render().some(n => n.type === 'th' && n.props['aria-sort'] === 'ascending'));
+});
+
+
+test('permit recovery register shows dated links, expiry, totals and refreshes on return', async () => {
+  const a = app(); a.go('/permessi'); a.render();
+  const response = { ...permitData, permessi: { '2026-10-12': { t: [2,3] } },
+    balances: { t: { remaining: 1, expired: 1, eligible: 0 } },
+    recoveries: { '2026-10-12': { t: { id: 'permit', deadline: '2026-11-12', recovered: 1, remaining: 1, expired: true,
+      recoveries: [{ date: '2026-10-19', h: 4, key: 'absent|4|1A' }] } } },
+  };
+  a.requests.shift().resolve(response); await settle();
+  const nodes = a.render();
+  assert.ok(nodes.some(n => n.type === 'tr' && n.props.className === 'permit-outstanding'));
+  assert.ok(nodes.some(n => n.props.className === 'permit-expired' && n.props.children === 'Scadute'));
+  assert.ok(nodes.some(n => n.type === 'td' && n.props.children === '12/11/2026'));
+  assert.ok(nodes.some(n => n.type === 'li' && n.props.children.join('').includes('19/10/2026 · 4ª ora')));
+  a.go('/'); a.render();
+  a.requests.shift().resolve(data); await settle();
+  a.go('/permessi'); a.render();
+  assert.equal(a.requests.shift().url, '/api/permessi');
 });

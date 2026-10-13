@@ -47,3 +47,19 @@ test('occupied candidates require confirmation and hard blocked buttons stay dis
     assert.ok(nodes.some(n => n.props.className === 'type-chip palette-purple'));
   }
 });
+
+
+test('RP groups retain server ordering, badges, explanations and blocked transfer state', () => {
+  const c = component('src/CandidateDrawer.tsx'); const assigned = [];
+  const nodes = c.render({ open: { h: 4, c: '1A', ids: [], sede: 'centrale' }, name: x => x, busy: false, onClose() {}, onAssign: id => assigned.push(id), cands: [
+    { id: 'good', name: 'Good', ty: 'RP', convenient: true, typeLabel: 'RP · Recupero permesso', tag: 'Ora favorevole · 2 ore disponibili', why: '', total: 0, today: 0 },
+    { id: 'normal', name: 'Normal', ty: 'D', why: '', total: 0, today: 0 },
+    { id: 'occupied', name: 'Occupied', ty: 'C', exceptional: true, why: '', total: 0, today: 0 },
+    { id: 'other', name: 'Other', ty: 'RP', convenient: false, why: 'Cambio sede senza intervallo', total: 0, today: 0 },
+  ] });
+  const buttons = nodes.filter(n => n.type === 'button' && n.props.className?.includes('c1'));
+  assert.equal(buttons[3].props.disabled, true);
+  buttons[0].props.onClick(); assert.deepEqual(assigned, ['good']);
+  assert.equal(nodes.filter(n => n.type === 'h3').map(n => n.props.children).join('|'), 'Recuperi permesso · ore favorevoli|Solo in caso di necessità|Altri recuperi permesso');
+  assert.ok(nodes.some(n => n.props.className === 'type-chip type-rp'));
+});

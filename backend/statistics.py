@@ -59,7 +59,7 @@ def sync(ds, state, facts, days=None, reconstructed=False):
                     row['eligible'] = previous['eligible']
                 else:
                     try:
-                        validate_assignment(ds, state, day, row['key'], a['v'], exceptional=True)
+                        validate_assignment(ds, state, day, row['key'], a['v'], exceptional=True, saved=True)
                     except ValueError:
                         row['eligible'] = False
                 row['valid'] = row['eligible']

@@ -16,6 +16,8 @@ export type Row = {
   sede: string | null;
 };
 export type Candidate = {
+  convenient?: boolean;
+  rpHours?: number;
   exceptional?: boolean;
   typeLabel?: string;
   color?: string;
@@ -35,7 +37,8 @@ export type Candidate = {
   enable?: boolean;
   info?: string;
 };
-export type Assignment = { v: string; t: string; c: string };
+export type PermitRecovery = { id: string; deadline: string; recovered: number; remaining: number; expired: boolean; recoveries: { date: string; h: number; key: string }[] };
+export type Assignment = { v: string; t: string; c: string; permitId?: string };
 export type Data = {
   dataset: {
     teachers: Record<string, Teacher>;

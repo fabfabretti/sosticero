@@ -1054,3 +1054,12 @@ td.none {
 .stats-cell-tooltip ul { list-style: none; padding: 0; margin: 0; }
 .stats-cell-tooltip li { padding: 2px 0; }
 @media print { .stats-cell-tooltip { display: none; } }
+
+/* Recovery states retain text labels independently of highlighting. */
+.permit-outstanding td:first-child { font-weight: 700; border-left: 3px solid var(--acc); }
+.permit-expired { display: block; font-size: 12px; color: var(--ink); }
+.recovery-details { margin: 0; padding-left: 16px; min-width: 135px; }
+.type-rp { background: var(--acc); color: var(--on); }
+
+.permessi > main, .permessi > aside { min-width: 0; }
+@media (max-width: 900px) { .permessi { grid-template-columns: minmax(0, 1fr); } }

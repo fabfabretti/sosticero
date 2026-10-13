@@ -8,7 +8,7 @@ from .domain import normalize_dataset, rows, candidates, validate_assignment, de
 from .storage import Store, EMPTY
 from . import backup
 from .hour_types import merge_types, validate_types
-from . import statistics
+from . import statistics, recovery
 
 
 class Edit(BaseModel):
@@ -87,6 +87,12 @@ def create_app(path=None, seed=None):
             # Don't prevent app from starting on backup failure
             print(f'Backup failed: {e}')
 
+    with store.connect() as db:
+        db.execute('BEGIN IMMEDIATE')
+        state = store.read(db, 'state', EMPTY)
+        if recovery.migrate(state):
+            store.write(db, 'state', state)
+
     initialize_statistics()
 
     @app.exception_handler(ValueError)
@@ -129,6 +135,7 @@ def create_app(path=None, seed=None):
         state = store.read(db, 'state', EMPTY)
         state.setdefault('permessi', {})
         state.setdefault('permitRequests', {})
+        state.setdefault('permitIds', {})
         return ds, state
 
     def save_state(db, ds, state, days):
@@ -152,7 +159,7 @@ def create_app(path=None, seed=None):
         issues = []
         for k, a in state['asg'].get(d, {}).items():
             try:
-                validate_assignment(ds, state, d, k, a['v'])
+                validate_assignment(ds, state, d, k, a['v'], saved=True)
             except ValueError as e:
                 issues.append({'key': k, 'message': str(e)})
         return dict(dataset=ds, state=state, rows=rs, issues=issues, autoDis={d: auto_availability(ds, state, d)})
@@ -161,7 +168,8 @@ def create_app(path=None, seed=None):
     def get_permits():
         with store.connect() as db:
             ds, state = load(db)
-        return dict(dataset=ds, permessi=state['permessi'], permitRequests=state['permitRequests'])
+        summaries, balances = recovery.summary(state)
+        return dict(dataset=ds, permessi=state['permessi'], permitRequests=state['permitRequests'], recoveries=summaries, balances=balances)
 
     @app.post('/api/permessi')
     def save_permit(e: Permit):
@@ -175,7 +183,12 @@ def create_app(path=None, seed=None):
             permits = state['permessi']
             if source and source[1] not in permits.get(source[0], {}):
                 raise ValueError('Permesso originale non più presente.')
+            old_day, old_teacher = source or (d, e.id)
+            pid = state['permitIds'].get(old_day, {}).get(old_teacher)
+            if pid:
+                recovery.protect(state, pid, e.id, d, e.hours)
             if e.hours is None:
+                state['permitIds'].get(d, {}).pop(e.id, None)
                 permits.get(d, {}).pop(e.id, None)
                 state['permitRequests'].get(d, {}).pop(e.id, None)
             else:
@@ -188,12 +201,17 @@ def create_app(path=None, seed=None):
                 if len(e.hours) > maximum:
                     raise ValueError(f'Massimo giornaliero: {maximum} ore di permesso.')
                 if source:
+                    state['permitIds'].get(source[0], {}).pop(source[1], None)
                     permits[source[0]].pop(source[1])
                     state['permitRequests'].get(source[0], {}).pop(source[1], None)
                 permits.setdefault(d, {})[e.id] = sorted(e.hours)
                 state['permitRequests'].get(d, {}).pop(e.id, None)
                 if e.requested_on:
                     state['permitRequests'].setdefault(d, {})[e.id] = e.requested_on.isoformat()
+            recovery.migrate(state)
+            if e.hours is not None and pid:
+                state['permitIds'][d][e.id] = pid
+            recovery.validate(state)
             save_state(db, ds, state, {d, source[0]} if source else {d})
         return {'ok': True}
 
@@ -270,7 +288,12 @@ def create_app(path=None, seed=None):
             if e.value is None:
                 assignments.pop(e.key, None)
             else:
-                assignments[e.key] = validate_assignment(ds, state, e.day.isoformat(), e.key, e.value, policies(db, ds), e.exceptional)
+                old = assignments.get(e.key)
+                unchanged = old and old['v'] == e.value and old.get('t') == 'RP'
+                if not unchanged:
+                    assignments.pop(e.key, None)
+                assignments[e.key] = validate_assignment(ds, state, e.day.isoformat(), e.key, e.value, policies(db, ds), e.exceptional, saved=bool(unchanged))
+            recovery.validate(state)
             save_state(db, ds, state, [e.day.isoformat()])
         return {'ok': True}
 
@@ -280,14 +303,14 @@ def create_app(path=None, seed=None):
             ds, state = load(db)
             rules = policies(db, ds)
             facts = store.read(db, 'statistics', statistics.empty())
-        return dict(schema=1, datasetId='v1:'+','.join(sorted(ds['teachers'])), hourTypes=rules, statistics=facts, **state)
+        return dict(schema=2, datasetId='v1:'+','.join(sorted(ds['teachers'])), hourTypes=rules, statistics=facts, **state)
 
     @app.post('/api/import')
     def import_state(data: dict):
         with store.connect() as db:
             db.execute('BEGIN IMMEDIATE')
             ds, _ = load(db)
-            if data.get('schema') != 1 or data.get('datasetId') != 'v1:'+','.join(sorted(ds['teachers'])):
+            if type(data.get('schema')) is not int or data['schema'] not in (1, 2) or data.get('datasetId') != 'v1:'+','.join(sorted(ds['teachers'])):
                 raise ValueError('Archivio non compatibile.')
             rules = validate_types(data['hourTypes']) if 'hourTypes' in data else None
             state = {k: data.get(k, {}) for k in EMPTY}
@@ -299,7 +322,10 @@ def create_app(path=None, seed=None):
                     if not isinstance(entries, dict):
                         raise ValueError('Archivio non valido.')
                     for i, value in entries.items():
-                        if group == 'permitRequests':
+                        if group == 'permitIds':
+                            if i not in state['permessi'].get(d, {}) or not isinstance(value, str):
+                                raise ValueError('Identità permesso non valida.')
+                        elif group == 'permitRequests':
                             if i not in state['permessi'].get(d, {}) or not isinstance(value, str):
                                 raise ValueError('Data richiesta senza permesso valido.')
                             date.fromisoformat(value)
@@ -313,6 +339,11 @@ def create_app(path=None, seed=None):
                                 raise ValueError('Sede non valida.')
                         elif not isinstance(value, dict) or ('exceptional' in value and type(value['exceptional']) is not bool) or value.get('v') not in (*ds['teachers'], 'DIR', 'ENTRA', 'ESCE', 'UNCOVERED') or not isinstance(value.get('t'), str) or len(i.split('|')) != 3 or i.split('|')[0] not in ds['teachers'] or not i.split('|')[1].isdigit() or int(i.split('|')[1]) not in HOURS or value.get('c') != i.split('|')[2]:
                             raise ValueError('Assegnazione non valida.')
+            if data['schema'] == 1:
+                if data.get('permitIds') or any(a.get('t') == 'RP' or 'permitId' in a for entries in state['asg'].values() for a in entries.values()):
+                    raise ValueError('Archivio recuperi richiede schema 2.')
+                recovery.migrate(state)
+            recovery.validate(state)
             facts = statistics.validate(data['statistics'], ds, state) if 'statistics' in data else statistics.sync(ds, state, statistics.empty(), reconstructed=True)
             if rules is not None:
                 store.write(db, 'hourTypes', merge_types(ds, rules))
@@ -350,6 +381,11 @@ def create_app(path=None, seed=None):
             if not backup_path:
                 raise ValueError('Backup non trovato')
             backup.restore_backup(str(database), backup_path)
+            with store.connect() as db:
+                db.execute('BEGIN IMMEDIATE')
+                state = store.read(db, 'state', EMPTY)
+                if recovery.migrate(state):
+                    store.write(db, 'state', state)
             initialize_statistics()
             return {'ok': True}
         except Exception as e:

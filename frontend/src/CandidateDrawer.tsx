@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import type { Row, Candidate } from "./types";
 const category = (c: Candidate) =>
   ({
+    RP: "rp",
     C: "comp",
     D: "dis",
     POT:
@@ -94,6 +95,7 @@ export function CandidateDrawer({
           const cross = !!(c.loc && open.sede && c.loc !== open.sede);
           return (
             <div key={c.id}>
+            {c.ty === "RP" && cands[index - 1]?.ty !== "RP" && <h3 className="fallback-title">{c.convenient && !c.why ? "Recuperi permesso · ore favorevoli" : "Altri recuperi permesso"}</h3>}
             {c.exceptional && !cands[index - 1]?.exceptional && <h3 className="fallback-title">Solo in caso di necessità</h3>}
             <button
               disabled={!!c.why || busy || c.enable === false}

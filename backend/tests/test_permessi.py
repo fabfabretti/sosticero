@@ -115,6 +115,8 @@ class PermessiTest(unittest.TestCase):
         self.client.post('/api/permessi', json=dict(day=DAY, id='absent', hours=None))
         backup.restore_backup(str(self.path), saved['path'])
         self.assertEqual(self.register(), archive['permessi'])
+        archive['schema'] = 1
+        del archive['permitIds']
         del archive['permessi']
         del archive['statistics']  # Simulate an archive from before permits and statistical facts.
         self.assertEqual(self.client.post('/api/import', json=archive).status_code, 200)

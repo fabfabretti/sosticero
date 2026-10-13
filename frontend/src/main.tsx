@@ -99,7 +99,7 @@ function HourHelp({ text, children }: { text: string; children: React.ReactNode 
 }
 function Permessi() {
   const [sort, setSort] = useState<{ field: "date" | "requested"; ascending: boolean }>({ field: "date", ascending: false });
-  const [data, setData] = useState<{ dataset: Data["dataset"]; permessi: Record<string, Record<string, number[]>>; permitRequests?: Record<string, Record<string, string>> }>();
+  const [data, setData] = useState<{ dataset: Data["dataset"]; permessi: Record<string, Record<string, number[]>>; permitRequests?: Record<string, Record<string, string>>; recoveries?: Record<string, Record<string, import("./types").PermitRecovery>>; balances?: Record<string, { remaining: number; expired: number; eligible: number }> }>();
   const [day, setDay] = useState(localDate(new Date()));
   const [requestedOn, setRequestedOn] = useState("");
   const [teacher, setTeacher] = useState("");
@@ -148,7 +148,7 @@ function Permessi() {
     }
   };
   const records = Object.entries(data?.permessi || {}).flatMap(([date, teachers]) =>
-    Object.entries(teachers).map(([id, periods]) => ({ date, id, periods, requested: data?.permitRequests?.[date]?.[id] || "" })),
+    Object.entries(teachers).map(([id, periods]) => ({ date, id, periods, recovery: data?.recoveries?.[date]?.[id], requested: data?.permitRequests?.[date]?.[id] || "" })),
   ).sort((a, b) => {
     const left = a[sort.field], right = b[sort.field];
     return Number(!left) - Number(!right) || (sort.ascending ? 1 : -1) * left.localeCompare(right) || b.date.localeCompare(a.date) || (data?.dataset.teachers[a.id]?.name || a.id).localeCompare(data?.dataset.teachers[b.id]?.name || b.id);
@@ -195,13 +195,17 @@ function Permessi() {
     </aside>
     <main>
     <h1>Permessi</h1>
-    <p className="sub">Registra le ore di permesso e consulta le ore da recuperare.</p>
+    <p className="sub">Recupero entro un mese dal permesso, scadenza inclusa. Le assegnazioni RP future riservano già le ore e sono elencate per data.</p>
     {!data && !error && <p role="status">Caricamento…</p>}
-    <div className="permit-table"><table><thead><tr><th>Docente</th>{([ ["date", "Data permesso"], ["requested", "Data richiesta"] ] as const).map(([field, title]) => <th key={field} aria-sort={sort.field === field ? (sort.ascending ? "ascending" : "descending") : "none"}><button className="lk" onClick={() => setSort({ field, ascending: sort.field === field ? !sort.ascending : false })}>{title}{sort.field === field ? (sort.ascending ? " ↑" : " ↓") : " ↕"}</button></th>)}{["Ore di permesso", "Ore da recuperare", "Azioni"].map(title => <th key={title}>{title}</th>)}</tr></thead>
-      <tbody>{records.map(r => <tr key={r.date + r.id}>
+    <div className="permit-table"><table><thead><tr><th>Docente</th>{([ ["date", "Data permesso"], ["requested", "Data richiesta"] ] as const).map(([field, title]) => <th key={field} aria-sort={sort.field === field ? (sort.ascending ? "ascending" : "descending") : "none"}><button className="lk" onClick={() => setSort({ field, ascending: sort.field === field ? !sort.ascending : false })}>{title}{sort.field === field ? (sort.ascending ? " ↑" : " ↓") : " ↕"}</button></th>)}{["Ore di permesso", "Scadenza recupero", "Ore recuperate", "Dettaglio recuperi", "Ore da recuperare", "Azioni"].map(title => <th key={title}>{title}</th>)}</tr></thead>
+      <tbody>{records.map(r => <tr key={r.date + r.id} className={(data?.balances?.[r.id]?.remaining ?? r.periods.length) > 0 ? "permit-outstanding" : undefined}>
         <td>{data?.dataset.teachers[r.id]?.name || r.id}</td><td>{r.date.split("-").reverse().join("/")}</td>
         <td>{data?.permitRequests?.[r.date]?.[r.id]?.split("-").reverse().join("/") || "—"}</td>
-        <td>{r.periods.map(h => <span className="permit-period" key={h}>{h}ª{!scheduled(r.id, r.date, h) && warning(`${h}ª ora: nessuna attività prevista nell’orario per questa ora`)}</span>)}</td><td>{r.periods.length}</td>
+        <td>{r.periods.map(h => <span className="permit-period" key={h}>{h}ª{!scheduled(r.id, r.date, h) && warning(`${h}ª ora: nessuna attività prevista nell’orario per questa ora`)}</span>)}</td>
+        <td>{r.recovery?.deadline.split("-").reverse().join("/") || "—"}</td>
+        <td>{r.recovery?.recovered ?? 0}</td>
+        <td>{r.recovery?.recoveries.length ? <ul className="recovery-details">{r.recovery.recoveries.map(item => <li key={item.date + item.key}>{item.date.split("-").reverse().join("/")} · {item.h}ª ora</li>)}</ul> : "—"}</td>
+        <td>{r.recovery?.remaining ?? r.periods.length}{r.recovery?.expired && <strong className="permit-expired">Scadute</strong>}</td>
         <td className="permit-actions"><button className="lk" aria-label={`Modifica permesso di ${data?.dataset.teachers[r.id]?.name || r.id}`} title="Modifica permesso" disabled={busy} onClick={() => { setDay(r.date); setRequestedOn(data?.permitRequests?.[r.date]?.[r.id] || ""); selectTeacher(r.id); setSelected(r.periods); setOriginal({ day: r.date, id: r.id }); setError(""); }}><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15Z" fill="none" stroke="currentColor" strokeWidth="1.6"/></svg></button>
         <button className="x" aria-label={`Rimuovi permesso di ${data?.dataset.teachers[r.id]?.name || r.id}`} title="Rimuovi permesso" disabled={busy} onClick={() => void save({ day: r.date, id: r.id, hours: null })}>×</button></td>
       </tr>)}</tbody></table></div>
@@ -938,10 +942,10 @@ function Supplenze() {
             </tbody>
           </table>
           <p className="note">
-            Caselle vuote nell’orario non sono automaticamente disponibilità.
-            Priorità: compresenza, POT/disposizione stessa sede, UTC/UTS/DI.S
+            Ore libere utilizzabili come RP solo con permessi da recuperare entro scadenza.
+            Priorità: RP in ore favorevoli, compresenza, POT/disposizione stessa sede, UTC/UTS/DI.S
             stessa sede, rottura compresenza, dirigente, ingresso/uscita,
-            opzioni fuori sede. Le opzioni manuali e gli spostamenti richiedono
+            opzioni fuori sede, altri RP. Le opzioni manuali e gli spostamenti richiedono
             verifica.
           </p>
         </main>

@@ -2,6 +2,7 @@
 from datetime import date
 import re
 from .hour_types import canonical, activity_codes
+from . import recovery
 
 HOURS = list(range(1, 8))
 DAYS = ['lun', 'mar', 'mer', 'gio', 'ven', 'sab', 'dom']
@@ -186,13 +187,68 @@ def eligibility(ds, state, day, row, teacher, policies=None):
                 typeLabel=label, color=policy[0]['color'] if policy else None, exceptional=exceptional)
 
 
+def rp_context(ds, state, day, row, teacher):
+    h, site = row['h'], row['sede']
+    commitments, teaching = {}, {}
+    absent = absences(state, day).get(teacher, [])
+    for period in HOURS:
+        l = lesson(ds, teacher, day, period)
+        if not l or period in absent:
+            continue
+        if l['classes'] and all(class_out(state, day, c, period, row['k']) for c in l['classes']):
+            continue
+        commitments[period] = l['site']
+        if l['classes'] and not activity_codes(l):
+            teaching[period] = l['site']
+    for key, a in state['asg'].get(day, {}).items():
+        if key != row['k'] and a['v'] == teacher:
+            period = int(key.split('|')[1])
+            origin = lesson(ds, key.split('|')[0], day, period)
+            commitments[period] = origin['site'] if origin else None
+    sides = []
+    before = [p for p in commitments if p < h]
+    after = [p for p in commitments if p > h]
+    if before:
+        sides.append(max(before))
+    if after:
+        sides.append(min(after))
+    for period in sides:
+        other = commitments[period]
+        if site and other and site != other and not any(min(h, period) <= b < max(h, period) for b in (2, 4)):
+            return False, 'Cambio sede senza intervallo', ''
+    near = h - 1 in teaching or h + 1 in teaching or (any(p < h for p in teaching) and any(p > h for p in teaching))
+    known = bool(site) and bool(teaching) and all(teaching[p] for p in teaching if p == h - 1 or p == h + 1)
+    known = known and all(commitments[p] for p in sides)
+    explanation = 'Sede da verificare' if near and not known else 'Ora favorevole' if near else 'Fuori dalle ore favorevoli'
+    return bool(near and known), '', explanation
+
+
+def rp_candidate(ds, state, day, row, teacher, permits):
+    i, h = teacher['id'], row['h']
+    if i in row['ids'] or teacher.get('retired') or lesson(ds, i, day, h) or h in state['dis'].get(day, {}).get(i, []):
+        return None
+    available = recovery.eligible(permits, i, day)
+    if not available:
+        return None
+    convenient, why, explanation = rp_context(ds, state, day, row, i)
+    if h in absences(state, day).get(i, []):
+        why = 'Assente'
+    elif any(k != row['k'] and int(k.split('|')[1]) == h and a['v'] == i for k, a in state['asg'].get(day, {}).items()):
+        why = 'Già assegnato in questa ora'
+    balance = sum(p['remaining'] for p in available)
+    return dict(id=i, name=teacher['name'], ty='RP', loc=None, why=why,
+                tag=why or f'{explanation} · {balance} ' + ('ora disponibile' if balance == 1 else 'ore disponibili'), typeLabel='RP · Recupero permesso',
+                convenient=convenient, rpHours=balance, permitId=available[0]['id'])
+
+
 def candidates(ds, state, day, row, policies=None):
     weekly = {}
     for k, l in ds['lessons'].items():
         weekly.setdefault(k.split('|')[0], set()).update(l['classes'])
     result = []
+    permits = recovery.ledger(state, (day, row['k']))
     for t in ds['teachers'].values():
-        c = eligibility(ds, state, day, row, t, policies)
+        c = eligibility(ds, state, day, row, t, policies) or rp_candidate(ds, state, day, row, t, permits)
         if not c:
             continue
         cls = sorted(weekly.get(t['id'], set()))
@@ -211,13 +267,21 @@ def candidates(ds, state, day, row, policies=None):
         c['today'] = sum(a['v'] == c['id'] for a in state['asg'].get(day, {}).values()) if c['id'] in ds['teachers'] else 0
         c['total'] = sum(a['v'] == c['id'] for assignments in state['asg'].values() for a in assignments.values()) if c['id'] in ds['teachers'] else 0
         c['tier'] = rank_candidate(c, row)
-    return sorted(result, key=lambda c: (bool(c.get('exceptional')), bool(c['why']), c['tier'], c['today'], c['total'], c['name'].casefold(), c['id']))
+    return sorted(result, key=lambda c: ((0 if c.get('convenient') and not c['why'] else 2) if c['ty'] == 'RP' else 1, bool(c.get('exceptional')), bool(c['why']), c['tier'], c['today'], c['total'], c['name'].casefold(), c['id']))
 
 
-def validate_assignment(ds, state, day, key, value, policies=None, exceptional=False):
+def validate_assignment(ds, state, day, key, value, policies=None, exceptional=False, saved=False):
     row = next((r for r in rows(ds, state, day) if r['k'] == key), None)
     if not row:
         raise ValueError('Supplenza non più presente nell’orario o nelle assenze.')
+    old = state['asg'].get(day, {}).get(key)
+    if saved and old and old.get('t') == 'RP' and old['v'] == value:
+        recovery.validate(state)
+        if row['h'] in absences(state, day).get(value, []):
+            raise ValueError('Assente')
+        if any(k != key and int(k.split('|')[1]) == row['h'] and a['v'] == value for k, a in state['asg'].get(day, {}).items()):
+            raise ValueError('Già assegnato in questa ora')
+        return dict(old)
     c = next((c for c in candidates(ds, state, day, row, policies) if c['id'] == value), None)
     if not c or c['why']:
         raise ValueError(c['why'] if c else 'Candidato non disponibile.')
@@ -228,6 +292,8 @@ def validate_assignment(ds, state, day, key, value, policies=None, exceptional=F
     if value == 'ESCE' and not c.get('enable'):
         raise ValueError('Esce prima disponibile solo all’ultima ora effettiva della classe.')
     result = dict(v=value, t=c['ty'], c=row['c'])
+    if c['ty'] == 'RP':
+        result['permitId'] = c['permitId']
     if c.get('exceptional'):
         result['exceptional'] = True
     return result
