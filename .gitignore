@@ -21,6 +21,10 @@ dist/
 *.tsbuildinfo
 .vite/
 
+# PyInstaller scratch
+/build/
+*.spec
+
 # Operational data / SQLite (keep the folder, ignore its contents)
 /data/*
 !/data/.gitkeep
