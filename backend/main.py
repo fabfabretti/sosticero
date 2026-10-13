@@ -3,10 +3,11 @@ from datetime import date, timedelta, datetime
 from pathlib import Path
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, StrictInt
+from pydantic import BaseModel, StrictInt, StrictBool
 from .domain import normalize_dataset, rows, candidates, validate_assignment, default_availability, auto_availability, HOURS, SITES, lesson, validate_permit
 from .storage import Store, EMPTY
 from . import backup
+from .hour_types import merge_types, validate_types
 
 
 class Edit(BaseModel):
@@ -30,6 +31,7 @@ class Permit(BaseModel):
 
 
 class Assignment(BaseModel):
+    exceptional: StrictBool = False
     day: date
     key: str
     value: str | None = None
@@ -82,6 +84,34 @@ def create_app(path=None, seed=None):
         from fastapi.responses import JSONResponse
         return JSONResponse(status_code=422, content={'detail': str(exc)})
 
+    def policies(db, ds):
+        old = store.read(db, "hourTypes", {})
+        merged = merge_types(ds, old)
+        if merged != old:
+            store.write(db, "hourTypes", merged)
+        return merged
+
+    @app.get("/api/hour-types")
+    def get_types():
+        with store.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            ds = store.read(db, "dataset")
+            return dict(types=policies(db, ds), needsReimport=bool(ds and any("activities" not in l for l in ds["lessons"].values())))
+
+    @app.post("/api/hour-types")
+    def update_type(data: dict):
+        with store.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            current = policies(db, store.read(db, "dataset"))
+            key = data.get("id")
+            if not isinstance(key, str) or key not in current or set(data) != {"id", "available", "visible", "school"}:
+                raise ValueError("Tipo di ora non valido.")
+            value = dict(current[key], **{k: data[k] for k in ("available", "visible", "school")})
+            validate_types({key: value})
+            current[key] = value
+            store.write(db, "hourTypes", current)
+            return current
+
     def load(db):
         ds = store.read(db, 'dataset')
         if ds is None:
@@ -95,6 +125,7 @@ def create_app(path=None, seed=None):
     def get_day(day: date):
         with store.connect() as db:
             ds, state = load(db)
+            rules = policies(db, ds)
         d = day.isoformat()
         rs = rows(ds, state, d)
         issues = []
@@ -157,6 +188,7 @@ def create_app(path=None, seed=None):
                     if i not in ds['teachers']:
                         ds['teachers'][i] = dict(t, retired=True)
             store.write(db, 'dataset', ds)
+            policies(db, ds)
         return {'ok': True}
 
     @app.post('/api/entries')
@@ -200,10 +232,11 @@ def create_app(path=None, seed=None):
     def get_candidates(day: date, key: str):
         with store.connect() as db:
             ds, state = load(db)
+            rules = policies(db, ds)
         row = next((r for r in rows(ds, state, day.isoformat()) if r['k'] == key), None)
         if not row:
             raise ValueError('Supplenza non presente.')
-        return candidates(ds, state, day.isoformat(), row)
+        return candidates(ds, state, day.isoformat(), row, rules)
 
     @app.post('/api/assignments')
     def assign(e: Assignment):
@@ -214,7 +247,7 @@ def create_app(path=None, seed=None):
             if e.value is None:
                 assignments.pop(e.key, None)
             else:
-                assignments[e.key] = validate_assignment(ds, state, e.day.isoformat(), e.key, e.value)
+                assignments[e.key] = validate_assignment(ds, state, e.day.isoformat(), e.key, e.value, policies(db, ds), e.exceptional)
             store.write(db, 'state', state)
         return {'ok': True}
 
@@ -222,7 +255,8 @@ def create_app(path=None, seed=None):
     def export():
         with store.connect() as db:
             ds, state = load(db)
-        return dict(schema=1, datasetId='v1:'+','.join(sorted(ds['teachers'])), **state)
+            rules = policies(db, ds)
+        return dict(schema=1, datasetId='v1:'+','.join(sorted(ds['teachers'])), hourTypes=rules, **state)
 
     @app.post('/api/import')
     def import_state(data: dict):
@@ -231,6 +265,7 @@ def create_app(path=None, seed=None):
             ds, _ = load(db)
             if data.get('schema') != 1 or data.get('datasetId') != 'v1:'+','.join(sorted(ds['teachers'])):
                 raise ValueError('Archivio non compatibile.')
+            rules = validate_types(data['hourTypes']) if 'hourTypes' in data else None
             state = {k: data.get(k, {}) for k in EMPTY}
             for group, dates in state.items():
                 if not isinstance(dates, dict):
@@ -252,8 +287,10 @@ def create_app(path=None, seed=None):
                         elif group == 'disSites':
                             if i not in ds['teachers'] or value not in (*SITES, None, ''):
                                 raise ValueError('Sede non valida.')
-                        elif not isinstance(value, dict) or value.get('v') not in (*ds['teachers'], 'DIR', 'ENTRA', 'ESCE') or not isinstance(value.get('t'), str) or len(i.split('|')) != 3 or i.split('|')[0] not in ds['teachers'] or not i.split('|')[1].isdigit() or int(i.split('|')[1]) not in HOURS or value.get('c') != i.split('|')[2]:
+                        elif not isinstance(value, dict) or ('exceptional' in value and type(value['exceptional']) is not bool) or value.get('v') not in (*ds['teachers'], 'DIR', 'ENTRA', 'ESCE') or not isinstance(value.get('t'), str) or len(i.split('|')) != 3 or i.split('|')[0] not in ds['teachers'] or not i.split('|')[1].isdigit() or int(i.split('|')[1]) not in HOURS or value.get('c') != i.split('|')[2]:
                             raise ValueError('Assegnazione non valida.')
+            if rules is not None:
+                store.write(db, 'hourTypes', merge_types(ds, rules))
             store.write(db, 'state', state)
         return {'ok': True}
 

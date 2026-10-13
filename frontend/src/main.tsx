@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./style.css";
 import type { Row, Candidate, Data } from "./types";
+import { HourTypes } from "./HourTypes";
 import { CandidateDrawer } from "./CandidateDrawer";
 import { HashRouter, Link, useLocation } from "react-router";
 const norm = (s: string) =>
@@ -303,6 +304,7 @@ function Settings() {
         </div>
         <div className="db-status">Dati salvati nel database SQLite.</div>
       </section>
+      <HourTypes key={JSON.stringify(data?.dataset)} api={api} />
       <BackupSection />
     </section>
   );
@@ -703,6 +705,7 @@ function Supplenze() {
             </div>
           </div>
           <section>
+            <h2>Aggiungi assenti o a disposizione</h2>
             <div className="sw">
               <input
                 id="q"
@@ -941,9 +944,19 @@ function Supplenze() {
             ++candidateRequest.current;
             setOpen(undefined);
           }}
-          onAssign={(value) =>
-            void mutate("assignments", { day, key: open.k, value })
-          }
+          onAssign={async (value, exceptional) => {
+            const selectedRow = open;
+            ++candidateRequest.current; setOpen(undefined);
+            setBusy(true); setError("");
+            try {
+              await api("assignments", { day, key: selectedRow.k, value, exceptional });
+              ++candidateRequest.current; setOpen(undefined); await refresh();
+            } catch (e) {
+              setError(String(e));
+              try { setCands(await api<Candidate[]>("candidates?" + new URLSearchParams({ day, key: selectedRow.k }))); setOpen(selectedRow); }
+              catch { setOpen(undefined); }
+            } finally { setBusy(false); }
+          }}
         />
       )}
     </>

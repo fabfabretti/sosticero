@@ -245,7 +245,7 @@ class PersistenceTest(unittest.TestCase):
 
     def test_timetable_change_flags_but_preserves_assignment(self):
         self.post('entries',day=DAY,group='abs',id='absent',hours=[2])
-        self.post('assignments',day=DAY,key='absent|2|1A',value='co')
+        self.post('assignments',day=DAY,key='absent|2|1A',value='co',exceptional=True)
         changed=fixture()
         changed['orario'][1]['sede']='succursale'
         self.assertEqual(self.client.post('/api/timetable',json=changed).status_code,200)

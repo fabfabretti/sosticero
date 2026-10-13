@@ -16,6 +16,9 @@ export type Row = {
   sede: string | null;
 };
 export type Candidate = {
+  exceptional?: boolean;
+  typeLabel?: string;
+  color?: string;
   id: string;
   name: string;
   ty: string;

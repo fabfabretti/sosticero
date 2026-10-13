@@ -1,6 +1,7 @@
 """Scheduling rules: plain Python values, no HTTP or database dependencies."""
 from datetime import date
 import re
+from .hour_types import canonical, activity_codes
 
 HOURS = list(range(1, 8))
 DAYS = ['lun', 'mar', 'mer', 'gio', 'ven', 'sab', 'dom']
@@ -76,9 +77,18 @@ def normalize_dataset(data):
             raise ValueError('Sede non valida.')
         if not isinstance(l.get('attivita_riconosciute') or [], list) or l.get('aula') is not None and not isinstance(l['aula'], str):
             raise ValueError('Attività o aula non valida.')
-        tokens = [re.sub(r'[.\s]', '', str(v)).upper() for v in (l.get('attivita_riconosciute') or []) + [l.get('attivita_originale', '')]]
+        labels = (l.get('attivita_riconosciute') or []) + [l.get('attivita_originale') or '']
+        if any(not isinstance(v, str) or len(v) > 200 for v in labels):
+            raise ValueError('Attività non valida.')
+        original = l.get('attivita_originale') or ''
+        code_labels = l.get('attivita_riconosciute') or []
+        # Original text also contains teacher names and room/class annotations.
+        if not code_labels and original.strip() and (not classes or re.fullmatch(r'[A-Za-z.]{2,8}', original.strip())):
+            code_labels = [original]
+        tokens = list(dict.fromkeys(canonical(v) for v in code_labels if canonical(v)))
         lessons[key] = dict(classes=classes, room=l.get('aula'), site=l.get('sede'),
-                            special=next((v for v in tokens if v in ('POT', 'UTC', 'UTS', 'DIS')), ''))
+                            special=next((v for v in tokens if v in ('POT', 'UTC', 'UTS', 'DIS')), ''),
+                            activities=tokens, activityLabels=labels)
     warnings = data.get('anomalie') or []
     if not isinstance(warnings, list):
         raise ValueError('Anomalie non valide.')
@@ -131,43 +141,58 @@ def rows(ds, state, day):
 def rank_candidate(candidate, row):
     loc = candidate['loc']
     index = 0 if loc and loc == row['sede'] else 1 if loc and row['sede'] else 2
-    return PRIORITIES[candidate['ty']][index]
+    return PRIORITIES.get(candidate['ty'], PRIORITIES['POT'])[index]
 
 
-def eligibility(ds, state, day, row, teacher):
+def eligibility(ds, state, day, row, teacher, policies=None):
     i, h = teacher['id'], row['h']
-    if i in row['ids']:
+    if i in row['ids'] or teacher.get('retired'):
         return None
     l = lesson(ds, i, day, h)
     manual = h in state['dis'].get(day, {}).get(i, [])
     ty = ''
-    if manual:
-        ty = 'D'
-    elif l and row['c'] in l['classes'] and l['site'] and l['site'] == row['sede']:
-        ty = 'C'
-    elif l and l['classes'] and all(class_out(state, day, c, h, row['k']) for c in l['classes']):
-        ty = 'D'
-    elif l and not l['classes'] and l['special']:
-        ty = l['special']
+    keys = []
+    released = l and l['classes'] and all(class_out(state, day, c, h, row['k']) for c in l['classes'])
+    if manual or released:
+        ty, keys = 'D', ['derived:available']
+    elif l and activity_codes(l):
+        ty = l.get('special') if policies is None and l.get('special') else activity_codes(l)[0]
+        keys = ['code:' + code for code in activity_codes(l)]
+    elif policies is None and l and row['c'] in l['classes'] and l['site'] and l['site'] == row['sede']:
+        ty, keys = 'C', ['derived:itp']
     elif l and l['classes'] and teacher['role'] == 'sostegno':
-        ty = 'TC'
+        ty, keys = 'TC', ['derived:support']
+    elif l and l['classes'] and teacher['role'].upper() == 'ITP':
+        shared = any(k != f"{i}|{DAYS[date.fromisoformat(day).weekday()]}|{h}" and k.endswith(f"|{DAYS[date.fromisoformat(day).weekday()]}|{h}") and set(other['classes']) & set(l['classes']) for k, other in ds['lessons'].items())
+        if shared:
+            if row['c'] not in l['classes'] or not l['site'] or l['site'] != row['sede']:
+                return None
+            ty, keys = 'C', ['derived:itp']
+    if not ty and policies is not None and l and l['classes']:
+        ty, keys = 'LESSON', ['derived:lesson']
     if not ty:
         return None
+    policy = [policies[k] for k in keys] if policies is not None else []
+    if policy and not all(p['visible'] for p in policy):
+        return None
+    exceptional = bool(policy and not all(p['available'] for p in policy))
     loc = state['disSites'].get(day, {}).get(i) if manual else None
     loc = loc or ('centrale' if ty == 'UTC' else 'succursale' if ty == 'UTS' else l['site'] if l else None)
     why = 'Assente' if h in absences(state, day).get(i, []) else ''
     if not why and any(k != row['k'] and int(k.split('|')[1]) == h and a['v'] == i for k, a in state['asg'].get(day, {}).items()):
         why = 'Già assegnato in questa ora'
-    return dict(id=i, name=teacher['name'], ty=ty, loc=loc, why=why, tag=why or LABELS[ty])
+    label = ' / '.join(p['label'] for p in policy) or LABELS.get(ty, ty)
+    return dict(id=i, name=teacher['name'], ty=ty, loc=loc, why=why, tag=why or ('Occupato · ' if exceptional else '') + label,
+                typeLabel=label, color=policy[0]['color'] if policy else None, exceptional=exceptional)
 
 
-def candidates(ds, state, day, row):
+def candidates(ds, state, day, row, policies=None):
     weekly = {}
     for k, l in ds['lessons'].items():
         weekly.setdefault(k.split('|')[0], set()).update(l['classes'])
     result = []
     for t in ds['teachers'].values():
-        c = eligibility(ds, state, day, row, t)
+        c = eligibility(ds, state, day, row, t, policies)
         if not c:
             continue
         cls = sorted(weekly.get(t['id'], set()))
@@ -185,21 +210,26 @@ def candidates(ds, state, day, row):
         c['today'] = sum(a['v'] == c['id'] for a in state['asg'].get(day, {}).values())
         c['total'] = sum(a['v'] == c['id'] for assignments in state['asg'].values() for a in assignments.values())
         c['tier'] = rank_candidate(c, row)
-    return sorted(result, key=lambda c: (bool(c['why']), c['tier'], c['today'], c['total'], c['name'].casefold(), c['id']))
+    return sorted(result, key=lambda c: (bool(c.get('exceptional')), bool(c['why']), c['tier'], c['today'], c['total'], c['name'].casefold(), c['id']))
 
 
-def validate_assignment(ds, state, day, key, value):
+def validate_assignment(ds, state, day, key, value, policies=None, exceptional=False):
     row = next((r for r in rows(ds, state, day) if r['k'] == key), None)
     if not row:
         raise ValueError('Supplenza non più presente nell’orario o nelle assenze.')
-    c = next((c for c in candidates(ds, state, day, row) if c['id'] == value), None)
+    c = next((c for c in candidates(ds, state, day, row, policies) if c['id'] == value), None)
     if not c or c['why']:
         raise ValueError(c['why'] if c else 'Candidato non disponibile.')
+    if c.get('exceptional') and not exceptional:
+        raise ValueError('Occupato: conferma esplicita necessaria.')
     if value == 'ENTRA' and not c.get('enable'):
         raise ValueError('Entra dopo disponibile solo alla prima ora effettiva della classe.')
     if value == 'ESCE' and not c.get('enable'):
         raise ValueError('Esce prima disponibile solo all’ultima ora effettiva della classe.')
-    return dict(v=value, t=c['ty'], c=row['c'])
+    result = dict(v=value, t=c['ty'], c=row['c'])
+    if c.get('exceptional'):
+        result['exceptional'] = True
+    return result
 
 
 def out_reason(state, day, cls, hour):

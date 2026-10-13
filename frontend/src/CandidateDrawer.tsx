@@ -40,7 +40,7 @@ export function CandidateDrawer({
   busy: boolean;
   name: (id: string) => string;
   onClose: () => void;
-  onAssign: (id: string) => void;
+  onAssign: (id: string, exceptional?: boolean) => void;
 }) {
   const close = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -89,11 +89,12 @@ export function CandidateDrawer({
         </button>
       </header>
       <div className="lst">
-        {cands.map((c) => {
+        {cands.map((c, index) => {
           const cross = !!(c.loc && open.sede && c.loc !== open.sede);
           return (
+            <div key={c.id}>
+            {c.exceptional && !cands[index - 1]?.exceptional && <h3 className="fallback-title">Solo in caso di necessità</h3>}
             <button
-              key={c.id}
               disabled={!!c.why || busy || c.enable === false}
               className={
                 "c1" +
@@ -101,15 +102,15 @@ export function CandidateDrawer({
                 (cross ? " cross-site" : "") +
                 (current === c.id ? " sel" : "")
               }
-              onClick={() => onAssign(c.id)}
+              onClick={() => { if (!c.exceptional || window.confirm(`Usare comunque ${c.name} alla ${open.h}ª ora? Tipo occupato: ${c.typeLabel || c.ty}.`)) onAssign(c.id, !!c.exceptional); }}
             >
               <span className="m">
                 <b>{c.name}</b>
                 <span
                   className={"type-chip-wrapper" + (cross ? " cross-site" : "")}
                 >
-                  <span className={"type-chip type-" + category(c)}>
-                    {c.ty === "DIS"
+                  <span className={"type-chip " + (c.color ? "palette-" + c.color : "type-" + category(c))}>
+                    {c.typeLabel || (c.ty === "DIS"
                       ? "DI.S"
                       : c.ty === "C"
                         ? "Compresenza"
@@ -119,10 +120,11 @@ export function CandidateDrawer({
                             ? "A disposizione"
                             : c.ty === "SPECIAL"
                               ? "Entrata / uscita"
-                              : c.ty}
+                              : c.ty)}
                     {c.ty === "POT" ? " · " + (c.loc || "sede ignota") : ""}
                   </span>
                 </span>
+                {c.exceptional && <b className="exception-action">Usa comunque…</b>}
                 <span className="tag">
                   {c.tag}
                   {cross ? " · altra sede" : ""}
@@ -160,6 +162,7 @@ export function CandidateDrawer({
                 <b>{c.today}</b> h oggi
               </span>
             </button>
+            </div>
           );
         })}
       </div>

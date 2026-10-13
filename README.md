@@ -79,3 +79,11 @@ Backend tests cover the real dataset, co-teaching/campus/period, absence and boo
 Deployment binds localhost by default. There is no authentication: keep it on a trusted administrative machine/network; add an authenticated reverse proxy before wider access. Concurrent edits are safe from lost writes; screens refresh after edits/date changes, not by live push.
 
 Verification in this environment: 16 backend tests pass (including the concurrent-assignment case) and the frontend `node --test` suite (3 cases) passes; the TypeScript/Vite build passed. The image built with Podman, and rootless Compose execution was confirmed with `podman compose up --build -d`, `down`, and restart: the app served HTTP 200 and retained `./data/supplenze.sqlite` across restarts. The browser flow (absence → candidates → assignment → reload) was checked with the supplied timetable.
+
+### Tipi di ora
+
+Settings → Tipi di ora lists imported sigle and derived Lezione, Compresenza ITP, Sostegno and A disposizione types. Each row independently controls **Disponibile per supplenze**, **Mostra tra i candidati**, and **Presso questa scuola**. Changes apply globally to every matching teacher/hour/date. School membership is descriptive; it does not change campus, ranking or eligibility. Unknown codes begin hidden and unavailable, with school membership marked Da verificare. GM begins outside this school; ITP and sostegno begin visible as occupied fallbacks. POT/UTC/UTS/DIS retain their initial availability.
+
+Visible occupied candidates appear under Solo in caso di necessità and require Usa comunque confirmation. Absence, double booking and hidden/retired teachers remain blocked. Existing assignments survive policy changes. Colors are selected once and saved. Reimport the original timetable to recover codes discarded by older imports; settings and existing operational records survive reimport.
+
+`GET /api/hour-types` returns the inventory and reimport indicator. `POST /api/hour-types` updates one row with `id`, `available`, `visible`, and `school`. Schema-1 JSON archives now include optional `hourTypes` and exceptional assignment metadata; legacy archives leave current settings unchanged. Invalid archives roll back atomically. Database snapshots include settings and colors. Older application versions may discard the new archive fields: avoid round-tripping through them.

@@ -62,6 +62,7 @@ function app(localStorage = { getItem: () => null, setItem() {} }) {
       if (id === 'react-dom/client') return {
         createRoot: () => ({ render: element => { App = element.type; } }),
       };
+      if (id === './HourTypes') return { HourTypes: 'hour-types' };
       if (id === './CandidateDrawer') return { CandidateDrawer: 'drawer' };
       if (id === 'react-router') return router;
       if (id.endsWith('.css')) return {};
