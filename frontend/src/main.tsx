@@ -4,6 +4,7 @@ import "./style.css";
 import type { Row, Candidate, Data } from "./types";
 import { HourTypes } from "./HourTypes";
 import { CandidateDrawer } from "./CandidateDrawer";
+import { Stats } from "./Stats";
 import { HashRouter, Link, useLocation } from "react-router";
 const norm = (s: string) =>
     s
@@ -321,6 +322,8 @@ function Shell() {
         <Permessi />
       ) : tab.path === "/settings" ? (
         <Settings />
+      ) : tab.path === "/stats" ? (
+        <Stats />
       ) : (
         <Stub label={tab.label} />
       )}
@@ -411,7 +414,7 @@ function Supplenze() {
   };
   const name = (id: string) =>
     data?.dataset.teachers[id]?.name ||
-    { DIR: "Dirigente", ENTRA: "Entra dopo", ESCE: "Esce prima" }[id] ||
+    { DIR: "Dirigente", ENTRA: "Entra dopo", ESCE: "Esce prima", UNCOVERED: "Scoperta" }[id] ||
     id;
   const entries = (g: "abs" | "cf" | "dis") => data?.state[g][day] || {};
   const suggestions =
@@ -642,6 +645,10 @@ function Supplenze() {
   const rs =
       data?.rows.filter((r) => filter === "all" || r.sede === filter) || [],
     assigned = data?.state.asg[day] || {};
+  const nextDay = localDate(new Date(new Date(day + "T12:00").getTime() + 864e5));
+  const reminders = Object.values(data?.state.asg[nextDay] || {})
+    .map(a => a.v === "ENTRA" || a.v === "ESCE" ? `${a.c} ${a.v === "ESCE" ? "esce prima" : "entra dopo"}` : "")
+    .filter(Boolean);
   return (
     <>
       <div className="app" aria-busy={busy} inert={busy || !!open}>
@@ -814,6 +821,12 @@ function Supplenze() {
               {error}
             </p>
           )}
+          {!!reminders.length && (
+            <p className="reminder" role="status">
+              <svg className="warning-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 22 21H2Z" fill="none" stroke="currentColor" strokeWidth="2"/><path d="M12 9v5m0 3v1" stroke="currentColor" strokeWidth="2"/></svg>
+              Domani ({nextDay.split("-").reverse().join("/")}): {reminders.join(", ")}. Avvisa le classi.
+            </p>
+          )}
           <h1>
             {new Date(day + "T12:00").toLocaleDateString("it-IT", {
               weekday: "long",
@@ -895,13 +908,13 @@ function Supplenze() {
                         </td>
                         <td>
                           <button
-                            className={"fill " + (!assigned[r.k] ? "ph" : "")}
+                            className={"fill " + (!assigned[r.k] ? "ph" : assigned[r.k].v === "UNCOVERED" ? "uncovered" : "")}
                             onClick={() => void choose(r)}
                           >
                             {assigned[r.k]
                               ? name(assigned[r.k].v)
                               : "Scegli il supplente"}
-                            <small>{assigned[r.k]?.t}</small>
+                            <small>{assigned[r.k]?.v === "UNCOVERED" ? "Nessun supplente trovato" : assigned[r.k]?.t}</small>
                           </button>
                           {assigned[r.k] && (
                             <button

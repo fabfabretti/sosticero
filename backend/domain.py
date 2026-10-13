@@ -200,6 +200,7 @@ def candidates(ds, state, day, row, policies=None):
         result.append(dict(c, role=t['role'], cdc=cdc, cdcName=CDC_NAMES.get(cdc, cdc),
                            clsWeek=cls, inClass=row['c'] in cls))
     result.append(dict(id='DIR', name='Dirigente', ty='DIR', loc='centrale', why='', tag='Opzione manuale, da verificare'))
+    result.append(dict(id='UNCOVERED', name='Scoperta', ty='UNCOVERED', loc=None, why='', tag='Emergenza: nessun supplente trovato'))
     effective = [h for h in HOURS if any(row['c'] in (lesson(ds, i, day, h) or {}).get('classes', []) for i in ds['teachers']) and not class_out(state, day, row['c'], h, row['k'])]
     if effective:
         info = f'La classe entra alle {effective[0]} ed esce alle {effective[-1]}'
@@ -207,8 +208,8 @@ def candidates(ds, state, day, row, policies=None):
             result.append(dict(id=cid, name=title, ty='SPECIAL', loc=None, why='', tag='Da verificare',
                                enable=row['h'] == boundary, info=info))
     for c in result:
-        c['today'] = sum(a['v'] == c['id'] for a in state['asg'].get(day, {}).values())
-        c['total'] = sum(a['v'] == c['id'] for assignments in state['asg'].values() for a in assignments.values())
+        c['today'] = sum(a['v'] == c['id'] for a in state['asg'].get(day, {}).values()) if c['id'] in ds['teachers'] else 0
+        c['total'] = sum(a['v'] == c['id'] for assignments in state['asg'].values() for a in assignments.values()) if c['id'] in ds['teachers'] else 0
         c['tier'] = rank_candidate(c, row)
     return sorted(result, key=lambda c: (bool(c.get('exceptional')), bool(c['why']), c['tier'], c['today'], c['total'], c['name'].casefold(), c['id']))
 

@@ -16,6 +16,7 @@ const category = (c: Candidate) =>
     TC: "tc",
     DIR: "dir",
     SPECIAL: "special",
+    UNCOVERED: "uncovered",
   })[c.ty] || "unknown";
 const roleLabel = (r?: string) =>
   r
@@ -118,6 +119,8 @@ export function CandidateDrawer({
                           ? "Rottura compresenza"
                           : c.ty === "D"
                             ? "A disposizione"
+                            : c.ty === "UNCOVERED"
+                              ? "Scoperta"
                             : c.ty === "SPECIAL"
                               ? "Entrata / uscita"
                               : c.ty)}
@@ -156,11 +159,11 @@ export function CandidateDrawer({
                   <em className="info">{c.info}</em>
                 )}
               </span>
-              <span className="ct">
+              {!["UNCOVERED", "ENTRA", "ESCE", "DIR"].includes(c.id) && <span className="ct">
                 <b>{c.total}</b> h assegnate
                 <br />
                 <b>{c.today}</b> h oggi
-              </span>
+              </span>}
             </button>
             </div>
           );

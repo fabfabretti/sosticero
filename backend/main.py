@@ -8,6 +8,7 @@ from .domain import normalize_dataset, rows, candidates, validate_assignment, de
 from .storage import Store, EMPTY
 from . import backup
 from .hour_types import merge_types, validate_types
+from . import statistics
 
 
 class Edit(BaseModel):
@@ -61,7 +62,14 @@ def create_app(path=None, seed=None):
         if store.read(db, 'dataset') is None and seed:
             import json
             store.write(db, 'dataset', normalize_dataset(json.loads(Path(seed).read_text())))
-    
+
+    def initialize_statistics():
+        with store.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            ds = store.read(db, 'dataset')
+            if ds and store.read(db, 'statistics') is None:
+                store.write(db, 'statistics', statistics.sync(ds, store.read(db, 'state', EMPTY), statistics.empty(), reconstructed=True))
+
     # Perform startup backup if enabled
     if backup_on_startup and database.exists():
         try:
@@ -78,6 +86,8 @@ def create_app(path=None, seed=None):
         except Exception as e:
             # Don't prevent app from starting on backup failure
             print(f'Backup failed: {e}')
+
+    initialize_statistics()
 
     @app.exception_handler(ValueError)
     async def invalid(_, exc):
@@ -120,6 +130,17 @@ def create_app(path=None, seed=None):
         state.setdefault('permessi', {})
         state.setdefault('permitRequests', {})
         return ds, state
+
+    def save_state(db, ds, state, days):
+        facts = store.read(db, 'statistics', statistics.empty())
+        store.write(db, 'statistics', statistics.sync(ds, state, facts, days))
+        store.write(db, 'state', state)
+
+    @app.get('/api/stats')
+    def get_stats(campus: str = 'total', period: str = 'all', start: date | None = None, end: date | None = None):
+        with store.connect() as db:
+            facts = store.read(db, 'statistics', statistics.empty())
+        return statistics.report(facts, campus, period, start, end)
 
     @app.get('/api/day/{day}')
     def get_day(day: date):
@@ -173,7 +194,7 @@ def create_app(path=None, seed=None):
                 state['permitRequests'].get(d, {}).pop(e.id, None)
                 if e.requested_on:
                     state['permitRequests'].setdefault(d, {})[e.id] = e.requested_on.isoformat()
-            store.write(db, 'state', state)
+            save_state(db, ds, state, {d, source[0]} if source else {d})
         return {'ok': True}
 
     @app.post('/api/timetable')
@@ -182,6 +203,8 @@ def create_app(path=None, seed=None):
         with store.connect() as db:
             db.execute('BEGIN IMMEDIATE')
             old = store.read(db, 'dataset')
+            if store.read(db, 'statistics') is None:
+                store.write(db, 'statistics', statistics.sync(old or ds, store.read(db, 'state', EMPTY), statistics.empty(), reconstructed=True))
             # Retired teachers remain addressable by stable ID for historical records.
             if old:
                 for i, t in old['teachers'].items():
@@ -225,7 +248,7 @@ def create_app(path=None, seed=None):
                     entries[e.id] = default_availability(ds, e.id, d) if e.defaults and e.group == "dis" else sorted(set(e.hours))
                     if e.group == 'dis':
                         state['disSites'].setdefault(d, {})[e.id] = e.site or None
-            store.write(db, 'state', state)
+            save_state(db, ds, state, days if e.group != 'dis' else [])
         return {'ok': True}
 
     @app.get('/api/candidates')
@@ -248,7 +271,7 @@ def create_app(path=None, seed=None):
                 assignments.pop(e.key, None)
             else:
                 assignments[e.key] = validate_assignment(ds, state, e.day.isoformat(), e.key, e.value, policies(db, ds), e.exceptional)
-            store.write(db, 'state', state)
+            save_state(db, ds, state, [e.day.isoformat()])
         return {'ok': True}
 
     @app.get('/api/export')
@@ -256,7 +279,8 @@ def create_app(path=None, seed=None):
         with store.connect() as db:
             ds, state = load(db)
             rules = policies(db, ds)
-        return dict(schema=1, datasetId='v1:'+','.join(sorted(ds['teachers'])), hourTypes=rules, **state)
+            facts = store.read(db, 'statistics', statistics.empty())
+        return dict(schema=1, datasetId='v1:'+','.join(sorted(ds['teachers'])), hourTypes=rules, statistics=facts, **state)
 
     @app.post('/api/import')
     def import_state(data: dict):
@@ -287,11 +311,13 @@ def create_app(path=None, seed=None):
                         elif group == 'disSites':
                             if i not in ds['teachers'] or value not in (*SITES, None, ''):
                                 raise ValueError('Sede non valida.')
-                        elif not isinstance(value, dict) or ('exceptional' in value and type(value['exceptional']) is not bool) or value.get('v') not in (*ds['teachers'], 'DIR', 'ENTRA', 'ESCE') or not isinstance(value.get('t'), str) or len(i.split('|')) != 3 or i.split('|')[0] not in ds['teachers'] or not i.split('|')[1].isdigit() or int(i.split('|')[1]) not in HOURS or value.get('c') != i.split('|')[2]:
+                        elif not isinstance(value, dict) or ('exceptional' in value and type(value['exceptional']) is not bool) or value.get('v') not in (*ds['teachers'], 'DIR', 'ENTRA', 'ESCE', 'UNCOVERED') or not isinstance(value.get('t'), str) or len(i.split('|')) != 3 or i.split('|')[0] not in ds['teachers'] or not i.split('|')[1].isdigit() or int(i.split('|')[1]) not in HOURS or value.get('c') != i.split('|')[2]:
                             raise ValueError('Assegnazione non valida.')
+            facts = statistics.validate(data['statistics'], ds, state) if 'statistics' in data else statistics.sync(ds, state, statistics.empty(), reconstructed=True)
             if rules is not None:
                 store.write(db, 'hourTypes', merge_types(ds, rules))
             store.write(db, 'state', state)
+            store.write(db, 'statistics', facts)
         return {'ok': True}
 
     @app.get('/api/backups')
@@ -324,6 +350,7 @@ def create_app(path=None, seed=None):
             if not backup_path:
                 raise ValueError('Backup non trovato')
             backup.restore_backup(str(database), backup_path)
+            initialize_statistics()
             return {'ok': True}
         except Exception as e:
             raise ValueError(str(e))

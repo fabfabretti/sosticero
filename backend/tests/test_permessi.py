@@ -116,5 +116,6 @@ class PermessiTest(unittest.TestCase):
         backup.restore_backup(str(self.path), saved['path'])
         self.assertEqual(self.register(), archive['permessi'])
         del archive['permessi']
+        del archive['statistics']  # Simulate an archive from before permits and statistical facts.
         self.assertEqual(self.client.post('/api/import', json=archive).status_code, 200)
         self.assertEqual(self.register(), {})

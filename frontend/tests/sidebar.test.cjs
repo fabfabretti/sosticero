@@ -64,6 +64,7 @@ function app(localStorage = { getItem: () => null, setItem() {} }) {
       };
       if (id === './HourTypes') return { HourTypes: 'hour-types' };
       if (id === './CandidateDrawer') return { CandidateDrawer: 'drawer' };
+      if (id === './Stats') return { Stats: 'stats' };
       if (id === 'react-router') return router;
       if (id.endsWith('.css')) return {};
       throw Error(id);
@@ -213,6 +214,29 @@ test('auto availability hours lock while other hours toggle manual', async () =>
   assert.equal(hour('Auto T, 2ª ora').props.disabled, true);
 });
 
+test('reminds about next-day class entry and exit changes', async () => {
+  const tomorrow = new Date(now.getTime() + 864e5);
+  const tomorrowYmd = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, "0")}-${String(tomorrow.getDate()).padStart(2, "0")}`;
+  const a = await loaded({
+    state: { abs: {}, cf: {}, dis: {}, disSites: {}, asg: {
+      [tomorrowYmd]: {
+        't|1|1A': { v: 'ESCE', t: 'SPECIAL', c: '1A' },
+        't|7|2B': { v: 'ENTRA', t: 'SPECIAL', c: '2B' },
+      },
+    } },
+  });
+  const banner = a.render().find(n => n.props?.className === 'reminder');
+  assert.ok(banner);
+  const text = String(banner.props.children);
+  assert.ok(text.includes('1A esce prima'));
+  assert.ok(text.includes('2B entra dopo'));
+});
+
+test('no next-day reminder without entry or exit changes', async () => {
+  const a = await loaded();
+  assert.equal(a.render().find(n => n.props?.className === 'reminder'), undefined);
+});
+
 test('co-absent teachers render as one merged label', async () => {
   const a = app();
   a.render();
@@ -281,7 +305,6 @@ test('future tabs show placeholder screens and mark their tab current', () => {
   a.render();
   for (const [route, label] of [
     ['/banca-ore', 'Banca ore'],
-    ['/stats', 'Stats'],
   ]) {
     a.go(route);
     assert.ok(a.render().find(n => n.props?.className === 'stub'), route + ' shows a placeholder');
@@ -293,6 +316,8 @@ test('future tabs show placeholder screens and mark their tab current', () => {
   assert.equal(currentTab(a).props.href, '#/settings');
   a.go('/');
   assert.ok(!a.render().some(n => n.props?.className === 'stub'), 'Supplenze is not a placeholder');
+  a.go('/stats');
+  assert.ok(a.render().some(n => n.type === 'stats'), 'Stats is functional');
 });
 
 test('credits footer shows only at the end of Settings', () => {
