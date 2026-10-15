@@ -67,6 +67,7 @@ function app(localStorage = { getItem: () => null, setItem() {} }, confirm = () 
       };
       if (id === './HourTypes') return { HourTypes: 'hour-types' };
       if (id === './CandidateDrawer') return { CandidateDrawer: 'drawer' };
+      if (id === './Attachments') return { AttachmentField: 'attachment-field', RecordInfo: 'record-info' };
       if (id === './Stats') return { Stats: 'stats' };
       if (id === 'react-router') return router;
       if (id.endsWith('.css')) return {};
@@ -221,7 +222,7 @@ test('auto availability hours lock while other hours toggle manual', async () =>
   await settle();
   assert.equal(hour('Auto T, 4ª ora').props['aria-pressed'], true);
   assert.equal(hour('Auto T, 2ª ora').props.disabled, true);
-  assert.ok(a.render().some(n => n.props?.['aria-label'] === '1A entra dopo, 1A esce prima'), 'locked reason shown as (i) tooltip');
+  assert.ok(a.render().some(n => n.type === 'record-info' && n.props.text === '1A entra dopo, 1A esce prima'), 'locked reason shown as (i) tooltip');
 });
 
 test('assigned availability stays visible with status for automatic and manual hours', async () => {
@@ -419,7 +420,7 @@ test('permit absences lock and keep manual control payloads separate', async () 
   assert.equal(button(2).props.disabled, true);
   assert.equal(button(3).props['aria-pressed'], true);
   assert.equal(button(4).props.disabled, false);
-  assert.ok(a.render().some(n => n.props?.['aria-label'] === 'Permesso'), 'permit reason shown as (i) tooltip');
+  assert.ok(a.render().some(n => n.type === 'record-info' && n.props.text === 'Permesso'), 'permit reason shown in information popover');
   assert.ok(a.render().some(n => n.props?.['aria-label'] === 'Modifica dalla pagina permessi'), 'disabled permit hours explain themselves');
   button(4).props.onClick();
   assert.deepEqual(JSON.parse(a.requests.shift().options.body).hours, [2,4]);
@@ -685,17 +686,17 @@ test('manual note editor saves explicitly, preserves failed drafts and resets on
   assert.equal(noteField(a, 'Note assenza di Anna').props.value, 'saved');
   noteField(a, 'Note assenza di Anna').props.onChange({ target: { value: 'draft' } });
   assert.equal(a.requests.length, 0);
-  clickText(a, 'Salva nota');
+  clickText(a, 'Salva nota e allegato');
   assert.deepEqual(JSON.parse(a.requests[0].options.body), { day: todayYmd, group: 'abs', id: 'a', hours: [2], note: 'draft' });
   a.requests.shift().resolve({ detail: 'failure' }, false); await settle();
   assert.equal(noteField(a, 'Note assenza di Anna').props.value, 'draft');
-  clickText(a, 'Salva nota');
+  clickText(a, 'Salva nota e allegato');
   await resolveEntry(a, { ...response, state: { ...state, absenceNotes: { [todayYmd]: { a: 'draft', b: 'Barbara note' } } } });
   edit('Barbara');
   assert.equal(noteField(a, 'Note assenza di Barbara').props.value, 'Barbara note');
   edit('Anna');
   noteField(a, 'Note assenza di Anna').props.onChange({ target: { value: '' } });
-  clickText(a, 'Salva nota');
+  clickText(a, 'Salva nota e allegato');
   assert.equal(JSON.parse(a.requests[0].options.body).note, '');
   await resolveEntry(a, response);
   a.render().find(n => n.props?.className === 'd').props.onClick(); a.render();
@@ -724,7 +725,7 @@ test('permit notes load, preserve failed edits and reset after save/cancel', asy
   assert.equal(JSON.parse(a.requests[0].options.body).note, '');
 });
 
-test('daily info combines source notes, keeps permit-only information and supports focus and escape', async () => {
+test('daily info combines source notes and keeps permit-only information', async () => {
   for (const [manual, permit] of [[true, true], [true, false], [false, true], [false, false]]) {
     const state = { ...data.state,
       abs: manual ? { [todayYmd]: { a: [2] } } : {},
@@ -733,21 +734,14 @@ test('daily info combines source notes, keeps permit-only information and suppor
       permitNotes: permit ? { [todayYmd]: { a: 'permit note' } } : {},
     };
     const a = await loaded({ ...entryData, state });
-    const info = a.render().filter(n => n.props?.className === 'hour-help' && n.props.children?.[0]?.props?.className === 'why');
+    const info = a.render().filter(n => n.type === 'record-info' && (n.props.text || n.props.links.some(link => link.id)));
     assert.equal(info.length, manual || permit ? 1 : 0);
     if (!info.length) continue;
-    const trigger = info[0];
-    assert.equal(trigger.props['aria-label'].includes('Assenza: <b>literal</b>'), manual);
-    assert.equal(trigger.props['aria-label'].includes('Permesso: permit note'), permit);
-    trigger.props.onFocus({ currentTarget: { getBoundingClientRect: () => ({ left: 20, top: 400, bottom: 420 }) } });
-    const tip = a.render().find(n => n.props?.role === 'tooltip');
-    assert.equal(typeof tip.props.children, 'string');
-    assert.ok(tip.props.style.maxHeight > 0);
-    trigger.props.onKeyDown({ key: 'Escape' });
-    assert.ok(!a.render().some(n => n.props?.role === 'tooltip'));
+    assert.equal(info[0].props.text.includes('Assenza: <b>literal</b>'), manual);
+    assert.equal(info[0].props.text.includes('Permesso: permit note'), permit);
   }
   const a = await loaded({ ...entryData, state: { ...data.state, permessi: { [todayYmd]: { a: [3] } } } });
-  assert.ok(a.render().some(n => n.props?.className === 'hour-help' && n.props['aria-label'] === 'Permesso'));
+  assert.ok(a.render().some(n => n.type === 'record-info' && n.props.text === 'Permesso'));
 });
 
 test('trip choice saves teacher classification and groups mixed sources once', async () => {
@@ -807,7 +801,7 @@ test('new absence note saves with teacher, survives failure and clears after suc
   submitEntry(a);
   await resolveEntry(a, { ...entryData, state: { ...data.state, abs: { [todayYmd]: { a: [1,2,3,4,5,6,7] } }, absenceNotes: { [todayYmd]: { a: 'initial note' } } } });
   assert.equal(draft().props.value, '');
-  assert.ok(a.render().some(n => n.props?.className === 'hour-help' && n.props['aria-label'] === 'Assenza: initial note'));
+  assert.ok(a.render().some(n => n.type === 'record-info' && n.props.text === 'Assenza: initial note'));
   draft().props.onChange({ target: { value: 'discard' } });
   clickText(a, 'A disposizione'); a.render(); assert.equal(draft(), undefined);
   clickText(a, 'A disposizione'); assert.equal(draft().props.value, '');
@@ -849,24 +843,20 @@ test('both Permessi creation modes show notes before teacher selection and save 
   toggle(false); assert.ok(note());
 });
 
-test('dated and undated tables expose only their own note with focusable info icons', async () => {
+test('dated and undated tables expose only their own note', async () => {
   const a = app(); a.go('/permessi'); a.render();
   const response = { ...permitData, permessi: { '2026-10-12': { t:[6] } }, permitNotes: { '2026-10-12': { t:'<b>dated</b>' } },
     manualPermits: { t: { id:'m',hours:8,recovered:0,remaining:8,recoveries:[] } }, manualPermitNotes: { t:'manual note' } };
   a.requests.shift().resolve(response); await settle();
-  const infos = () => a.render().filter(n => n.props?.className === 'hour-help' && n.props.children?.[0]?.props?.className === 'why');
-  assert.deepEqual(infos().map(n => n.props['aria-label']), ['<b>dated</b>', 'manual note']);
-  assert.ok(infos().every(n => n.props.tabIndex === 0));
+  const infos = () => a.render().filter(n => n.type === 'record-info' && n.props.text || n.props?.className === 'hour-help' && n.props.children?.[0]?.props?.className === 'why');
+  const texts = () => infos().map(n => n.type === 'record-info' ? n.props.text : n.props['aria-label']);
+  assert.deepEqual(texts(), ['<b>dated</b>', 'manual note']);
   assert.ok(a.render().some(n => n.props?.className === 'warning-icon'));
-  const dated = infos()[0];
-  dated.props.onFocus({ currentTarget: { getBoundingClientRect: () => ({left:20,top:200,bottom:220}) } });
-  assert.equal(a.render().find(n => n.props?.role === 'tooltip').props.children, '<b>dated</b>');
-  dated.props.onKeyDown({key:'Escape'});
   a.render().find(n => n.props?.['aria-label'] === 'Modifica saldo manuale di Contartase').props.onClick();
   noteField(a, 'Note permesso').props.onChange({target:{value:''}});
   permitForm(a).props.onSubmit({preventDefault(){}});
   a.requests.shift().resolve({ok:true}); await settle();
   a.requests.shift().resolve({...response,manualPermitNotes:{}}); await settle();
-  assert.deepEqual(infos().map(n=>n.props['aria-label']), ['<b>dated</b>']);
+  assert.deepEqual(texts(), ['<b>dated</b>']);
   assert.ok(a.render().some(n=>n.props?.className==='warning-icon'));
 });

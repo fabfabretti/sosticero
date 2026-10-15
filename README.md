@@ -235,3 +235,23 @@ Testing mode refuses the project's operational database and any data directory
 marked `.sosticero-production`. Production startup creates that marker. Keep it.
 Backend imports do not open a database; startup requires an explicit database
 path. Production timetable uploads require confirmation before replacement.
+
+### Allegati immagine
+
+Assenze docenti, permessi con data e disposizioni manuali accettano un allegato
+facoltativo per registrazione: incollare uno screenshot nell'area dedicata,
+controllare l'anteprima e salvare. Dalla modifica è possibile sostituirlo o
+rimuoverlo. Il pulsante (i) accanto al nome apre informazioni e link all'immagine
+in una nuova scheda. Assenza e permesso conservano allegati distinti.
+
+Sono accettati PNG e JPEG non animati, massimo 5 MiB (5.242.880 byte) e
+25 megapixel. PDF, saldi manuali senza data, classi assenti e disponibilità
+automatiche non supportano allegati. I dati immagine sono nel database SQLite:
+non occorre una directory di upload. I backup comprendono immagini e riferimenti;
+la rimozione di un allegato non lo elimina dai backup già conservati.
+
+Gli archivi esportati usano schema 3 e includono le immagini. L'app aggiornata
+importa anche archivi precedenti senza allegati; versioni vecchie non importano
+schema 3. Conservare un backup precedente all'aggiornamento prima di tornare a
+una versione vecchia ed evitare modifiche ai dati con allegati usando codice
+vecchio. Database, archivi e backup crescono con le immagini salvate.

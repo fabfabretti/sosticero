@@ -8,12 +8,19 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, StrictInt, StrictBool, StrictStr
 from .domain import normalize_dataset, rows, candidates, validate_assignment, default_availability, auto_availability, HOURS, SITES, lesson, validate_permit
 from .storage import Store, EMPTY
-from . import backup
+from . import backup, attachments
 from .hour_types import merge_types, validate_types
 from . import statistics, recovery
 
 
+class Attachment(BaseModel):
+    model_config = {"extra": "forbid"}
+    mediaType: StrictStr
+    data: StrictStr
+
+
 class Edit(BaseModel):
+    attachment: Attachment | None = None
     note: StrictStr | None = None
     classification: Literal['planned', 'last_minute', 'trip', 'strike'] | None = None
     day: date
@@ -27,6 +34,7 @@ class Edit(BaseModel):
 
 
 class Permit(BaseModel):
+    attachment: Attachment | None = None
     note: StrictStr | None = None
     classification: Literal['planned', 'last_minute', 'trip', 'strike'] | None = None
     requested_on: date | None = None
@@ -45,6 +53,7 @@ class Assignment(BaseModel):
 
 
 class ManualPermit(BaseModel):
+    model_config = {"extra": "forbid"}
     note: StrictStr | None = None
     id: str
     hours: StrictInt | None = None
@@ -170,12 +179,26 @@ def create_app(path=None, seed=None):
         state.setdefault('permitNotes', {})
         state.setdefault('manualPermitNotes', {})
         state.setdefault('manualPermits', {})
+        for group in attachments.GROUPS:
+            state.setdefault(group, {})
         return ds, state
 
     def save_state(db, ds, state, days):
         facts = store.read(db, 'statistics', statistics.empty())
         store.write(db, 'statistics', statistics.sync(ds, state, facts, days))
         store.write(db, 'state', state)
+        attachments.prune(db, state)
+
+    @app.get('/api/attachments/{identifier}')
+    def get_attachment(identifier: str):
+        from fastapi.responses import Response
+        with store.connect() as db:
+            db.execute('BEGIN')
+            state = store.read(db, 'state', EMPTY)
+            row = db.execute('SELECT media_type, content FROM attachments WHERE id=?', (identifier,)).fetchone() if identifier in attachments.references(state) else None
+        if row is None:
+            raise HTTPException(status_code=404, detail='Allegato non trovato.')
+        return Response(row[1], media_type=row[0], headers={'Content-Disposition': 'inline', 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'private, no-store'})
 
     @app.get('/api/stats')
     def get_stats(campus: str = 'total', period: str = 'all', start: date | None = None, end: date | None = None):
@@ -204,7 +227,7 @@ def create_app(path=None, seed=None):
             ds, state = load(db)
         summaries, balances = recovery.summary(state)
         manual = {p['teacher']: p for p in recovery.ledger(state).values() if p['date'] is None}
-        return dict(dataset=ds, permessi=state['permessi'], permitRequests=state['permitRequests'], permitNotes=state['permitNotes'], permitKinds=state['permitKinds'], recoveries=summaries, balances=balances, manualPermits=manual, manualPermitNotes=state['manualPermitNotes'])
+        return dict(dataset=ds, permitAttachments=state['permitAttachments'], permessi=state['permessi'], permitRequests=state['permitRequests'], permitNotes=state['permitNotes'], permitKinds=state['permitKinds'], recoveries=summaries, balances=balances, manualPermits=manual, manualPermitNotes=state['manualPermitNotes'])
 
     @app.post('/api/manual-permits')
     def save_manual_permit(e: ManualPermit):
@@ -248,6 +271,9 @@ def create_app(path=None, seed=None):
             old_day, old_teacher = source or (d, e.id)
             classification = e.classification if 'classification' in e.model_fields_set else state['permitKinds'].get(old_day, {}).get(old_teacher)
             note = (e.note or '').strip() if 'note' in e.model_fields_set else state['permitNotes'].get(old_day, {}).get(old_teacher)
+            attachment = state['permitAttachments'].get(old_day, {}).get(old_teacher)
+            if 'attachment' in e.model_fields_set:
+                attachment = attachments.insert(db, e.attachment.model_dump() if e.attachment else None)
             pid = state['permitIds'].get(old_day, {}).get(old_teacher)
             if pid:
                 recovery.protect(state, pid, e.id, d, e.hours)
@@ -257,6 +283,7 @@ def create_app(path=None, seed=None):
                 state['permitRequests'].get(d, {}).pop(e.id, None)
                 state['permitNotes'].get(d, {}).pop(e.id, None)
                 state['permitKinds'].get(d, {}).pop(e.id, None)
+                state['permitAttachments'].get(d, {}).pop(e.id, None)
             else:
                 validate_permit(ds, e.id, e.hours)
                 if ds['teachers'][e.id].get('retired') and (not source or source[1] != e.id):
@@ -269,7 +296,11 @@ def create_app(path=None, seed=None):
                     state['permitRequests'].get(source[0], {}).pop(source[1], None)
                     state['permitNotes'].get(source[0], {}).pop(source[1], None)
                     state['permitKinds'].get(source[0], {}).pop(source[1], None)
+                    state['permitAttachments'].get(source[0], {}).pop(source[1], None)
                 permits.setdefault(d, {})[e.id] = sorted(e.hours)
+                state['permitAttachments'].get(d, {}).pop(e.id, None)
+                if attachment:
+                    state['permitAttachments'].setdefault(d, {})[e.id] = attachment
                 state['permitNotes'].get(d, {}).pop(e.id, None)
                 state['permitKinds'].get(d, {}).pop(e.id, None)
                 if note:
@@ -307,6 +338,8 @@ def create_app(path=None, seed=None):
 
     @app.post('/api/entries')
     def edit(e: Edit):
+        if 'attachment' in e.model_fields_set and e.group not in ('abs', 'dis'):
+            raise ValueError('Allegati consentiti solo per assenze o disposizioni docenti.')
         if 'note' in e.model_fields_set and e.group != 'abs':
             raise ValueError('Note consentite solo per assenze docenti.')
         if 'classification' in e.model_fields_set and e.group != 'abs':
@@ -333,7 +366,13 @@ def create_app(path=None, seed=None):
                     if current.weekday() < 5:
                         days.append(current.isoformat())
                     current += timedelta(days=1)
+            attachment = attachments.insert(db, e.attachment.model_dump() if e.attachment else None) if 'attachment' in e.model_fields_set else None
+            attachment_group = {'abs': 'absenceAttachments', 'dis': 'disAttachments'}.get(e.group)
             for d in days:
+                if attachment_group and (e.hours is None or 'attachment' in e.model_fields_set):
+                    state[attachment_group].get(d, {}).pop(e.id, None)
+                    if e.hours is not None and attachment:
+                        state[attachment_group].setdefault(d, {})[e.id] = attachment
                 entries = state[e.group].setdefault(d, {})
                 if e.hours is None:
                     entries.pop(e.id, None)
@@ -388,17 +427,19 @@ def create_app(path=None, seed=None):
     @app.get('/api/export')
     def export():
         with store.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
             ds, state = load(db)
             rules = policies(db, ds)
             facts = store.read(db, 'statistics', statistics.empty())
-        return dict(schema=2, datasetId='v1:'+','.join(sorted(ds['teachers'])), hourTypes=rules, statistics=facts, **state)
+            images = attachments.export(db, state)
+        return dict(schema=3, attachments=images, datasetId='v1:'+','.join(sorted(ds['teachers'])), hourTypes=rules, statistics=facts, **state)
 
     @app.post('/api/import')
     def import_state(data: dict):
         with store.connect() as db:
             db.execute('BEGIN IMMEDIATE')
             ds, _ = load(db)
-            if type(data.get('schema')) is not int or data['schema'] not in (1, 2) or data.get('datasetId') != 'v1:'+','.join(sorted(ds['teachers'])):
+            if type(data.get('schema')) is not int or data['schema'] not in (1, 2, 3) or data.get('datasetId') != 'v1:'+','.join(sorted(ds['teachers'])):
                 raise ValueError('Archivio non compatibile.')
             rules = validate_types(data['hourTypes']) if 'hourTypes' in data else None
             state = {k: data.get(k, {}) for k in EMPTY}
@@ -418,7 +459,11 @@ def create_app(path=None, seed=None):
                     if not isinstance(entries, dict):
                         raise ValueError('Archivio non valido.')
                     for i, value in entries.items():
-                        if group in ('absenceNotes', 'permitNotes'):
+                        if group in attachments.GROUPS:
+                            source = attachments.GROUPS[group]
+                            if i not in ds['teachers'] or i not in state[source].get(d, {}) or not isinstance(value, str) or not value:
+                                raise ValueError('Riferimento allegato non valido.')
+                        elif group in ('absenceNotes', 'permitNotes'):
                             source = 'abs' if group == 'absenceNotes' else 'permessi'
                             if i not in state[source].get(d, {}) or i not in ds['teachers'] or not isinstance(value, str) or not value.strip():
                                 raise ValueError('Nota senza assenza o permesso valido.')
@@ -448,6 +493,7 @@ def create_app(path=None, seed=None):
                     raise ValueError('Archivio recuperi richiede schema 2.')
                 recovery.migrate(state)
             recovery.validate(state)
+            attachments.import_images(db, state, data, data['schema'])
             facts = statistics.validate(data['statistics'], ds, state) if 'statistics' in data else statistics.sync(ds, state, statistics.empty(), reconstructed=True)
             if rules is not None:
                 store.write(db, 'hourTypes', merge_types(ds, rules))
@@ -485,6 +531,7 @@ def create_app(path=None, seed=None):
             if not backup_path:
                 raise ValueError('Backup non trovato')
             backup.restore_backup(str(database), backup_path)
+            Store(str(database))
             with store.connect() as db:
                 db.execute('BEGIN IMMEDIATE')
                 state = store.read(db, 'state', EMPTY)

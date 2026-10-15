@@ -2,7 +2,7 @@ import json
 import sqlite3
 from contextlib import contextmanager, closing
 
-EMPTY = {k: {} for k in ('abs', 'cf', 'dis', 'disSites', 'asg', 'permessi', 'permitRequests', 'permitIds', 'absenceKinds', 'permitKinds', 'absenceNotes', 'permitNotes', 'manualPermits', 'manualPermitNotes')}
+EMPTY = {k: {} for k in ('abs', 'cf', 'dis', 'disSites', 'asg', 'permessi', 'permitRequests', 'permitIds', 'absenceKinds', 'permitKinds', 'absenceNotes', 'permitNotes', 'manualPermits', 'manualPermitNotes', 'absenceAttachments', 'permitAttachments', 'disAttachments')}
 
 
 class Store:
@@ -11,6 +11,7 @@ class Store:
         with self.connect() as db:
             db.execute('PRAGMA journal_mode=WAL')
             db.execute('CREATE TABLE IF NOT EXISTS documents (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
+            db.execute('CREATE TABLE IF NOT EXISTS attachments (id TEXT PRIMARY KEY, media_type TEXT NOT NULL, content BLOB NOT NULL)')
 
     @contextmanager
     def connect(self):

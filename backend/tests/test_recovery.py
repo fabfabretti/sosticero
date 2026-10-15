@@ -112,7 +112,7 @@ class RecoveryTest(unittest.TestCase):
     def test_archive_migration_and_timetable_history(self):
         self.assign(1).raise_for_status()
         archive = self.client.get('/api/export').json()
-        self.assertEqual(archive['schema'], 2)
+        self.assertEqual(archive['schema'], 3)
         self.client.post('/api/import', json=archive).raise_for_status()
         for mutation in ('missing', 'wrongteacher', 'nonrp', 'over', 'window', 'duplicate'):
             bad = copy.deepcopy(archive); a = bad['asg'][DAY]['absent|1|1A']

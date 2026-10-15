@@ -826,23 +826,6 @@ td.none {
   background: var(--acc);
   margin-right: 5px;
 }
-/* Perché le ore sono bloccate: icona (i) con motivo in tooltip nativo. */
-.rw .why {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-  border: 1px solid var(--mute);
-  border-radius: 50%;
-  color: var(--mute);
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 1;
-  cursor: help;
-}
-
 /* App shell: top bar, tabs, placeholder screens, credits footer */
 .shell {
   display: flex;
@@ -1165,4 +1148,17 @@ td.none {
 .permessi .permit-name + .hour-help { margin-left: 6px; }
 .permessi .recovery-details { min-width: 0; }
 .permessi .permit-table td:first-child, .permessi .permit-table td:has(.permit-period) { white-space: nowrap; }
-.permessi .permit-table .why { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; border: 1px solid var(--mute); border-radius: 50%; font-style: normal; font-size: 11px; color: var(--mute); }
+
+.attachment-field { display: grid; gap: 4px; margin-block: 8px; min-width: 0; }
+.attachment-paste { border: 1px dashed var(--mute); border-radius: 5px; padding: 8px; display: grid; gap: 4px; font-size: 13px; }
+.attachment-paste small { color: var(--mute); }
+.attachment-paste img { max-width: 100%; max-height: 120px; object-fit: contain; justify-self: start; }
+.attachment-field > button { justify-self: start; }
+.attachment-field p { color: #b83232; margin: 0; font-size: 13px; }
+.info-trigger { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; padding: 0; min-width: 0; min-height: 0; border: 1px solid var(--mute); border-radius: 50%; color: var(--mute); background: transparent; font-size: 10px; font-weight: 600; font-style: italic; line-height: 1; cursor: pointer; }
+.record-info { flex-shrink: 0; display: inline-flex; margin-inline: 3px; }
+.record-popover { inset: auto; margin: 0; }
+.record-popover p { margin: 0 0 8px; }
+.record-popover a { display: block; color: var(--acc); padding-block: 6px; }
+.attachment-paste:focus-visible, .info-trigger:focus-visible, .record-popover a:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+@media (pointer: coarse) { .record-popover a { min-height: 44px; display: flex; align-items: center; } }
