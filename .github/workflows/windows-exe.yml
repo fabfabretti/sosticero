@@ -1,7 +1,8 @@
 name: Windows exe
 
-# Manual only: run this from the Actions tab on the commit you want to ship.
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
