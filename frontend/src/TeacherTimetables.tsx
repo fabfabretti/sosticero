@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { buildTeacherTimetables, norm, DAYS, HOURS } from "./timetables";
+import { HourHelp } from "./Tooltip";
 import type { HourType } from "./HourTypes";
 
 type Dataset = {
@@ -56,7 +57,7 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
                   {cell && (cell.classes.length
                     ? cell.classes.join(", ")
                     : cell.codes.map(code => <span key={code} className={`type-chip palette-${types[`code:${code}`]?.color || "blue"}`}>{code}</span>))}
-                  {cell && cell.partners.length > 0 && <span className="orari-partners" title={cell.partners.map(name).join(", ")}>Compresenza<span className="sr-only"> con {cell.partners.map(name).join(", ")}</span></span>}
+                  {cell && cell.partners.length > 0 && <HourHelp text={cell.partners.map(name).join(", ")}><span className="orari-partners">Compresenza</span></HourHelp>}
                 </td>;
               })}
             </tr>)}

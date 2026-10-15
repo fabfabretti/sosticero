@@ -12,6 +12,11 @@ function load(file, require) {
   return exports;
 }
 const timetables = load('src/timetables.ts');
+const tooltip = load('src/Tooltip.tsx', id => {
+  if (id === 'react') return { useRef: i => ({ current: i }), useState: i => [i, () => {}] };
+  if (id === 'react/jsx-runtime') return { jsx: (type, props) => ({ type, props }), jsxs: (type, props) => ({ type, props }) };
+  throw Error(id);
+});
 
 // Run the real component with minimal hook storage and a fake api.
 function component(file) {
@@ -26,6 +31,7 @@ function component(file) {
     if (id === 'react') return react;
     if (id === 'react/jsx-runtime') return { jsx, jsxs: jsx };
     if (id === './timetables') return timetables;
+    if (id === './Tooltip') return tooltip;
     throw Error(id);
   });
   return { render(props) {
@@ -77,10 +83,11 @@ test('grids expose day and hour headers', async () => {
   assert.ok(tables(s).some(n => n.props['aria-label'] === 'Orario di Anna'));
 });
 
-test('compresenza is a marker that names the co-teachers on hover', async () => {
+test('compresenza is a marker whose tooltip names the co-teachers', async () => {
   const s = await loaded();
-  const partners = s.nodes().filter(n => n.props?.className === 'orari-partners');
-  assert.deepEqual(partners.map(n => n.props.title).sort(), ['Anna', 'Bruno']);
+  const tips = s.nodes().filter(n => n.type === tooltip.HourHelp);
+  assert.deepEqual(tips.map(n => n.props.text).sort(), ['Anna', 'Bruno']);
+  assert.ok(s.nodes().some(n => n.props?.className === 'orari-partners'), 'the marker itself is shown');
 });
 
 test('each teacher shows the classe di concorso with its full name', async () => {

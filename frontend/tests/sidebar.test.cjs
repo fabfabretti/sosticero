@@ -13,6 +13,21 @@ const timetables = (() => {
   return exports;
 })();
 
+// HourHelp, rendered by the walker below; minimal hooks suffice for node inspection.
+const tooltip = (() => {
+  const exports = {};
+  const jsx = (type, props) => ({ type, props });
+  const react = { useRef: initial => ({ current: initial }), useState: initial => [typeof initial === 'function' ? initial() : initial, () => {}] };
+  runInNewContext(ts.transpileModule(readFileSync('src/Tooltip.tsx', 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
+  }).outputText, { exports, require: id => {
+    if (id === 'react') return react;
+    if (id === 'react/jsx-runtime') return { jsx, jsxs: jsx };
+    throw Error(id);
+  }, setTimeout, clearTimeout });
+  return exports;
+})();
+
 // Run the actual App handlers with deferred HTTP responses and minimal hook storage.
 function app(localStorage = { getItem: () => null, setItem() {} }, confirm = () => false) {
   const effects = [], requests = [], comps = new Map();
@@ -80,6 +95,7 @@ function app(localStorage = { getItem: () => null, setItem() {} }, confirm = () 
       if (id === './Attachments') return { AttachmentField: 'attachment-field', RecordInfo: 'record-info' };
       if (id === './Stats') return { Stats: 'stats' };
       if (id === './TeacherTimetables') return { TeacherTimetables: 'teacher-timetables' };
+      if (id === './Tooltip') return tooltip;
       if (id === './timetables') return timetables;
       if (id === 'react-router') return router;
       if (id.endsWith('.css')) return {};

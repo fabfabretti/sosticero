@@ -9,6 +9,7 @@ import { AttachmentField, RecordInfo, type ImageDraft, type AttachmentMap } from
 import { Stats } from "./Stats";
 import { TeacherTimetables } from "./TeacherTimetables";
 import { norm } from "./timetables";
+import { HourHelp } from "./Tooltip";
 import { HashRouter, Link, useLocation } from "react-router";
 const hours = [1, 2, 3, 4, 5, 6, 7];
 const localDate = (d: Date) =>
@@ -98,25 +99,6 @@ function Stub({ label }: { label: string }) {
       <p className="sub">Pagina in preparazione.</p>
     </section>
   );
-}
-function HourHelp({ text, children }: { text: string; children: React.ReactNode }) {
-  const hideTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const [tip, setTip] = useState<{ left: number; top: number; above: boolean } | null>(null);
-  // Fixed positioning escapes the sidebar's scroll/overflow clipping; coords come from the trigger.
-  const show = (e: React.MouseEvent<HTMLElement> | React.FocusEvent<HTMLElement>) => {
-    const r = e.currentTarget.getBoundingClientRect();
-    clearTimeout(hideTimer.current);
-    const above = r.top > window.innerHeight / 2;
-    setTip({ left: Math.max(8, Math.min(r.left, window.innerWidth - 246)), top: above ? r.top - 6 : r.bottom + 6, above });
-  };
-  const hide = () => { hideTimer.current = setTimeout(() => setTip(null), 150); };
-  return <span className="hour-help" tabIndex={0} aria-label={text}
-    onMouseEnter={show} onMouseLeave={hide}
-    onFocus={show} onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setTip(null); }}
-    onKeyDown={e => { if (e.key === "Escape") setTip(null); }}>
-    {children}
-    {tip && <span role="tooltip" tabIndex={0} className="tip" onMouseEnter={() => clearTimeout(hideTimer.current)} style={{ maxHeight: Math.max(40, (tip.above ? tip.top : window.innerHeight - tip.top) - 8), left: tip.left, top: tip.top, transform: tip.above ? "translateY(-100%)" : undefined }}>{text}</span>}
-  </span>;
 }
 function ClassificationChoices({ value, onChange }: { value: AbsenceKind; onChange: (value: AbsenceKind) => void }) {
   return <div className="opt classification" role="group" aria-label="Tipo di assenza">
