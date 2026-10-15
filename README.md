@@ -255,3 +255,57 @@ importa anche archivi precedenti senza allegati; versioni vecchie non importano
 schema 3. Conservare un backup precedente all'aggiornamento prima di tornare a
 una versione vecchia ed evitare modifiche ai dati con allegati usando codice
 vecchio. Database, archivi e backup crescono con le immagini salvate.
+
+### Cambi di orario con decorrenza
+
+In **Settings → Orario**, selezionare il **JSON completo** (`docenti` e `orario`),
+la decorrenza e **Mostra anteprima**. Il file mantiene il formato esistente: la data
+si sceglie nell'app. Gli ID dei docenti devono rimanere stabili: cambiare un ID
+crea un'identità distinta e non trasferisce le registrazioni.
+
+Ogni versione vale dalla decorrenza compresa fino alla versione successiva.
+Sono ammesse decorrenze passate e future; una decorrenza già occupata viene
+rifiutata. Non sono previsti aggiornamenti parziali, modifiche alle versioni
+salvate o ritorni automatici al vecchio orario. Il primo orario è la versione
+iniziale per tutte le date precedenti alla prima versione con decorrenza.
+L'aggiornamento conserva l'orario già presente come versione iniziale, ma non
+può ricostruire orari sovrascritti prima dell'introduzione di questa funzione.
+
+L'anteprima elenca lezioni cambiate, aggiunte/rimozioni di docenti, giornate
+registrate coinvolte e assegnazioni da verificare. Una decorrenza nel passato
+corregge intenzionalmente quelle giornate e le relative statistiche: controllare
+l'intervallo prima di confermare. Le date fuori dall'intervallo non cambiano.
+Un file incompleto può sembrare una rimozione intenzionale: verificare sempre
+l'elenco dei docenti rimossi e che il file contenga l'intero orario scolastico.
+
+La conferma crea prima un backup SQLite verificato. Se il backup fallisce,
+l'importazione non procede. Versione, evidenze e statistiche vengono applicate
+in un'unica transazione; un errore non lascia un aggiornamento parziale. Se i
+dati cambiano dopo l'anteprima occorre generarne una nuova. Il nome del backup
+precedente viene mostrato dopo l'importazione.
+
+Assenze, permessi, note, immagini, disposizioni, classi fuori e assegnazioni
+restano salvati. Le assegnazioni non più valide o senza una riga corrispondente
+appaiono nella giornata con il contesto originale. Si possono rimuovere oppure
+spostare su una riga libera: lo spostamento è validato e fallisce senza perdere
+l'originale se il docente non è disponibile. Per cambiare docente su una riga
+ancora presente usare il normale selettore. Le assegnazioni RP mantengono il
+collegamento al permesso e il conteggio dei recuperi fino alla correzione
+esplicita; una copertura RP in conflitto non conta come copertura valida nelle
+statistiche. I fatti precedenti alla correzione sono conservati nella cronologia.
+
+Gli archivi esportati usano lo schema 4 e includono orari, evidenze, statistiche
+e immagini. Gli schemi precedenti restano importabili, se compatibili, senza
+sostituire la cronologia già presente; il loro contesto eventualmente ricostruito
+non equivale a un orario storico originale. Un ripristino da backup ripristina
+l'intero database e richiede conferma: annulla anche le modifiche successive al
+backup. Prima di tornare a una versione precedente del programma, ripristinare
+un backup compatibile soltanto dopo aver salvato i dati correnti e autorizzato
+esplicitamente il ripristino.
+
+API: `POST /api/timetable/preview?effective=2026-10-15` riceve il JSON completo
+e restituisce l'impatto con `token`. Per applicare inviare lo stesso JSON a
+`POST /api/timetable?effective=2026-10-15&token=TOKEN&confirm=true`.
+Una conferma scaduta restituisce 409, dati non validi o un backup fallito 422.
+Il caricamento iniziale senza orario resta compatibile con il vecchio endpoint;
+in servizio operativo richiede comunque `confirm=true`.

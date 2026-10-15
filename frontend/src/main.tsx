@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./style.css";
 import type { Row, Candidate, Data, AbsenceKind } from "./types";
+import { TimetableImport } from "./TimetableImport";
 import { HourTypes } from "./HourTypes";
 import { CandidateDrawer } from "./CandidateDrawer";
 import { AttachmentField, RecordInfo, type ImageDraft, type AttachmentMap } from "./Attachments";
@@ -130,7 +131,7 @@ function Permessi() {
   const [manualHours, setManualHours] = useState("");
   const [editingManual, setEditingManual] = useState(false);
   const [sort, setSort] = useState<{ field: "date" | "requested"; ascending: boolean }>({ field: "date", ascending: false });
-  const [data, setData] = useState<{ dataset: Data["dataset"]; permitAttachments?: AttachmentMap; permessi: Record<string, Record<string, number[]>>; permitRequests?: Record<string, Record<string, string>>; permitNotes?: Record<string, Record<string, string>>; manualPermitNotes?: Record<string, string>; permitKinds?: Record<string, Record<string, AbsenceKind>>; recoveries?: Record<string, Record<string, import("./types").PermitRecovery>>; balances?: Record<string, { remaining: number; expired: number; eligible: number }>; manualPermits?: Record<string, { id: string; hours: number; recovered: number; remaining: number; recoveries: { date: string; h: number; key: string }[] }> }>();
+  const [data, setData] = useState<{ timetableVersions?: { effective: string | null; dataset: Data["dataset"] }[]; dataset: Data["dataset"]; permitAttachments?: AttachmentMap; permessi: Record<string, Record<string, number[]>>; permitRequests?: Record<string, Record<string, string>>; permitNotes?: Record<string, Record<string, string>>; manualPermitNotes?: Record<string, string>; permitKinds?: Record<string, Record<string, AbsenceKind>>; recoveries?: Record<string, Record<string, import("./types").PermitRecovery>>; balances?: Record<string, { remaining: number; expired: number; eligible: number }>; manualPermits?: Record<string, { id: string; hours: number; recovered: number; remaining: number; recoveries: { date: string; h: number; key: string }[] }> }>();
   const [dayInput, setDayInput] = useState(italianDate(localDate(new Date())));
   const [requestedInput, setRequestedInput] = useState(italianDate(localDate(new Date())));
   const day = parseItalianDate(dayInput);
@@ -150,15 +151,16 @@ function Permessi() {
   const [busy, setBusy] = useState(false);
   const refresh = async () => setData(await api("permessi"));
   useEffect(() => { void refresh().catch(e => setError(String(e))); }, []);
+  const permitDataset = (date: string) => data?.timetableVersions?.filter(v => !v.effective || v.effective <= date).at(-1)?.dataset || data?.dataset;
   const scheduled = (id: string, date: string, h: number) => {
     const weekday = ["dom", "lun", "mar", "mer", "gio", "ven", "sab"][new Date(date + "T12:00").getDay()];
-    return !!data?.dataset.lessons[`${id}|${weekday}|${h}`];
+    return !!permitDataset(date)?.lessons[`${id}|${weekday}|${h}`];
   };
   const dailyMaximum = (id: string, date: string) => Math.floor(hours.filter(h => scheduled(id, date, h)).length / 2);
   const maximum = dailyMaximum(teacher, day);
   const overLimit = !!teacher && selected.length > maximum;
   const suggestions = query && !teacher
-    ? Object.values(data?.dataset.teachers || {})
+    ? Object.values((manual ? data?.dataset : permitDataset(day))?.teachers || {})
         .filter(t => (!t.retired || t.id === original?.id) && norm(t.name + " " + (t.code || "")).includes(norm(query)))
         .sort((a, b) => Number(!norm(a.name).startsWith(norm(query))) - Number(!norm(b.name).startsWith(norm(query))) || a.name.localeCompare(b.name))
         .slice(0, 6)
@@ -300,13 +302,6 @@ function Settings() {
   const upload = async (file: File | undefined, target: string) => {
     if (!file) return;
     try {
-      if (target === 'timetable') {
-        const environment = await api<{ testing: boolean }>('environment');
-        if (!environment.testing) {
-          if (!window.confirm('Sostituire l’orario operativo con il file ' + file.name + '? Le supplenze salvate potrebbero non corrispondere al nuovo orario.')) return;
-          target += '?confirm=true';
-        }
-      }
       await api(target, JSON.parse(await file.text()));
       await refresh();
     } catch (e) {
@@ -337,15 +332,7 @@ function Settings() {
         </p>
       )}
       <section className="dataset">
-        <label className="upload-btn">
-          Carica database JSON
-          <input
-            type="file"
-            hidden
-            accept=".json"
-            onChange={(e) => void upload(e.target.files?.[0], "timetable")}
-          />
-        </label>
+        <TimetableImport api={api} onImported={() => void refresh()} />
         <div className="db-status">
           {data
             ? `${Object.keys(data.dataset.teachers).length} docenti · ${data.dataset.classes.length} classi`
@@ -993,9 +980,16 @@ function Supplenze() {
             {rs.length} ore da coprire, {rs.filter((r) => assigned[r.k]).length}{" "}
             assegnate
           </p>
+          {data?.timetable && <p className="sub">Orario: {data.timetable.effective ? `dal ${italianDate(data.timetable.effective)}` : 'versione iniziale'}</p>}
+          {data?.references?.map((r, n) => <p role="alert" key={`reference-${n}`}>{r.id}: {r.message}</p>)}
           {data?.issues.map((i) => (
             <p role="alert" key={i.key}>
-              Assegnazione da verificare ({i.key}): {i.message}{" "}
+              Assegnazione da verificare: {i.context ? `${i.context.teacherName}, ${i.context.h}ª, ${i.context.c}, ${i.context.site || 'sede ignota'} → ${i.context.substituteName}` : i.key}: {i.message}{" "}
+              <label>Sposta su una riga attuale <select aria-label="Riga per risolvere il conflitto" defaultValue="" onChange={e => {
+                const key = e.target.value;
+                if (key && window.confirm('Spostare questa assegnazione sulla riga selezionata? Sarà verificata prima del salvataggio.')) void mutate('assignments', {day, key, value: assigned[i.key]?.v, replace_key: i.key});
+                e.target.value = '';
+              }}><option value="">Seleziona…</option>{data?.rows.filter(r => r.k !== i.key && !assigned[r.k]).map(r => <option key={r.k} value={r.k}>{r.h}ª · {r.c}</option>)}</select></label>{" "}
               <button
                 className="lk"
                 onClick={() => void mutate("assignments", { day, key: i.key })}

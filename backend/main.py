@@ -1,4 +1,5 @@
 import os
+import sqlite3
 from datetime import date, timedelta, datetime
 from pathlib import Path
 from typing import Literal
@@ -10,7 +11,9 @@ from .domain import normalize_dataset, rows, candidates, validate_assignment, de
 from .storage import Store, EMPTY
 from . import backup, attachments
 from .hour_types import merge_types, validate_types
-from . import statistics, recovery
+from . import statistics, recovery, timetables
+from zoneinfo import ZoneInfo
+from hashlib import sha256
 
 
 class Attachment(BaseModel):
@@ -46,6 +49,7 @@ class Permit(BaseModel):
 
 
 class Assignment(BaseModel):
+    replace_key: str | None = None
     exceptional: StrictBool = False
     day: date
     key: str
@@ -104,8 +108,10 @@ def create_app(path=None, seed=None):
         with store.connect() as db:
             db.execute('BEGIN IMMEDIATE')
             ds = store.read(db, 'dataset')
+            if ds and store.read(db, 'timetables') is None:
+                store.write(db, 'timetables', timetables.baseline(ds))
             if ds and store.read(db, 'statistics') is None:
-                store.write(db, 'statistics', statistics.sync(ds, store.read(db, 'state', EMPTY), statistics.empty(), reconstructed=True))
+                store.write(db, 'statistics', timetables.sync(store.read(db, 'timetables'), store.read(db, 'state', EMPTY), statistics.empty(), reconstructed=True))
 
     # Perform startup backup if enabled
     if backup_on_startup and database.exists():
@@ -137,6 +143,11 @@ def create_app(path=None, seed=None):
         from fastapi.responses import JSONResponse
         return JSONResponse(status_code=422, content={'detail': str(exc)})
 
+    @app.exception_handler(sqlite3.OperationalError)
+    async def database_busy(_, exc):
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=503, content={'detail': 'Database occupato o non disponibile. Nessuna modifica parziale applicata; riprova.'})
+
     def policies(db, ds):
         old = store.read(db, "hourTypes", {})
         merged = merge_types(ds, old)
@@ -148,7 +159,8 @@ def create_app(path=None, seed=None):
     def get_types():
         with store.connect() as db:
             db.execute("BEGIN IMMEDIATE")
-            ds = store.read(db, "dataset")
+            history = store.read(db, "timetables")
+            ds = timetables.dataset(history, datetime.now(ZoneInfo("Europe/Rome")).date().isoformat()) if history else store.read(db, "dataset")
             return dict(types=policies(db, ds), needsReimport=bool(ds and any("activities" not in l for l in ds["lessons"].values())))
 
     @app.post("/api/hour-types")
@@ -165,8 +177,9 @@ def create_app(path=None, seed=None):
             store.write(db, "hourTypes", current)
             return current
 
-    def load(db):
-        ds = store.read(db, 'dataset')
+    def load(db, day=None):
+        history = store.read(db, 'timetables')
+        ds = timetables.dataset(history, day or datetime.now(ZoneInfo('Europe/Rome')).date().isoformat()) if history else store.read(db, 'dataset')
         if ds is None:
             raise ValueError('Carica prima un orario.')
         state = store.read(db, 'state', EMPTY)
@@ -183,9 +196,9 @@ def create_app(path=None, seed=None):
             state.setdefault(group, {})
         return ds, state
 
-    def save_state(db, ds, state, days):
+    def save_state(db, ds, state, days, revalidate=False):
         facts = store.read(db, 'statistics', statistics.empty())
-        store.write(db, 'statistics', statistics.sync(ds, state, facts, days))
+        store.write(db, 'statistics', timetables.sync(store.read(db, 'timetables'), state, facts, days, revalidate=revalidate))
         store.write(db, 'state', state)
         attachments.prune(db, state)
 
@@ -209,25 +222,27 @@ def create_app(path=None, seed=None):
     @app.get('/api/day/{day}')
     def get_day(day: date):
         with store.connect() as db:
-            ds, state = load(db)
+            ds, state = load(db, day.isoformat())
             rules = policies(db, ds)
+            history = store.read(db, 'timetables')
+            facts = store.read(db, 'statistics', statistics.empty())
         d = day.isoformat()
         rs = rows(ds, state, d)
-        issues = []
-        for k, a in state['asg'].get(d, {}).items():
-            try:
-                validate_assignment(ds, state, d, k, a['v'], saved=True)
-            except ValueError as e:
-                issues.append({'key': k, 'message': str(e)})
-        return dict(dataset=ds, state=state, rows=rs, issues=issues, autoDis={d: auto_availability(ds, state, d)})
+        problems = timetables.issues(ds, state, d, rules)
+        for item in problems:
+            item['context'] = timetables.conflict_context(history, d, item['key'], state['asg'][d][item['key']]) or timetables.context(history, state, d, item['key'], facts)
+        selected = timetables.version(history, d)
+        return dict(dataset=ds, state=state, rows=rs, issues=problems, references=timetables.reference_issues(history, state, d),
+                    timetable=dict(id=selected['id'], effective=selected['effective']), autoDis={d: auto_availability(ds, state, d)})
 
     @app.get('/api/permessi')
     def get_permits():
         with store.connect() as db:
             ds, state = load(db)
+            versions = store.read(db, 'timetables')['versions']
         summaries, balances = recovery.summary(state)
         manual = {p['teacher']: p for p in recovery.ledger(state).values() if p['date'] is None}
-        return dict(dataset=ds, permitAttachments=state['permitAttachments'], permessi=state['permessi'], permitRequests=state['permitRequests'], permitNotes=state['permitNotes'], permitKinds=state['permitKinds'], recoveries=summaries, balances=balances, manualPermits=manual, manualPermitNotes=state['manualPermitNotes'])
+        return dict(dataset=ds, timetableVersions=[dict(effective=v['effective'], dataset=v['dataset']) for v in versions], permitAttachments=state['permitAttachments'], permessi=state['permessi'], permitRequests=state['permitRequests'], permitNotes=state['permitNotes'], permitKinds=state['permitKinds'], recoveries=summaries, balances=balances, manualPermits=manual, manualPermitNotes=state['manualPermitNotes'])
 
     @app.post('/api/manual-permits')
     def save_manual_permit(e: ManualPermit):
@@ -264,7 +279,7 @@ def create_app(path=None, seed=None):
         source = (e.original_day.isoformat(), e.original_id) if e.original_day else None
         with store.connect() as db:
             db.execute('BEGIN IMMEDIATE')
-            ds, state = load(db)
+            ds, state = load(db, d)
             permits = state['permessi']
             if source and source[1] not in permits.get(source[0], {}):
                 raise ValueError('Permesso originale non più presente.')
@@ -317,24 +332,54 @@ def create_app(path=None, seed=None):
             save_state(db, ds, state, {d, source[0]} if source else {d})
         return {'ok': True}
 
-    @app.post('/api/timetable')
-    def import_timetable(data: dict, confirm: bool = False):
-        if not testing and not confirm:
-            raise HTTPException(status_code=409, detail='Conferma esplicita richiesta per sostituire l’orario operativo.')
+    def timetable_plan(db, data, effective):
         ds = normalize_dataset(data)
+        history = store.read(db, 'timetables')
+        state = store.read(db, 'state', EMPTY)
+        for group in EMPTY:
+            state.setdefault(group, {})
+        facts = store.read(db, 'statistics', statistics.empty())
+        rules = merge_types(ds, store.read(db, 'hourTypes', {}))
+        proposed, reconciled, impact = timetables.plan(history, ds, effective, state, facts, rules)
+        documents = db.execute('SELECT key, value FROM documents ORDER BY key').fetchall()
+        images = [(i, media, sha256(content).hexdigest()) for i, media, content in db.execute('SELECT id, media_type, content FROM attachments ORDER BY id')]
+        impact['token'] = timetables.digest([documents, images, ds, effective])
+        impact['teachers'] = {i: t['name'] for i, t in ds['teachers'].items()}
+        if history:
+            impact['previousTeachers'] = {i: t['name'] for i, t in timetables.version(history, effective)['dataset']['teachers'].items()}
+        return proposed, reconciled, impact
+
+    @app.post('/api/timetable/preview')
+    def preview_timetable(data: dict, effective: date):
+        with store.connect() as db:
+            db.execute('BEGIN')
+            _, _, impact = timetable_plan(db, data, effective.isoformat())
+        return impact
+
+    @app.post('/api/timetable')
+    def import_timetable(data: dict, confirm: bool = False, effective: date | None = None, token: str | None = None):
         with store.connect() as db:
             db.execute('BEGIN IMMEDIATE')
-            old = store.read(db, 'dataset')
-            if store.read(db, 'statistics') is None:
-                store.write(db, 'statistics', statistics.sync(old or ds, store.read(db, 'state', EMPTY), statistics.empty(), reconstructed=True))
-            # Retired teachers remain addressable by stable ID for historical records.
-            if old:
-                for i, t in old['teachers'].items():
-                    if i not in ds['teachers']:
-                        ds['teachers'][i] = dict(t, retired=True)
-            store.write(db, 'dataset', ds)
-            policies(db, ds)
-        return {'ok': True}
+            history = store.read(db, 'timetables')
+            # Initial loading remains compatible; replacing any existing timetable requires review.
+            if (history or not testing) and not confirm:
+                raise HTTPException(status_code=409, detail='Conferma esplicita richiesta per importare l’orario.')
+            if history and (effective is None or token is None):
+                raise HTTPException(status_code=409, detail='Seleziona la decorrenza e genera l’anteprima prima di confermare.')
+            proposed, facts, impact = timetable_plan(db, data, effective.isoformat() if effective else None)
+            if token is not None and token != impact['token']:
+                raise HTTPException(status_code=409, detail='Anteprima scaduta: dati o orario modificati. Genera una nuova anteprima.')
+            try:
+                snapshot = backup.backup_database(str(database), str(backup_dir))
+            except Exception as exc:
+                raise ValueError('Backup prima dell’importazione fallito. Nessun dato modificato: ' + str(exc)) from exc
+            store.write(db, 'timetables', proposed)
+            store.write(db, 'statistics', facts)
+            # Legacy dataset is a preserved baseline, never the latest scheduled version.
+            if not history:
+                store.write(db, 'dataset', proposed['versions'][0]['dataset'])
+            policies(db, normalize_dataset(data))
+        return dict(ok=True, backup=snapshot, impact=impact)
 
     @app.post('/api/entries')
     def edit(e: Edit):
@@ -355,8 +400,6 @@ def create_app(path=None, seed=None):
         with store.connect() as db:
             db.execute('BEGIN IMMEDIATE')
             ds, state = load(db)
-            if e.id not in (ds['classes'] if e.group == 'cf' else ds['teachers']):
-                raise ValueError('Docente o classe sconosciuto.')
             days = [e.day.isoformat()]
             if e.future:
                 days += [d for d in state[e.group] if d > days[0]]
@@ -369,6 +412,12 @@ def create_app(path=None, seed=None):
             attachment = attachments.insert(db, e.attachment.model_dump() if e.attachment else None) if 'attachment' in e.model_fields_set else None
             attachment_group = {'abs': 'absenceAttachments', 'dis': 'disAttachments'}.get(e.group)
             for d in days:
+                ds, _ = load(db, d)
+                active = timetables.version(store.read(db, 'timetables'), d)['dataset']
+                if e.id not in (ds['classes'] if e.group == 'cf' else ds['teachers']):
+                    raise ValueError('Docente o classe sconosciuto.')
+                if e.hours is not None and e.id not in state[e.group].get(d, {}) and e.id not in (active['classes'] if e.group == 'cf' else active['teachers']):
+                    raise ValueError('Docente o classe non attivo nella data selezionata.')
                 if attachment_group and (e.hours is None or 'attachment' in e.model_fields_set):
                     state[attachment_group].get(d, {}).pop(e.id, None)
                     if e.hours is not None and attachment:
@@ -399,7 +448,7 @@ def create_app(path=None, seed=None):
     @app.get('/api/candidates')
     def get_candidates(day: date, key: str):
         with store.connect() as db:
-            ds, state = load(db)
+            ds, state = load(db, day.isoformat())
             rules = policies(db, ds)
         row = next((r for r in rows(ds, state, day.isoformat()) if r['k'] == key), None)
         if not row:
@@ -410,8 +459,12 @@ def create_app(path=None, seed=None):
     def assign(e: Assignment):
         with store.connect() as db:
             db.execute('BEGIN IMMEDIATE')
-            ds, state = load(db)
+            ds, state = load(db, e.day.isoformat())
             assignments = state['asg'].setdefault(e.day.isoformat(), {})
+            if e.replace_key:
+                if e.replace_key == e.key or e.replace_key not in assignments or e.key in assignments or e.value is None:
+                    raise ValueError('Sostituzione del conflitto non valida o riga già assegnata.')
+                assignments.pop(e.replace_key)
             if e.value is None:
                 assignments.pop(e.key, None)
             else:
@@ -421,7 +474,7 @@ def create_app(path=None, seed=None):
                     assignments.pop(e.key, None)
                 assignments[e.key] = validate_assignment(ds, state, e.day.isoformat(), e.key, e.value, policies(db, ds), e.exceptional, saved=bool(unchanged))
             recovery.validate(state)
-            save_state(db, ds, state, [e.day.isoformat()])
+            save_state(db, ds, state, [e.day.isoformat()], revalidate=True)
         return {'ok': True}
 
     @app.get('/api/export')
@@ -431,15 +484,22 @@ def create_app(path=None, seed=None):
             ds, state = load(db)
             rules = policies(db, ds)
             facts = store.read(db, 'statistics', statistics.empty())
+            history = store.read(db, 'timetables')
             images = attachments.export(db, state)
-        return dict(schema=3, attachments=images, datasetId='v1:'+','.join(sorted(ds['teachers'])), hourTypes=rules, statistics=facts, **state)
+        return dict(schema=4, timetables=history, attachments=images, datasetId='v1:'+','.join(sorted(ds['teachers'])), hourTypes=rules, statistics=facts, **state)
 
     @app.post('/api/import')
     def import_state(data: dict):
         with store.connect() as db:
             db.execute('BEGIN IMMEDIATE')
-            ds, _ = load(db)
-            if type(data.get('schema')) is not int or data['schema'] not in (1, 2, 3) or data.get('datasetId') != 'v1:'+','.join(sorted(ds['teachers'])):
+            history = timetables.validate(data.get('timetables')) if data.get('schema') == 4 else store.read(db, 'timetables')
+            if data.get('schema') != 4:
+                ds, _ = load(db)
+            if data.get('schema') == 4:
+                ds = timetables.dataset(history, datetime.now(ZoneInfo('Europe/Rome')).date().isoformat())
+            identifier = data.get('datasetId')
+            compatible = identifier == 'v1:'+','.join(sorted(ds['teachers'])) if data.get('schema') == 4 else isinstance(identifier, str) and identifier.startswith('v1:') and set(identifier[3:].split(',')) <= set(ds['teachers'])
+            if type(data.get('schema')) is not int or data['schema'] not in (1, 2, 3, 4) or not compatible:
                 raise ValueError('Archivio non compatibile.')
             rules = validate_types(data['hourTypes']) if 'hourTypes' in data else None
             state = {k: data.get(k, {}) for k in EMPTY}
@@ -455,7 +515,9 @@ def create_app(path=None, seed=None):
                         raise ValueError('Docente saldo manuale non valido.')
                     continue
                 for d, entries in dates.items():
-                    date.fromisoformat(d)
+                    if date.fromisoformat(d).isoformat() != d:
+                        raise ValueError('Data archivio non valida.')
+                    ds = timetables.dataset(history, d)
                     if not isinstance(entries, dict):
                         raise ValueError('Archivio non valido.')
                     for i, value in entries.items():
@@ -494,7 +556,10 @@ def create_app(path=None, seed=None):
                 recovery.migrate(state)
             recovery.validate(state)
             attachments.import_images(db, state, data, data['schema'])
-            facts = statistics.validate(data['statistics'], ds, state) if 'statistics' in data else statistics.sync(ds, state, statistics.empty(), reconstructed=True)
+            facts = statistics.validate(data['statistics'], lambda day: timetables.dataset(history, day), state) if 'statistics' in data else timetables.sync(history, state, statistics.empty(), reconstructed=True)
+            if data['schema'] == 4:
+                store.write(db, 'timetables', history)
+                store.write(db, 'dataset', history['versions'][0]['dataset'])
             if rules is not None:
                 store.write(db, 'hourTypes', merge_types(ds, rules))
             store.write(db, 'state', state)

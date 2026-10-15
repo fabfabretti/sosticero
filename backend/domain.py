@@ -282,6 +282,11 @@ def validate_assignment(ds, state, day, key, value, policies=None, exceptional=F
     old = state['asg'].get(day, {}).get(key)
     if saved and old and old.get('t') == 'RP' and old['v'] == value:
         recovery.validate(state)
+        if value not in ds['teachers'] or ds['teachers'][value].get('retired') or lesson(ds, value, day, row['h']) or row['h'] in state['dis'].get(day, {}).get(value, []):
+            raise ValueError('Recupero da verificare: docente non attivo o impegnato nell’orario.')
+        _, why, _ = rp_context(ds, state, day, row, value)
+        if why:
+            raise ValueError(why)
         if row['h'] in absences(state, day).get(value, []):
             raise ValueError('Assente')
         if any(k != key and int(k.split('|')[1]) == row['h'] and a['v'] == value for k, a in state['asg'].get(day, {}).items()):

@@ -1,3 +1,4 @@
+from backend.tests.timetable_helpers import import_version
 import base64
 import copy
 import sqlite3
@@ -120,7 +121,7 @@ class AttachmentsTest(unittest.TestCase):
     def test_archives_backup_and_timetable(self):
         self.entry(attachment=image(), until='2026-10-13').raise_for_status()
         url = self.url(); archive = self.state()
-        self.assertEqual(archive['schema'], 3)
+        self.assertEqual(archive['schema'], 4)
         self.client.post('/api/import', json=archive).raise_for_status()
         self.assertEqual(archive, self.state())
         for change in ('missing', 'orphan', 'source', 'corrupt', 'old', 'unknown', 'invalid-id'):
@@ -135,7 +136,7 @@ class AttachmentsTest(unittest.TestCase):
             if change == 'source': bad['absenceAttachments'][DAY]['unknown'] = next(iter(bad['attachments']))
             if change == 'corrupt': bad['attachments'][next(iter(bad['attachments']))]['data'] = 'broken'
             if change == 'old': bad['schema'] = 2
-            if change == 'unknown': bad['schema'] = 4
+            if change == 'unknown': bad['schema'] = 5
             self.assertEqual(self.client.post('/api/import', json=bad).status_code, 422)
             self.assertEqual(archive, self.state())
         snapshot = backup.backup_database(str(self.path), str(Path(self.tmp.name) / 'snapshots'))
@@ -144,7 +145,7 @@ class AttachmentsTest(unittest.TestCase):
         self.assertEqual(archive, self.state())
         self.assertEqual(self.client.get(url).status_code, 200)
         from backend.tests.test_app import fixture
-        self.client.post('/api/timetable', json=fixture()).raise_for_status()
+        import_version(self.client, fixture(), '2026-10-19').raise_for_status()
         self.assertEqual(self.client.get(url).status_code, 200)
         for schema in (1, 2):
             legacy = {k: v for k, v in archive.items() if k not in (*attachments.GROUPS, 'attachments')}
@@ -153,7 +154,7 @@ class AttachmentsTest(unittest.TestCase):
             self.assertEqual(self.client.get(url).status_code, 404)
 
     def test_protected_permit_rollback(self):
-        self.client.post('/api/timetable', json=test_recovery.fixture()).raise_for_status()
+        import_version(self.client, test_recovery.fixture(), '2026-10-01').raise_for_status()
         self.entry(hours=[1]).raise_for_status()
         self.permit(day='2026-10-05', id='rp', hours=[2], attachment=image()).raise_for_status()
         self.client.post('/api/assignments', json=dict(day=DAY, key='absent|1|1A', value='rp')).raise_for_status()

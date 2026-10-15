@@ -1,3 +1,4 @@
+from backend.tests.timetable_helpers import import_version
 import os
 from pathlib import Path
 import subprocess
@@ -50,5 +51,5 @@ class DatabaseIsolationTest(unittest.TestCase):
             replacement['orario'] = []
             self.assertEqual(client.post('/api/timetable', json=replacement).status_code, 409)
             self.assertEqual(client.get('/api/day/2026-10-12').json(), before)
-            client.post('/api/timetable?confirm=true', json=replacement).raise_for_status()
+            import_version(client, replacement).raise_for_status()
             self.assertEqual(client.get('/api/day/2026-10-12').json()['state'], before['state'])

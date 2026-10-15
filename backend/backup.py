@@ -1,6 +1,7 @@
 import os
 import json
 import sqlite3
+import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -15,10 +16,10 @@ def _parse_timestamp_from_filename(filename: str) -> Optional[datetime]:
         # Remove extension and prefix
         if not filename.startswith('supplenze-') or not filename.endswith('.sqlite'):
             return None
-        ts_str = filename[10:-7]  # Remove 'supplenze-' and '.sqlite'
+        ts_str = filename[10:-7].split('_', 1)[0]  # Remove 'supplenze-' and '.sqlite'
         # Handle format with hyphens (filesystem safe)
         # Try various formats
-        for fmt in ['%Y-%m-%dT%H-%M-%S', '%Y-%m-%dT%H%M%S', '%Y%m%dT%H%M%S']:
+        for fmt in ['%Y-%m-%dT%H-%M-%S.%f', '%Y-%m-%dT%H-%M-%S', '%Y-%m-%dT%H%M%S', '%Y%m%dT%H%M%S']:
             try:
                 return datetime.strptime(ts_str, fmt)
             except ValueError:
@@ -63,8 +64,10 @@ def backup_database(db_path: str, backup_dir: str) -> Dict:
     
     # Create timestamped filename
     now = datetime.now()
-    filename = f'supplenze-{_format_timestamp(now)}.sqlite'
-    backup_path = backup_dir / filename
+    fd, reserved = tempfile.mkstemp(prefix=f'supplenze-{now.strftime("%Y-%m-%dT%H-%M-%S.%f")}_', suffix='.sqlite', dir=backup_dir)
+    os.close(fd)
+    backup_path = Path(reserved)
+    filename = backup_path.name
     
     # Use SQLite backup API for consistency
     src_conn = sqlite3.connect(str(db_path))
@@ -72,6 +75,11 @@ def backup_database(db_path: str, backup_dir: str) -> Dict:
         dst_conn = sqlite3.connect(str(backup_path))
         try:
             src_conn.backup(dst_conn)
+            if dst_conn.execute('PRAGMA integrity_check').fetchall() != [('ok',)]:
+                raise ValueError('Backup database integrity check failed.')
+        except Exception:
+            backup_path.unlink(missing_ok=True)
+            raise
         finally:
             dst_conn.close()
     finally:

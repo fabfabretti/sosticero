@@ -1,3 +1,4 @@
+from backend.tests.timetable_helpers import import_version
 import copy
 import tempfile
 import unittest
@@ -112,7 +113,7 @@ class RecoveryTest(unittest.TestCase):
     def test_archive_migration_and_timetable_history(self):
         self.assign(1).raise_for_status()
         archive = self.client.get('/api/export').json()
-        self.assertEqual(archive['schema'], 3)
+        self.assertEqual(archive['schema'], 4)
         self.client.post('/api/import', json=archive).raise_for_status()
         for mutation in ('missing', 'wrongteacher', 'nonrp', 'over', 'window', 'duplicate'):
             bad = copy.deepcopy(archive); a = bad['asg'][DAY]['absent|1|1A']
@@ -128,8 +129,8 @@ class RecoveryTest(unittest.TestCase):
             self.assertEqual(self.client.get('/api/export').json()['asg'], archive['asg'])
         changed = copy.deepcopy(self.raw)
         changed['orario'].append(dict(docente='rp', giorno='lun', ora=1, classi=['2A'], sede='centrale'))
-        self.client.post('/api/timetable', json=changed).raise_for_status()
-        self.assertFalse(self.client.get('/api/day/' + DAY).json()['issues'])
+        import_version(self.client, changed).raise_for_status()
+        self.assertTrue(self.client.get('/api/day/' + DAY).json()['issues'])
         self.client.post('/api/import', json=archive).raise_for_status()
         self.assign(1, None).raise_for_status()
         legacy = self.client.get('/api/export').json(); legacy['schema'] = 1; legacy.pop('permitIds')
@@ -143,7 +144,7 @@ class RecoveryTest(unittest.TestCase):
 
     def test_startup_migration_and_capacity_reduction(self):
         self.raw['orario'].append(dict(docente='rp', giorno='lun', ora=7, classi=[], sede='centrale', attivita_originale='POT'))
-        self.client.post('/api/timetable', json=self.raw).raise_for_status()
+        import_version(self.client, self.raw, '2026-10-01').raise_for_status()
         self.client.post('/api/permessi', json=dict(day='2026-10-05', id='rp', original_day='2026-10-05', original_id='rp', hours=[2,3])).raise_for_status()
         store = Store(str(self.path))
         with store.connect() as db:
@@ -169,7 +170,7 @@ class RecoveryTest(unittest.TestCase):
         self.permit('2026-10-05')
         raw = copy.deepcopy(self.raw)
         raw['orario'].append(dict(docente='rp', giorno='lun', ora=1, classi=[], sede='centrale', attivita_originale='GM'))
-        self.client.post('/api/timetable', json=raw).raise_for_status()
+        import_version(self.client, raw).raise_for_status()
         self.assertNotIn('rp', [c['id'] for c in self.cs(1)])
         self.assertEqual(self.assign(1).status_code, 422)
         self.client.post('/api/entries', json=dict(day=DAY, group='cf', id='2A', hours=[2])).raise_for_status()

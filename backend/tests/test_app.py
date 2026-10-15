@@ -1,3 +1,4 @@
+from backend.tests.timetable_helpers import import_version
 import tempfile
 import unittest
 from pathlib import Path
@@ -236,7 +237,7 @@ class PersistenceTest(unittest.TestCase):
         self.post('entries',day=DAY,group='dis',id='blank',hours=[2],site='centrale')
         self.post('assignments',day=DAY,key='absent|2|1A',value='blank')
         changed=fixture();changed['docenti'][-1]['nome_originale']='Renamed'
-        self.client.post('/api/timetable',json=changed)
+        import_version(self.client, changed, '2026-10-11')
         self.client=TestClient(create_app(self.path))
         d=self.client.get('/api/day/'+DAY).json()
         self.assertEqual(d['state']['asg'][DAY]['absent|2|1A']['v'],'blank')
@@ -247,7 +248,7 @@ class PersistenceTest(unittest.TestCase):
 
     def test_invalid_import_rolls_back(self):
         bad=fixture();bad['orario'].append(bad['orario'][0])
-        self.assertEqual(self.client.post('/api/timetable',json=bad).status_code,422)
+        self.assertEqual(self.client.post('/api/timetable/preview?effective='+DAY,json=bad).status_code,422)
         self.assertEqual(len(self.client.get('/api/day/'+DAY).json()['dataset']['teachers']),8)
 
     def test_assignment_revalidated_and_archive_roundtrip(self):
@@ -270,18 +271,18 @@ class PersistenceTest(unittest.TestCase):
         self.post('assignments',day=DAY,key='absent|2|1A',value='co',exceptional=True)
         changed=fixture()
         changed['orario'][1]['sede']='succursale'
-        self.assertEqual(self.client.post('/api/timetable',json=changed).status_code,200)
+        self.assertEqual(import_version(self.client, changed, '2026-10-11').status_code,200)
         d=self.client.get('/api/day/'+DAY).json()
         self.assertEqual(len(d['issues']),1)
         self.assertEqual(d['state']['asg'][DAY]['absent|2|1A']['v'],'co')
         changed['docenti']=[t for t in changed['docenti'] if t['id']!='co']
         changed['orario']=[l for l in changed['orario'] if l['docente']!='co']
-        self.assertEqual(self.client.post('/api/timetable',json=changed).status_code,200)
+        self.assertEqual(import_version(self.client, changed).status_code,200)
         self.assertTrue(self.client.get('/api/day/'+DAY).json()['dataset']['teachers']['co']['retired'])
 
     def test_malformed_inputs_return_422(self):
         for invalid in [dict(docenti=[None],orario=[]),dict(docenti=[],orario=[None])]:
-            self.assertEqual(self.client.post('/api/timetable',json=invalid).status_code,422)
+            self.assertEqual(self.client.post('/api/timetable/preview?effective='+DAY,json=invalid).status_code,422)
         self.assertEqual(self.client.post('/api/entries',json=dict(day=DAY,group='abs',id='absent',hours=[True])).status_code,422)
 
     def test_concurrent_assignments_cannot_double_book(self):
@@ -302,7 +303,7 @@ class PersistenceTest(unittest.TestCase):
         self.assertEqual(d['autoDis'][DAY]['support']['2'], ['2A classe fuori'])  # keys sono stringhe nel JSON
 
     def test_timetable_upload(self):
-        r = self.client.post('/api/timetable', json=fixture())
+        r = import_version(self.client, fixture())
         self.assertEqual(r.status_code, 200, r.text)
         self.assertEqual(len(self.client.get('/api/day/'+DAY).json()['dataset']['teachers']), 8)
 

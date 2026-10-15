@@ -41,6 +41,8 @@ export type Candidate = {
 export type PermitRecovery = { id: string; deadline: string; recovered: number; remaining: number; expired: boolean; recoveries: { date: string; h: number; key: string }[] };
 export type Assignment = { v: string; t: string; c: string; permitId?: string };
 export type Data = {
+  timetable?: { id: string; effective: string | null };
+  references?: { group: string; id: string; message: string }[];
   dataset: {
     teachers: Record<string, Teacher>;
     lessons: Record<string, { classes: string[] }>;
@@ -64,6 +66,6 @@ export type Data = {
     asg: Record<string, Record<string, Assignment>>;
   };
   rows: Row[];
-  issues: { key: string; message: string }[];
+  issues: { key: string; message: string; context?: { teacherName: string; h: number; c: string; site: string | null; substituteName: string } }[];
   autoDis: Record<string, Record<string, Record<number, string[]>>>;
 };
