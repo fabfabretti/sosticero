@@ -968,7 +968,8 @@ td.none {
 .orari-grid tbody tr { height: 40px; }
 .orari-grid tbody th { color: var(--mute); font-weight: 500; }
 .orari-grid .type-chip { margin-top: 0; }
-.orari-partners { display: block; margin-top: 2px; color: var(--mute); font-size: 11px; cursor: help; }
+.orari-grid .hour-help { display: block; }
+.orari-partners { color: var(--mute); font-size: 11px; cursor: help; }
 .fallback-title { margin: 24px 0 8px; font-size: 15px; color: var(--mute); }
 .exception-action { color: var(--acc); font-size: 13px; }
 @media (max-width: 650px) {
