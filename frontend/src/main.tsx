@@ -7,12 +7,9 @@ import { HourTypes } from "./HourTypes";
 import { CandidateDrawer } from "./CandidateDrawer";
 import { AttachmentField, RecordInfo, type ImageDraft, type AttachmentMap } from "./Attachments";
 import { Stats } from "./Stats";
+import { TeacherTimetables } from "./TeacherTimetables";
+import { norm } from "./timetables";
 import { HashRouter, Link, useLocation } from "react-router";
-const norm = (s: string) =>
-    s
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f.\s]/g, "");
 const hours = [1, 2, 3, 4, 5, 6, 7];
 const localDate = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -46,6 +43,7 @@ async function api<T>(url: string, body?: unknown): Promise<T> {
 const TABS = [
   { path: "/", label: "Supplenze" },
   { path: "/permessi", label: "Permessi" },
+  { path: "/orari", label: "Orari" },
   { path: "/banca-ore", label: "Banca ore" },
   { path: "/stats", label: "Stats" },
   { path: "/settings", label: "Settings" },
@@ -385,6 +383,8 @@ function Shell() {
         <Supplenze />
       ) : tab.path === "/permessi" ? (
         <Permessi />
+      ) : tab.path === "/orari" ? (
+        <TeacherTimetables api={api} />
       ) : tab.path === "/settings" ? (
         <Settings />
       ) : tab.path === "/stats" ? (

@@ -952,6 +952,23 @@ td.none {
 .palette-amber { background: #fef3c7; color: #78350f; }
 .palette-rose { background: #ffe4e6; color: #881337; }
 .palette-teal { background: #ccfbf1; color: #134e4a; }
+/* Orari: one weekly grid per teacher, days as columns and periods as rows */
+.orari { flex: 1; padding: 26px 34px; }
+.orari h2 { margin-top: 0; }
+.orari-filter { display: grid; gap: 6px; max-width: 360px; margin: 12px 0 20px; }
+.orari-filter input { width: 100%; }
+.orari-grids { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; align-items: start; }
+.orari-card { background: var(--pan); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+.orari-card h3 { margin: 0 0 2px; font-size: 15px; }
+.orari-card h3 small { color: var(--mute); font-weight: 400; }
+.orari-cdc { margin: 0 0 8px; font-size: 11px; color: var(--mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.orari-grid { background: transparent; border: 0; font-size: 12px; table-layout: fixed; width: 100%; }
+.orari-grid th, .orari-grid td { padding: 4px 6px; border-bottom: 1px solid var(--line); vertical-align: middle; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.orari-grid thead th { color: var(--mute); font-weight: 500; }
+.orari-grid tbody tr { height: 40px; }
+.orari-grid tbody th { color: var(--mute); font-weight: 500; }
+.orari-grid .type-chip { margin-top: 0; }
+.orari-partners { display: block; margin-top: 2px; color: var(--mute); font-size: 11px; cursor: help; }
 .fallback-title { margin: 24px 0 8px; font-size: 15px; color: var(--mute); }
 .exception-action { color: var(--acc); font-size: 13px; }
 @media (max-width: 650px) {

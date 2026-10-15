@@ -46,6 +46,10 @@ The **Permessi** register records a teacher’s leave date, selected periods, an
 
 **RP — Recupero permesso** offers eligible teachers for otherwise unscheduled periods when they owe recovery hours. Each RP assignment pays back one hour from the oldest eligible permit. The register shows recovered hours, remaining debt, recovery assignments, and expired debt. The recovery window is one calendar month, inclusive, with month-end dates clamped to the last day of the following month. Adjacent lessons, gaps, and cross-campus travel restrictions affect RP eligibility. (Obviously, this is tailored to this specific school at the moment. Hope to generalize this as well).
 
+### Read the weekly timetables
+
+**Orari** shows the timetable currently in effect as one weekly grid per teacher, days as columns and periods as rows. Each cell shows the class, or the activity code (POT, UTC, …) in the colour configured under *Tipi di ora*. When several teachers share a class and period, each cell lists the co-teachers inline, so compresenza is visible at a glance. Filter by teacher name or code to focus on one person; the caption gives the effective date of the version being shown. The screen is read-only: it never changes the timetable.
+
 ### Understand demand and coverage
 
 **Stats** offers totals, daily averages, trends, weekday and period comparisons, and an interactive day-by-period heatmap. Filter by campus and by all recorded dates, this week, this month, or a custom range. Export CSV or open a printable report.
