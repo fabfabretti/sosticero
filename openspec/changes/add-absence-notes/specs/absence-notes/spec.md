@@ -7,12 +7,28 @@ Let office staff record plain-text context for manual teacher absences and read 
 ## ADDED Requirements
 
 ### Requirement: Edit manual absence notes
-Users SHALL be able to add, edit and clear one optional plain-text note per manual teacher absence/date through the row's existing edit controls. Saving a note SHALL preserve absence hours and classification. Notes SHALL NOT apply to class absences or availability.
+Users SHALL be able to add, edit and clear one optional plain-text note per manual teacher absence/date while adding a teacher in Supplenze and through the saved row's edit controls. Saving a note SHALL preserve absence hours and classification. Notes SHALL NOT apply to class absences or availability.
 
 #### Scenario: Save and clear a note
 - **WHEN** a user saves a note from a manual absence row's edit controls
 - **THEN** the saved text appears after reload without changing hours or classification
 - **AND** saving an empty or whitespace-only value clears the note
+
+### Requirement: Manual absence creation note draft
+The Supplenze add-teacher form SHALL show a labelled optional Note field for manual teacher absences before saving. The initial add SHALL save the note with the chosen teacher/date. Successful addition and date/source switches SHALL clear its draft; failed saves SHALL retain it. Class absence and availability submissions SHALL omit notes.
+
+#### Scenario: Add with a note
+- **WHEN** a user enters a note and adds an absent teacher
+- **THEN** the saved row's (i) exposes that note immediately and after reload
+- **AND** the next creation draft is empty
+
+#### Scenario: Failed add
+- **WHEN** saving a new teacher absence fails
+- **THEN** the selected teacher and note draft remain available for correction
+
+#### Scenario: Source switch
+- **WHEN** the user changes the date or switches to availability or a class absence
+- **THEN** the previous note draft is cleared and excluded from non-teacher-absence submissions
 
 ### Requirement: Combined daily information tooltip
 Each teacher's Assenze row SHALL show one (i) trigger whenever it has permit information or a nonempty source note. Hover and keyboard focus SHALL reveal existing permit information and all available notes, labelled Assenza and Permesso by source. Text SHALL render literally and wrap within the viewport.

@@ -200,7 +200,7 @@ Always use an isolated database for development. See [AGENTS.md](AGENTS.md) for 
 
 Copyright © 2026 fabfabretti. Licensed under the **GNU Affero General Public License, version 3 only** (`AGPL-3.0-only`). See [LICENSE.md](LICENSE.md) for the full terms.
 
-Manual teacher absences support an optional plain-text note: open the row’s **⋯** controls, enter **Note** and select **Salva nota**. Dated permit notes are entered and edited from the **Permessi** form. Hover or focus the **(i)** on the daily Assenze row to read both notes, labelled **Assenza** and **Permesso**, alongside existing permit information. Clearing the text removes that source’s note.
+Optional plain-text **Note** fields are available before saving in all three creation flows: adding an absent teacher in **Supplenze**, adding a dated permit in **Permessi**, and adding a **Saldo manuale senza data**. Edit saved absence notes through **⋯**, and permit/balance notes through their edit actions. Hover or focus **(i)** beside a teacher in either Permessi table to read that record’s note; dated absence and permit notes also appear together on the daily Assenze row, labelled **Assenza** and **Permesso**. Clearing the text removes the note. Successful creation, cancellation and switching form modes clear the draft; failed saves retain it. Both Permessi tables use compact spacing and inline period warnings while keeping all columns and full recovery details.
 
 ### Isolated test deployments
 
