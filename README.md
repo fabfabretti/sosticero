@@ -66,7 +66,7 @@ Timetable updates preserve operational records. Keep teacher IDs stable: an exis
 
 ## Deploy on Windows
 
-No Python, Node, Docker, or WSL required. Download the latest `Sosticero_<date>.exe` from the repository's **Actions → Windows exe** artifacts (built manually by the maintainer), put it in a normal folder such as `Documents\Sosticero`, and double-click it.
+No Python, Node, Docker, or WSL required. Download the latest `Sosticero_<date>.exe` from the repository's **Actions → Windows exe** artifacts (built automatically on every push to `main`, or manually from the Actions tab), put it in a normal folder such as `Documents\Sosticero`, and double-click it.
 
 - Put it **outside `Program Files`** (that folder is read-only, and the app stores its data beside the exe).
 - A console window opens and your browser opens **http://localhost:8000**. Closing the console stops the app.
