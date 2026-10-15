@@ -199,6 +199,8 @@ Always use an isolated database for development. See [AGENTS.md](AGENTS.md) for 
 
 Copyright © 2026 fabfabretti. Licensed under the **GNU Affero General Public License, version 3 only** (`AGPL-3.0-only`). See [LICENSE.md](LICENSE.md) for the full terms.
 
+Manual teacher absences support an optional plain-text note: open the row’s **⋯** controls, enter **Note** and select **Salva nota**. Dated permit notes are entered and edited from the **Permessi** form. Hover or focus the **(i)** on the daily Assenze row to read both notes, labelled **Assenza** and **Permesso**, alongside existing permit information. Clearing the text removes that source’s note.
+
 ### Recognizing test deployments
 
 Normal `podman compose up` uses `data/supplenze.sqlite` and sets `APP_ENV=production`.
