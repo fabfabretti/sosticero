@@ -198,3 +198,14 @@ Always use an isolated database for development. See [AGENTS.md](AGENTS.md) for 
 ## License
 
 Copyright © 2026 fabfabretti. Licensed under the **GNU Affero General Public License, version 3 only** (`AGPL-3.0-only`). See [LICENSE.md](LICENSE.md) for the full terms.
+
+### Recognizing test deployments
+
+Normal `podman compose up` uses `data/supplenze.sqlite` and sets `APP_ENV=production`.
+For an isolated test deployment, explicitly select a temporary Compose override
+that replaces the `/data` mount **and** sets `services.app.environment.APP_ENV: testing`.
+A red **TESTING** corner ribbon appears on every screen, including dialogs.
+Direct development runs default to testing unless `APP_ENV=production` is explicitly set.
+The label comes from `/api/environment`, refreshes every 15 seconds, and defaults
+to TESTING if the environment cannot be verified. It identifies deployment configuration;
+always verify the container's actual `/data` mount before testing or handing back.

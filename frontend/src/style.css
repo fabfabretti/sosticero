@@ -1128,3 +1128,20 @@ td.none {
 .permit-form .manual-permit-toggle { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
 .permit-form .manual-permit-toggle input { width: auto; }
 .manual-permits { margin-top: 24px; }
+.testing-ribbon {
+  position: fixed;
+  top: 20px;
+  right: -36px;
+  width: 150px;
+  padding: 6px 0;
+  transform: rotate(45deg);
+  background: #b91c1c;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+  text-align: center;
+  letter-spacing: 1px;
+  z-index: 2000;
+  pointer-events: none;
+  box-shadow: 0 2px 5px #0004;
+}

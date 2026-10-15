@@ -393,8 +393,20 @@ function Shell() {
   );
 }
 function App() {
+  const [testing, setTesting] = useState(true);
+  useEffect(() => {
+    const refresh = () => {
+      void api<{ testing: boolean }>('environment')
+        .then(data => setTesting(data.testing !== false))
+        .catch(() => setTesting(true));
+    };
+    refresh();
+    const timer = setInterval(refresh, 15000);
+    return () => clearInterval(timer);
+  }, []);
   return (
     <HashRouter>
+      {testing && <div className="testing-ribbon" role="status">TESTING</div>}
       <Shell />
     </HashRouter>
   );

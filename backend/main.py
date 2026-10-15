@@ -58,6 +58,12 @@ DEFAULT_DATABASE = Path(__file__).resolve().parent.parent / 'data' / 'supplenze.
 
 def create_app(path=None, seed=None):
     app = FastAPI(title='Sosticero')
+    testing = os.environ.get('APP_ENV') != 'production'
+
+    @app.get('/api/environment')
+    def environment():
+        return {'testing': testing}
+
     database = Path(path or os.environ.get('DATABASE_PATH', DEFAULT_DATABASE))
     database.parent.mkdir(parents=True, exist_ok=True)
     

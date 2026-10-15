@@ -5,6 +5,8 @@ services:
       - "127.0.0.1:8000:8000"
     user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
     userns_mode: keep-id
+    environment:
+      APP_ENV: production
     volumes:
       - ./data:/data:Z
     restart: unless-stopped
