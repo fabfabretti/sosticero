@@ -1,3 +1,4 @@
+from backend.tests.timetable_helpers import import_version
 import copy
 from datetime import date
 from pathlib import Path
@@ -61,7 +62,7 @@ class StatisticsTest(unittest.TestCase):
         archive = self.client.get('/api/export').json()
         modified = copy.deepcopy(self.dataset)
         modified['orario'] = []
-        self.client.post('/api/timetable', json=modified).raise_for_status()
+        import_version(self.client, modified, '2026-10-19').raise_for_status()
         self.assertEqual(self.report(campus='centrale')['totals']['demand'], 1)
         self.client.post('/api/import', json=archive).raise_for_status()
         self.assertEqual(self.report()['totals']['uncovered'], 1)

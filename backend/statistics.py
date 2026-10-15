@@ -14,12 +14,13 @@ def empty():
     return dict(schema=1, days={})
 
 
-def sync(ds, state, facts, days=None, reconstructed=False):
+def sync(ds, state, facts, days=None, reconstructed=False, revalidate=False):
     """Refresh only affected dates, keeping context for unchanged absence slots."""
     result = deepcopy(facts)
     if days is None:
         days = set(state['abs']) | set(state.get('permessi', {})) | set(state['asg']) | set(facts['days'])
     for day in days:
+        current_ds = ds(day) if callable(ds) else ds
         old = result['days'].get(day, {})
         slots = {}
         for teacher, hours in absences(state, day).items():
@@ -27,7 +28,7 @@ def sync(ds, state, facts, days=None, reconstructed=False):
                 key = f'{teacher}|{h}'
                 context = old.get('absences', {}).get(key)
                 if context is None:
-                    l = lesson(ds, teacher, day, h)
+                    l = lesson(current_ds, teacher, day, h)
                     context = dict(teacher=teacher, h=h, classes=l['classes'][:] if l else [],
                                    site=l.get('site') if l else None,
                                    provenance='reconstructed' if reconstructed else 'recorded')
@@ -55,11 +56,11 @@ def sync(ds, state, facts, days=None, reconstructed=False):
                 used.add(row['key'])
                 previous = old.get('demand', {}).get(key)
                 # A replacement timetable cannot invalidate previously captured cover.
-                if previous and previous.get('assignment') == a:
+                if previous and previous.get('assignment') == a and not revalidate:
                     row['eligible'] = previous['eligible']
                 else:
                     try:
-                        validate_assignment(ds, state, day, row['key'], a['v'], exceptional=True, saved=True)
+                        validate_assignment(current_ds, state, day, row['key'], a['v'], exceptional=True, saved=True)
                     except ValueError:
                         row['eligible'] = False
                 row['valid'] = row['eligible']
@@ -89,12 +90,13 @@ def validate(facts, ds, state):
                     for i, hours in absences(state, d).items() for h in hours}
         actual = set()
         for d, day in facts['days'].items():
+            current_ds = ds(d) if callable(ds) else ds
             if date.fromisoformat(d).isoformat() != d or set(day) != {'absences', 'demand', 'issues'}:
                 raise ValueError()
             for k, slot in day['absences'].items():
                 if set(slot) != {'teacher', 'h', 'classes', 'site', 'provenance', 'manual', 'permit'}:
                     raise ValueError()
-                if slot['teacher'] not in ds['teachers'] or type(slot['h']) is not int or slot['h'] not in HOURS or k != f"{slot['teacher']}|{slot['h']}":
+                if slot['teacher'] not in current_ds['teachers'] or type(slot['h']) is not int or slot['h'] not in HOURS or k != f"{slot['teacher']}|{slot['h']}":
                     raise ValueError()
                 if slot['site'] not in (*SITES, None) or slot['provenance'] not in ('recorded', 'reconstructed'):
                     raise ValueError()

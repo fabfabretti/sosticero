@@ -1,3 +1,4 @@
+from backend.tests.timetable_helpers import import_version
 import copy
 import tempfile
 import unittest
@@ -48,7 +49,7 @@ class HourTypesTest(unittest.TestCase):
         self.assertTrue(types['derived:itp']['visible'])
         self.set_type('code:PE', available=True, visible=True, school=True)
         updated = self.inventory()
-        self.client.post('/api/timetable', json=self.raw)
+        import_version(self.client, self.raw)
         self.assertEqual(updated, self.inventory())
         other = TestClient(create_app(self.path))
         self.assertEqual(updated, other.get('/api/hour-types').json()['types'])

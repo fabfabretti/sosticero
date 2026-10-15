@@ -65,6 +65,7 @@ function app(localStorage = { getItem: () => null, setItem() {} }, confirm = () 
       if (id === 'react-dom/client') return {
         createRoot: () => ({ render: element => { App = element.type; } }),
       };
+      if (id === './TimetableImport') return { TimetableImport: 'timetable-import' };
       if (id === './HourTypes') return { HourTypes: 'hour-types' };
       if (id === './CandidateDrawer') return { CandidateDrawer: 'drawer' };
       if (id === './Attachments') return { AttachmentField: 'attachment-field', RecordInfo: 'record-info' };
@@ -771,20 +772,12 @@ test('TESTING ribbon stays until the backend confirms production', async () => {
   assert.equal(ribbon(a.render()), undefined);
 });
 
-test('production timetable upload requires the user to confirm replacement', async () => {
-  for (const approved of [false, true]) {
-    const confirmations = [];
-    const a = app(undefined, message => { confirmations.push(message); return approved; });
-    a.go('/settings');
-    const input = a.render().find(n => n.type === 'input' && n.props.type === 'file');
-    input.props.onChange({ target: { files: [{ name: 'orario.json', text: async () => '{"docenti":[],"orario":[]}' }] } });
-    await settle();
-    assert.equal(confirmations.length, 1);
-    assert.ok(confirmations[0].includes('orario.json'));
-    const uploads = a.requests.filter(r => r.url.startsWith('/api/timetable'));
-    assert.equal(uploads.length, approved ? 1 : 0);
-    if (approved) assert.equal(uploads[0].url, '/api/timetable?confirm=true');
-  }
+test('Settings delegates timetable imports to the reviewed version import flow', () => {
+  const a = app(); a.go('/settings');
+  const importer = a.render().find(n => n.type === 'timetable-import');
+  assert.equal(typeof importer.props.api, 'function');
+  assert.equal(typeof importer.props.onImported, 'function');
+  assert.equal(a.requests.filter(r => r.url.startsWith('/api/timetable')).length, 0);
 });
 
 test('new absence note saves with teacher, survives failure and clears after success or source/date changes', async () => {
@@ -859,4 +852,19 @@ test('dated and undated tables expose only their own note', async () => {
   a.requests.shift().resolve({...response,manualPermitNotes:{}}); await settle();
   assert.deepEqual(texts(), ['<b>dated</b>']);
   assert.ok(a.render().some(n=>n.props?.className==='warning-icon'));
+});
+
+test('permit warning uses the timetable effective on the selected date', async () => {
+  const a = app(); a.go('/permessi'); a.render();
+  a.requests.shift().resolve({...permitData, timetableVersions:[
+    {effective:null, dataset:permitData.dataset},
+    {effective:'2026-10-19', dataset:{...permitData.dataset, lessons:{}}},
+  ]});
+  await settle();
+  permitDay(a).props.onChange({target:{value:'12/10/2026'}});
+  permitTeacher(a).props.onChange({target:{value:'cont'}});permitTeacher(a).props.onKeyDown({key:'Enter',preventDefault(){}});
+  permitHour(a,1).props.onClick();
+  assert.equal(a.render().filter(n => n.props?.className === 'hour-help').length, 0);
+  permitDay(a).props.onChange({target:{value:'19/10/2026'}});
+  assert.ok(a.render().some(n => n.props?.className === 'hour-help' && n.props['aria-label'].includes('nessuna attività')));
 });

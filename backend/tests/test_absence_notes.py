@@ -1,3 +1,4 @@
+from backend.tests.timetable_helpers import import_version
 import copy
 import unittest
 from pathlib import Path
@@ -76,7 +77,7 @@ class AbsenceNotesTest(unittest.TestCase):
         self.assertEqual(self.state()['permitNotes'], {})
 
     def test_recovery_protected_edits_keep_note_and_identity(self):
-        self.client.post('/api/timetable', json=test_recovery.fixture()).raise_for_status()
+        import_version(self.client, test_recovery.fixture(), '2026-10-01').raise_for_status()
         self.client.post('/api/entries', json=dict(day=DAY, group='abs', id='absent', hours=[1])).raise_for_status()
         self.client.post('/api/permessi', json=dict(day='2026-10-05', id='rp', hours=[2], note='originale')).raise_for_status()
         self.client.post('/api/assignments', json=dict(day=DAY, key='absent|1|1A', value='rp')).raise_for_status()

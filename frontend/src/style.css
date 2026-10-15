@@ -1162,3 +1162,10 @@ td.none {
 .record-popover a { display: block; color: var(--acc); padding-block: 6px; }
 .attachment-paste:focus-visible, .info-trigger:focus-visible, .record-popover a:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
 @media (pointer: coarse) { .record-popover a { min-height: 44px; display: flex; align-items: center; } }
+
+.timetable-import { display: grid; gap: 12px; max-width: 800px; }
+.timetable-import label { display: grid; gap: 6px; }
+.timetable-import input { max-width: 100%; }
+.timetable-import button { min-height: 44px; justify-self: start; }
+.timetable-preview { border: 1px solid var(--line); padding: 16px; border-radius: 8px; overflow-wrap: anywhere; }
+.timetable-preview details { padding: 8px 0; }

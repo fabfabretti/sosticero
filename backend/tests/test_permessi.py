@@ -1,3 +1,4 @@
+from backend.tests.timetable_helpers import import_version
 import copy
 import tempfile
 import unittest
@@ -69,7 +70,7 @@ class PermessiTest(unittest.TestCase):
             ds = copy.deepcopy(self.ds)
             for h in range(5, count + 1):
                 ds['orario'].append(dict(docente='pot', giorno='lun', ora=h, classi=[]))
-            self.client.post('/api/timetable', json=ds)
+            import_version(self.client, ds, f'2026-10-0{count}')
             self.assertEqual(self.client.post('/api/permessi', json=dict(day=DAY, id='pot', hours=list(range(1, limit + 2)))).status_code, 200)
             self.client.post('/api/permessi', json=dict(day=DAY, id='pot', hours=None))
             self.assertEqual(self.client.post('/api/permessi', json=dict(day=DAY, id='pot', hours=list(range(1, limit + 1)))).status_code, 200)
@@ -115,7 +116,7 @@ class PermessiTest(unittest.TestCase):
         ds = copy.deepcopy(self.ds)
         ds['orario'] = [l for l in ds['orario'] if l['docente'] != 'absent']
         ds['docenti'] = [t for t in ds['docenti'] if t['id'] != 'absent']
-        self.client.post('/api/timetable', json=ds)
+        import_version(self.client, ds)
         self.assertEqual(self.client.post('/api/import', json=archive).status_code, 200)
         saved = backup.backup_database(str(self.path), str(Path(self.tmp.name) / 'backups'))
         self.client.post('/api/permessi', json=dict(day=DAY, id='absent', hours=None))
