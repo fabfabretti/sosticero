@@ -89,3 +89,60 @@ class AbsenceNotesTest(unittest.TestCase):
         self.assertEqual(after['permitNotes']['2026-10-06']['rp'], 'originale')
         self.assertEqual(after['permitIds']['2026-10-06']['rp'], before['permitIds']['2026-10-05']['rp'])
         self.assertEqual(after['asg'], before['asg'])
+
+
+class ManualBalanceNotesTest(unittest.TestCase):
+    from backend.tests.test_manual_permits import ManualPermitsTest as _base
+    setUp = _base.setUp
+    manual = _base.manual
+    assign = _base.assign
+    exported = _base.exported
+
+    def test_note_validation_clear_and_delete(self):
+        self.assertEqual(self.client.get('/api/permessi').json()['manualPermitNotes'], {})
+        for value in (1, True, [], {}):
+            self.assertEqual(self.manual(hours=3, note=value).status_code, 422)
+        self.manual(hours=3, note='  <b>Contesto</b>\nseconda riga  ').raise_for_status()
+        expected = '<b>Contesto</b>\nseconda riga'
+        self.assertEqual(self.client.get('/api/permessi').json()['manualPermitNotes']['rp'], expected)
+        pid = self.exported()['manualPermits']['rp']['id']
+        self.manual(hours=4, editing=True).raise_for_status()
+        self.assertEqual(self.exported()['manualPermitNotes']['rp'], expected)
+        self.assertEqual(self.exported()['manualPermits']['rp']['id'], pid)
+        for blank in (None, '', ' \n '):
+            self.manual(hours=4, editing=True, note=blank).raise_for_status()
+            self.assertNotIn('rp', self.exported()['manualPermitNotes'])
+            self.manual(hours=4, editing=True, note='nota').raise_for_status()
+        self.manual(hours=None).raise_for_status()
+        self.assertEqual(self.exported()['manualPermitNotes'], {})
+
+    def test_protected_edits_and_recovery_links(self):
+        self.manual(hours=3, note='originale').raise_for_status()
+        self.assign(1).raise_for_status()
+        self.assign(4).raise_for_status()
+        before = self.exported()
+        for body in (dict(hours=None), dict(hours=1, editing=True, note='changed')):
+            self.assertEqual(self.manual(**body).status_code, 422)
+            self.assertEqual(self.exported(), before)
+        self.manual(hours=4, editing=True).raise_for_status()
+        after = self.exported()
+        self.assertEqual(after['asg'], before['asg'])
+        self.assertEqual(after['manualPermits']['rp']['id'], before['manualPermits']['rp']['id'])
+        self.assertEqual(after['manualPermitNotes'], before['manualPermitNotes'])
+
+    def test_legacy_archives_backup_and_atomic_rejection(self):
+        self.manual(hours=3, note='saldo precedente').raise_for_status()
+        archive = self.exported()
+        self.client.post('/api/import', json=archive).raise_for_status()
+        self.assertEqual(TestClient(create_app(self.path)).get('/api/permessi').json()['manualPermitNotes']['rp'], 'saldo precedente')
+        for notes in ({'rp': False}, {'rp': []}, {'rp': ' '}, {'absent': 'orphan'}):
+            bad = copy.deepcopy(archive); bad['manualPermitNotes'] = notes
+            self.assertEqual(self.client.post('/api/import', json=bad).status_code, 422)
+            self.assertEqual(self.exported(), archive)
+        snapshot = backup.backup_database(str(self.path), str(Path(self.tmp.name) / 'snapshots'))
+        self.manual(hours=3, editing=True, note='changed').raise_for_status()
+        backup.restore_backup(str(self.path), snapshot['path'])
+        self.assertEqual(self.exported(), archive)
+        legacy = {k: v for k, v in archive.items() if k != 'manualPermitNotes'}
+        self.client.post('/api/import', json=legacy).raise_for_status()
+        self.assertEqual(self.client.get('/api/permessi').json()['manualPermitNotes'], {})

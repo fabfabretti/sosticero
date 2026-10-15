@@ -543,7 +543,7 @@ test('daily selection, explicit submit and Enter retain options for consecutive 
   submitEntry(a); assert.equal(a.requests.length, 0);
   for (const h of [2,3]) a.render().find(n => n.props?.['aria-label'] === `Aggiungi ${h}ª ora`).props.onClick();
   clickText(a, 'Programmata'); submitEntry(a);
-  assert.deepEqual(JSON.parse(a.requests[0].options.body), { day: todayYmd, group: 'abs', id: 'a', hours: [2,3], site: 'centrale', defaults: false, classification: 'planned' });
+  assert.deepEqual(JSON.parse(a.requests[0].options.body), { day: todayYmd, group: 'abs', id: 'a', hours: [2,3], site: 'centrale', defaults: false, classification: 'planned', note: '' });
   submitEntry(a); assert.equal(a.requests.length, 1);
   await resolveEntry(a); assert.equal(search(a).props.value, '');
   assert.equal(a.render().find(n => n.props?.['aria-label'] === 'Aggiungi 2ª ora').props['aria-pressed'], true);
@@ -664,7 +664,7 @@ test('manual permits save an undated number of hours without absence fields', as
   permitForm(a).props.onSubmit({ preventDefault() {} });
   const req = a.requests.shift();
   assert.equal(req.url, '/api/manual-permits');
-  assert.deepEqual(JSON.parse(req.options.body), { id: 't', hours: 8, editing: false });
+  assert.deepEqual(JSON.parse(req.options.body), { id: 't', hours: 8, note: '', editing: false });
   req.resolve({ ok: true }); await settle();
   a.requests.shift().resolve({ ...permitData, manualPermits: { t: { id: 'm', hours: 8, recovered: 2, remaining: 6, recoveries: [] } } }); await settle();
   assert.ok(a.render().some(n => n.props?.className === 'permit-remaining' && n.props.children === 6));
@@ -673,7 +673,7 @@ test('manual permits save an undated number of hours without absence fields', as
   assert.equal(permitTeacher(a).props.disabled, true);
   total().props.onChange({ target: { value: '10' } });
   permitForm(a).props.onSubmit({ preventDefault() {} });
-  assert.deepEqual(JSON.parse(a.requests.shift().options.body), { id: 't', hours: 10, editing: true });
+  assert.deepEqual(JSON.parse(a.requests.shift().options.body), { id: 't', hours: 10, note: '', editing: true });
 });
 
 const noteField = (a, label) => a.render().find(n => n.type === 'textarea' && n.props['aria-label'] === label);
@@ -791,4 +791,82 @@ test('production timetable upload requires the user to confirm replacement', asy
     assert.equal(uploads.length, approved ? 1 : 0);
     if (approved) assert.equal(uploads[0].url, '/api/timetable?confirm=true');
   }
+});
+
+test('new absence note saves with teacher, survives failure and clears after success or source/date changes', async () => {
+  const a = await loaded(entryData);
+  const draft = () => noteField(a, 'Note nuova assenza');
+  assert.ok(draft());
+  search(a).props.onChange({ target: { value: 'anna' } }); suggestion(a, 'Anna').props.onClick();
+  draft().props.onChange({ target: { value: 'initial note' } });
+  submitEntry(a);
+  assert.equal(JSON.parse(a.requests[0].options.body).note, 'initial note');
+  a.requests.shift().resolve({ detail: 'failure' }, false); await settle();
+  assert.equal(draft().props.value, 'initial note');
+  assert.equal(search(a).props.value, 'Anna');
+  submitEntry(a);
+  await resolveEntry(a, { ...entryData, state: { ...data.state, abs: { [todayYmd]: { a: [1,2,3,4,5,6,7] } }, absenceNotes: { [todayYmd]: { a: 'initial note' } } } });
+  assert.equal(draft().props.value, '');
+  assert.ok(a.render().some(n => n.props?.className === 'hour-help' && n.props['aria-label'] === 'Assenza: initial note'));
+  draft().props.onChange({ target: { value: 'discard' } });
+  clickText(a, 'A disposizione'); a.render(); assert.equal(draft(), undefined);
+  clickText(a, 'A disposizione'); assert.equal(draft().props.value, '');
+  draft().props.onChange({ target: { value: 'class note' } });
+  search(a).props.onChange({ target: { value: '1a' } }); suggestion(a, '1A').props.onClick();
+  assert.equal(draft(), undefined); submitEntry(a);
+  assert.ok(!('note' in JSON.parse(a.requests[0].options.body))); await resolveEntry(a);
+  search(a).props.onChange({ target: { value: 'bar' } });
+  draft().props.onChange({ target: { value: 'date note' } });
+  a.render().find(n => n.props?.className === 'd').props.onClick(); a.render();
+  assert.equal(draft().props.value, '');
+});
+
+test('both Permessi creation modes show notes before teacher selection and save manual balance drafts', async () => {
+  const a = await permitsLoaded();
+  const note = () => noteField(a, 'Note permesso');
+  assert.ok(note());
+  note().props.onChange({ target: { value: 'dated draft' } });
+  const toggle = checked => a.render().find(n => n.type === 'input' && n.props.type === 'checkbox').props.onChange({ target: { checked } });
+  toggle(true); assert.equal(note().props.value, '');
+  note().props.onChange({ target: { value: 'manual draft' } });
+  permitTeacher(a).props.onChange({ target: { value: 'cont' } });
+  permitTeacher(a).props.onKeyDown({ key: 'Enter', preventDefault() {} });
+  assert.equal(note().props.value, 'manual draft');
+  a.render().find(n => n.props?.['aria-label'] === 'Ore totali da recuperare').props.onChange({ target: { value: '8' } });
+  permitForm(a).props.onSubmit({ preventDefault() {} });
+  assert.equal(a.requests[0].url, '/api/manual-permits');
+  assert.equal(JSON.parse(a.requests[0].options.body).note, 'manual draft');
+  a.requests.shift().resolve({ detail: 'failure' }, false); await settle();
+  assert.equal(note().props.value, 'manual draft');
+  permitForm(a).props.onSubmit({ preventDefault() {} });
+  a.requests.shift().resolve({ ok: true }); await settle();
+  const response = { ...permitData, manualPermits: { t: { id:'m', hours:8, recovered:0, remaining:8, recoveries:[] } }, manualPermitNotes: { t:'manual draft' } };
+  a.requests.shift().resolve(response); await settle();
+  assert.equal(note().props.value, '');
+  a.render().find(n => n.props?.['aria-label'] === 'Modifica saldo manuale di Contartase').props.onClick();
+  assert.equal(note().props.value, 'manual draft');
+  clickText(a, 'Annulla modifica'); assert.equal(note().props.value, '');
+  toggle(false); assert.ok(note());
+});
+
+test('dated and undated tables expose only their own note with focusable info icons', async () => {
+  const a = app(); a.go('/permessi'); a.render();
+  const response = { ...permitData, permessi: { '2026-10-12': { t:[6] } }, permitNotes: { '2026-10-12': { t:'<b>dated</b>' } },
+    manualPermits: { t: { id:'m',hours:8,recovered:0,remaining:8,recoveries:[] } }, manualPermitNotes: { t:'manual note' } };
+  a.requests.shift().resolve(response); await settle();
+  const infos = () => a.render().filter(n => n.props?.className === 'hour-help' && n.props.children?.[0]?.props?.className === 'why');
+  assert.deepEqual(infos().map(n => n.props['aria-label']), ['<b>dated</b>', 'manual note']);
+  assert.ok(infos().every(n => n.props.tabIndex === 0));
+  assert.ok(a.render().some(n => n.props?.className === 'warning-icon'));
+  const dated = infos()[0];
+  dated.props.onFocus({ currentTarget: { getBoundingClientRect: () => ({left:20,top:200,bottom:220}) } });
+  assert.equal(a.render().find(n => n.props?.role === 'tooltip').props.children, '<b>dated</b>');
+  dated.props.onKeyDown({key:'Escape'});
+  a.render().find(n => n.props?.['aria-label'] === 'Modifica saldo manuale di Contartase').props.onClick();
+  noteField(a, 'Note permesso').props.onChange({target:{value:''}});
+  permitForm(a).props.onSubmit({preventDefault(){}});
+  a.requests.shift().resolve({ok:true}); await settle();
+  a.requests.shift().resolve({...response,manualPermitNotes:{}}); await settle();
+  assert.deepEqual(infos().map(n=>n.props['aria-label']), ['<b>dated</b>']);
+  assert.ok(a.render().some(n=>n.props?.className==='warning-icon'));
 });

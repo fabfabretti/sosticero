@@ -45,6 +45,7 @@ class Assignment(BaseModel):
 
 
 class ManualPermit(BaseModel):
+    note: StrictStr | None = None
     id: str
     hours: StrictInt | None = None
     editing: StrictBool = False
@@ -167,6 +168,7 @@ def create_app(path=None, seed=None):
         state.setdefault('permitKinds', {})
         state.setdefault('absenceNotes', {})
         state.setdefault('permitNotes', {})
+        state.setdefault('manualPermitNotes', {})
         state.setdefault('manualPermits', {})
         return ds, state
 
@@ -202,7 +204,7 @@ def create_app(path=None, seed=None):
             ds, state = load(db)
         summaries, balances = recovery.summary(state)
         manual = {p['teacher']: p for p in recovery.ledger(state).values() if p['date'] is None}
-        return dict(dataset=ds, permessi=state['permessi'], permitRequests=state['permitRequests'], permitNotes=state['permitNotes'], permitKinds=state['permitKinds'], recoveries=summaries, balances=balances, manualPermits=manual)
+        return dict(dataset=ds, permessi=state['permessi'], permitRequests=state['permitRequests'], permitNotes=state['permitNotes'], permitKinds=state['permitKinds'], recoveries=summaries, balances=balances, manualPermits=manual, manualPermitNotes=state['manualPermitNotes'])
 
     @app.post('/api/manual-permits')
     def save_manual_permit(e: ManualPermit):
@@ -220,8 +222,13 @@ def create_app(path=None, seed=None):
                     raise ValueError('Saldo con recuperi collegati: risolvi prima le assegnazioni RP interessate.')
             if e.hours is None:
                 state['manualPermits'].pop(e.id, None)
+                state['manualPermitNotes'].pop(e.id, None)
             else:
                 state['manualPermits'][e.id] = dict(id=existing['id'] if existing else uuid4().hex, hours=e.hours)
+                if 'note' in e.model_fields_set:
+                    state['manualPermitNotes'].pop(e.id, None)
+                    if note := (e.note or '').strip():
+                        state['manualPermitNotes'][e.id] = note
             recovery.validate(state)
             store.write(db, 'state', state)
         return {'ok': True}
@@ -398,6 +405,10 @@ def create_app(path=None, seed=None):
             for group, dates in state.items():
                 if not isinstance(dates, dict):
                     raise ValueError('Archivio non valido.')
+                if group == 'manualPermitNotes':
+                    if any(i not in state['manualPermits'] or i not in ds['teachers'] or not isinstance(value, str) or not value.strip() for i, value in dates.items()):
+                        raise ValueError('Nota senza saldo manuale valido.')
+                    continue
                 if group == 'manualPermits':
                     if any(i not in ds['teachers'] for i in dates):
                         raise ValueError('Docente saldo manuale non valido.')

@@ -1153,3 +1153,16 @@ td.none {
   pointer-events: none;
   box-shadow: 0 2px 5px #0004;
 }
+
+.entry-note { display: grid; gap: 4px; margin-top: 8px; }
+.entry-note textarea { width: 100%; box-sizing: border-box; min-height: 54px; resize: vertical; font: inherit; padding: 6px; border: 1px solid var(--line); border-radius: 4px; background: var(--pan); color: var(--ink); }
+.permessi .permit-table th, .permessi .permit-table td { padding: 6px 8px; }
+.permessi .permit-period { padding-bottom: 0; margin-right: 6px; gap: 3px; }
+.permessi .permit-period > .hour-help { position: static; margin-left: 0; }
+.permessi .permit-actions { white-space: nowrap; }
+.permessi .permit-actions button { padding: 4px; min-width: 28px; min-height: 28px; }
+.permessi .permit-actions svg { vertical-align: middle; }
+.permessi .permit-name + .hour-help { margin-left: 6px; }
+.permessi .recovery-details { min-width: 0; }
+.permessi .permit-table td:first-child, .permessi .permit-table td:has(.permit-period) { white-space: nowrap; }
+.permessi .permit-table .why { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; border: 1px solid var(--mute); border-radius: 50%; font-style: normal; font-size: 11px; color: var(--mute); }
