@@ -7,7 +7,7 @@ from uuid import uuid4
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, StrictInt, StrictBool, StrictStr
-from .domain import normalize_dataset, rows, candidates, validate_assignment, default_availability, auto_availability, HOURS, SITES, lesson, validate_permit
+from .domain import normalize_dataset, rows, candidates, validate_assignment, default_availability, auto_availability, HOURS, SITES, lesson, validate_permit, CDC_NAMES
 from .storage import Store, EMPTY
 from . import backup, attachments
 from .hour_types import merge_types, validate_types
@@ -234,6 +234,20 @@ def create_app(path=None, seed=None):
         selected = timetables.version(history, d)
         return dict(dataset=ds, state=state, rows=rs, issues=problems, references=timetables.reference_issues(history, state, d),
                     timetable=dict(id=selected['id'], effective=selected['effective']), autoDis={d: auto_availability(ds, state, d)})
+
+    @app.get('/api/orari')
+    def get_orari():
+        with store.connect() as db:
+            history = store.read(db, 'timetables')
+            if history:
+                selected = timetables.version(history, datetime.now(ZoneInfo('Europe/Rome')).date().isoformat())
+                effective, ds = selected['effective'], selected['dataset']
+            else:
+                ds, effective = store.read(db, 'dataset'), None
+                if ds is None:
+                    raise ValueError('Carica prima un orario.')
+        teachers = {i: dict(t, cdcName=CDC_NAMES.get(t.get('classe_concorso', ''), t.get('classe_concorso', ''))) for i, t in ds['teachers'].items()}
+        return dict(effective=effective, dataset=dict(ds, teachers=teachers))
 
     @app.get('/api/permessi')
     def get_permits():

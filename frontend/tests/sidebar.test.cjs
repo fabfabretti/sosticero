@@ -4,6 +4,15 @@ const { readFileSync } = require('node:fs');
 const { runInNewContext } = require('node:vm');
 const ts = require('typescript');
 
+// The shared norm()/grid helper main.tsx imports; loaded once for the require map.
+const timetables = (() => {
+  const exports = {};
+  runInNewContext(ts.transpileModule(readFileSync('src/timetables.ts', 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText, { exports });
+  return exports;
+})();
+
 // Run the actual App handlers with deferred HTTP responses and minimal hook storage.
 function app(localStorage = { getItem: () => null, setItem() {} }, confirm = () => false) {
   const effects = [], requests = [], comps = new Map();
@@ -70,6 +79,8 @@ function app(localStorage = { getItem: () => null, setItem() {} }, confirm = () 
       if (id === './CandidateDrawer') return { CandidateDrawer: 'drawer' };
       if (id === './Attachments') return { AttachmentField: 'attachment-field', RecordInfo: 'record-info' };
       if (id === './Stats') return { Stats: 'stats' };
+      if (id === './TeacherTimetables') return { TeacherTimetables: 'teacher-timetables' };
+      if (id === './timetables') return timetables;
       if (id === 'react-router') return router;
       if (id.endsWith('.css')) return {};
       throw Error(id);
@@ -100,7 +111,7 @@ function app(localStorage = { getItem: () => null, setItem() {} }, confirm = () 
     return nodes;
   }
   return { render, requests, go: p => {
-    const screen = path => ['/permessi', '/settings', '/stats', '/banca-ore'].includes(path) ? path : '/';
+    const screen = path => ['/permessi', '/settings', '/stats', '/banca-ore', '/orari'].includes(path) ? path : '/';
     if (screen(p) !== screen(pathname)) for (const component of comps.keys()) {
       if (['Supplenze', 'Permessi', 'Settings', 'BackupSection'].includes(component?.name)) comps.delete(component);
     }
@@ -302,7 +313,7 @@ test('co-absent teachers render as one merged label', async () => {
 const tabLinks = a => a.render().filter(n => n.type === 'a' && n.props?.href?.startsWith('#/'));
 const currentTab = a => tabLinks(a).find(l => l.props.className === 'on');
 
-test('shell shows brand, glasses icon and five tabs, defaulting to Supplenze', async () => {
+test('shell shows brand, glasses icon and six tabs, defaulting to Supplenze', async () => {
   const a = await loaded();
   assert.ok(a.render().find(n => n.props?.className === 'bar'), 'top bar present');
   const svg = a.render().find(n => n.type === 'svg' && n.props?.viewBox === '0 0 24 24');
@@ -312,6 +323,7 @@ test('shell shows brand, glasses icon and five tabs, defaulting to Supplenze', a
   assert.deepEqual(links.map(l => [l.props.href, l.props.children]), [
     ['#/', 'Supplenze'],
     ['#/permessi', 'Permessi'],
+    ['#/orari', 'Orari'],
     ['#/banca-ore', 'Banca ore'],
     ['#/stats', 'Stats'],
     ['#/settings', 'Settings'],
@@ -346,6 +358,9 @@ test('future tabs show placeholder screens and mark their tab current', () => {
   assert.ok(!a.render().some(n => n.props?.className === 'stub'), 'Supplenze is not a placeholder');
   a.go('/stats');
   assert.ok(a.render().some(n => n.type === 'stats'), 'Stats is functional');
+  a.go('/orari');
+  assert.ok(a.render().some(n => n.type === 'teacher-timetables'), 'Orari is functional');
+  assert.equal(currentTab(a).props.href, '#/orari', 'Orari tab is current');
 });
 
 test('credits footer shows only at the end of Settings', () => {
