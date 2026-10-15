@@ -1,0 +1,14 @@
+# Standalone: never combine this file with compose.yaml.
+name: "${TEST_PROJECT:?Select a unique TEST_PROJECT}"
+services:
+  app:
+    build: .
+    image: "${TEST_PROJECT:?Select a unique TEST_PROJECT}_app"
+    ports:
+      - "127.0.0.1::8000"
+    user: "${LOCAL_UID:-1000}:${LOCAL_GID:-1000}"
+    userns_mode: keep-id
+    environment:
+      APP_ENV: testing
+    volumes:
+      - "${TEST_DATA_DIR:?Select an isolated TEST_DATA_DIR}:/data:Z"

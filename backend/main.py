@@ -3,7 +3,7 @@ from datetime import date, timedelta, datetime
 from pathlib import Path
 from typing import Literal
 from uuid import uuid4
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, StrictInt, StrictBool, StrictStr
 from .domain import normalize_dataset, rows, candidates, validate_assignment, default_availability, auto_availability, HOURS, SITES, lesson, validate_permit
@@ -66,8 +66,17 @@ def create_app(path=None, seed=None):
     def environment():
         return {'testing': testing}
 
-    database = Path(path or os.environ.get('DATABASE_PATH', DEFAULT_DATABASE))
+    selected = path or os.environ.get('DATABASE_PATH')
+    if not selected:
+        raise RuntimeError('Select an explicit DATABASE_PATH before starting the app.')
+    database = Path(selected).resolve()
+    production_marker = database.parent / '.sosticero-production'
+    if testing and (database == DEFAULT_DATABASE or production_marker.exists()):
+        raise RuntimeError('Testing mode cannot open the operational data directory.')
     database.parent.mkdir(parents=True, exist_ok=True)
+    if not testing:
+        production_marker.touch(exist_ok=True)
+    seed = seed or os.environ.get('TIMETABLE_PATH')
     
     # Backup configuration
     backup_dir = Path(os.environ.get('BACKUP_DIR', str(database.parent / 'backups')))
@@ -271,7 +280,9 @@ def create_app(path=None, seed=None):
         return {'ok': True}
 
     @app.post('/api/timetable')
-    def import_timetable(data: dict):
+    def import_timetable(data: dict, confirm: bool = False):
+        if not testing and not confirm:
+            raise HTTPException(status_code=409, detail='Conferma esplicita richiesta per sostituire l’orario operativo.')
         ds = normalize_dataset(data)
         with store.connect() as db:
             db.execute('BEGIN IMMEDIATE')
@@ -477,6 +488,3 @@ def create_app(path=None, seed=None):
     if static.exists():
         app.mount('/', StaticFiles(directory=static, html=True), name='frontend')
     return app
-
-
-app = create_app(seed=os.environ.get('TIMETABLE_PATH'))
