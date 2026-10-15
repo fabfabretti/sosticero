@@ -120,7 +120,7 @@ function HourHelp({ text, children }: { text: string; children: React.ReactNode 
 }
 function ClassificationChoices({ value, onChange }: { value: AbsenceKind; onChange: (value: AbsenceKind) => void }) {
   return <div className="opt classification" role="group" aria-label="Tipo di assenza">
-    {([["planned", "Programmata"], ["last_minute", "Last minute"], ["trip", "In gita"]] as const).map(([kind, label]) =>
+    {([["planned", "Programmata"], ["last_minute", "Last minute"], ["trip", "In gita"], ["strike", "In sciopero"]] as const).map(([kind, label]) =>
       <button key={kind} type="button" aria-pressed={value === kind} className={value === kind ? "on" : ""} onClick={() => onChange(value === kind ? null : kind)}>{label}</button>)}
   </div>;
 }
@@ -572,7 +572,7 @@ function Supplenze() {
   };
   const absenceKind = (id: string): AbsenceKind => {
     const kinds = [data?.state.absenceKinds?.[day]?.[id], data?.state.permitKinds?.[day]?.[id]];
-    return kinds.includes("last_minute") ? "last_minute" : kinds.includes("trip") ? "trip" : kinds.includes("planned") ? "planned" : null;
+    return kinds.includes("last_minute") ? "last_minute" : kinds.includes("strike") ? "strike" : kinds.includes("trip") ? "trip" : kinds.includes("planned") ? "planned" : null;
   };
   const absentIds = Object.keys({ ...entries("abs"), ...data?.state.permessi?.[day] });
   const renderEntries = (g: "abs" | "cf" | "dis", ids = Object.keys(entries(g))) =>
@@ -939,7 +939,7 @@ function Supplenze() {
             )}
           </form>
           <div className="lists">
-            {([["planned", "Assenze programmate"], ["trip", "In gita"], [null, "Assenze non classificate"], ["last_minute", "Assenze last minute"]] as const).map(([value, label]) => {
+            {([["planned", "Assenze programmate"], ["trip", "In gita"], ["strike", "In sciopero"], [null, "Assenze non classificate"], ["last_minute", "Assenze last minute"]] as const).map(([value, label]) => {
               const ids = absentIds.filter(id => absenceKind(id) === value);
               return ids.length > 0 && <section key={label}><h2>{label}</h2>{renderEntries("abs", ids)}</section>;
             })}

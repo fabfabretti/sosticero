@@ -114,3 +114,20 @@ class AbsenceKindsTest(unittest.TestCase):
         reopened = TestClient(create_app(self.path)).get('/api/day/' + DAY).json()['state']
         for group in ('absenceKinds', 'permitKinds'):
             self.assertEqual(reopened[group][DAY]['absent'], 'trip')
+
+    def test_strike_is_metadata_only_and_survives_archive_round_trip(self):
+        self.entry(classification='planned').raise_for_status()
+        self.permit(classification='planned').raise_for_status()
+        before = self.client.get('/api/day/' + DAY).json()
+        self.entry(classification='strike').raise_for_status()
+        self.permit(classification='strike', original_day=DAY, original_id='absent').raise_for_status()
+        after = self.client.get('/api/day/' + DAY).json()
+        self.assertEqual(after['rows'], before['rows'])
+        self.assertEqual(after['state']['cf'], before['state']['cf'])
+        self.assertEqual(after['state']['dis'], before['state']['dis'])
+        archive = self.state()
+        self.client.post('/api/import', json=archive).raise_for_status()
+        self.assertEqual(self.state(), archive)
+        reopened = TestClient(create_app(self.path)).get('/api/day/' + DAY).json()['state']
+        for group in ('absenceKinds', 'permitKinds'):
+            self.assertEqual(reopened[group][DAY]['absent'], 'strike')
