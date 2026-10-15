@@ -35,9 +35,11 @@ def main() -> None:
     bundle = Path(getattr(sys, '_MEIPASS', base))
     os.environ.setdefault('DATABASE_PATH', str(data / 'supplenze.sqlite'))
     os.environ.setdefault('STATIC_PATH', str(bundle / 'frontend' / 'dist'))
+    os.environ.setdefault('APP_ENV', 'production')
 
     import uvicorn
-    from backend.main import app  # Reads DATABASE_PATH/STATIC_PATH above at import time.
+    from backend.main import create_app
+    app = create_app()
 
     port = free_port()
     url = f'http://127.0.0.1:{port}'

@@ -295,6 +295,13 @@ function Settings() {
   const upload = async (file: File | undefined, target: string) => {
     if (!file) return;
     try {
+      if (target === 'timetable') {
+        const environment = await api<{ testing: boolean }>('environment');
+        if (!environment.testing) {
+          if (!window.confirm('Sostituire l’orario operativo con il file ' + file.name + '? Le supplenze salvate potrebbero non corrispondere al nuovo orario.')) return;
+          target += '?confirm=true';
+        }
+      }
       await api(target, JSON.parse(await file.text()));
       await refresh();
     } catch (e) {

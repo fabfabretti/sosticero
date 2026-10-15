@@ -100,6 +100,7 @@ mkdir -p data
 docker build -t supplenze .
 docker run -d --name supplenze --restart unless-stopped \
   --user "$(id -u):$(id -g)" \
+  -e APP_ENV=production \
   -p 127.0.0.1:8000:8000 \
   -v "$PWD/data:/data:Z" \
   supplenze
@@ -119,8 +120,8 @@ python3 -m venv .venv
 npm --prefix frontend ci
 npm --prefix frontend run build
 mkdir -p data
-DATABASE_PATH="$PWD/data/supplenze.sqlite" \
-  .venv/bin/uvicorn backend.main:app --host 127.0.0.1 --port 8000
+APP_ENV=production DATABASE_PATH="$PWD/data/supplenze.sqlite" \
+  .venv/bin/uvicorn backend.main:create_app --factory --host 127.0.0.1 --port 8000
 ```
 
 Keep the terminal open, or run that final command through your usual service manager. This serves the built frontend and API together. To update, install dependencies and build again, then restart the server.
@@ -188,7 +189,7 @@ To run the tests after installing the dependencies above:
 
 ```sh
 .venv/bin/pip install httpx==0.28.1
-DATABASE_PATH="$(mktemp -d)/tests.sqlite" BACKUP_ON_STARTUP=false \
+APP_ENV=testing DATABASE_PATH="$(mktemp -d)/tests.sqlite" BACKUP_ON_STARTUP=false \
   .venv/bin/python -m unittest discover -s backend/tests
 npm --prefix frontend test
 ```
@@ -201,13 +202,36 @@ Copyright © 2026 fabfabretti. Licensed under the **GNU Affero General Public Li
 
 Manual teacher absences support an optional plain-text note: open the row’s **⋯** controls, enter **Note** and select **Salva nota**. Dated permit notes are entered and edited from the **Permessi** form. Hover or focus the **(i)** on the daily Assenze row to read both notes, labelled **Assenza** and **Permesso**, alongside existing permit information. Clearing the text removes that source’s note.
 
-### Recognizing test deployments
+### Isolated test deployments
 
-Normal `podman compose up` uses `data/supplenze.sqlite` and sets `APP_ENV=production`.
-For an isolated test deployment, explicitly select a temporary Compose override
-that replaces the `/data` mount **and** sets `services.app.environment.APP_ENV: testing`.
-A red **TESTING** corner ribbon appears on every screen, including dialogs.
-Direct development runs default to testing unless `APP_ENV=production` is explicitly set.
-The label comes from `/api/environment`, refreshes every 15 seconds, and defaults
-to TESTING if the environment cannot be verified. It identifies deployment configuration;
-always verify the container's actual `/data` mount before testing or handing back.
+Normal `podman compose up` keeps the real database on port 8000. Run browser tests
+in a separate project, with a separate image, temporary data directory, and an
+automatically allocated localhost port:
+
+```sh
+export TEST_DATA_DIR=$(mktemp -d /tmp/sosticero-test-XXXXXX)
+export TEST_PROJECT="sosticero-test-$(basename "$TEST_DATA_DIR" | tr '[:upper:]' '[:lower:]')"
+LOCAL_UID=$(id -u) LOCAL_GID=$(id -g) podman compose -p "$TEST_PROJECT" -f compose.testing.yaml up -d --build --force-recreate
+podman compose -p "$TEST_PROJECT" -f compose.testing.yaml port app 8000
+```
+
+Open the printed localhost port. Verify the container's `/data` mount points at
+`$TEST_DATA_DIR` and `/api/environment` returns `{"testing":true}` before testing.
+Tests start with an empty database. If realistic data is needed, use SQLite's
+online backup API to create a fresh copy in the test directory before startup;
+never copy live SQLite files directly. Each agent must create its own directory
+and project. Never combine `compose.testing.yaml` with `compose.yaml`.
+
+Stop only your own test deployment when finished:
+
+```sh
+podman compose -p "$TEST_PROJECT" -f compose.testing.yaml down
+```
+
+A red **TESTING** corner ribbon appears on every test screen, including dialogs.
+The label refreshes every 15 seconds and defaults to TESTING if the environment
+cannot be verified. It identifies configuration; always verify the actual mount.
+Testing mode refuses the project's operational database and any data directory
+marked `.sosticero-production`. Production startup creates that marker. Keep it.
+Backend imports do not open a database; startup requires an explicit database
+path. Production timetable uploads require confirmation before replacement.

@@ -5,7 +5,7 @@ const { runInNewContext } = require('node:vm');
 const ts = require('typescript');
 
 // Run the actual App handlers with deferred HTTP responses and minimal hook storage.
-function app(localStorage = { getItem: () => null, setItem() {} }) {
+function app(localStorage = { getItem: () => null, setItem() {} }, confirm = () => false) {
   const effects = [], requests = [], comps = new Map();
   let App, pathname = '/', current = null;
   const envelope = () => {
@@ -50,7 +50,7 @@ function app(localStorage = { getItem: () => null, setItem() {} }) {
   runInNewContext(code, {
     exports: {}, URLSearchParams, Date, localStorage, setTimeout, clearTimeout,
     setInterval: () => 1, clearInterval() {},
-    window: { innerWidth: 1024, innerHeight: 768 },
+    window: { innerWidth: 1024, innerHeight: 768, confirm },
     document: { getElementById: () => ({ focus() {} }) },
     fetch(url, options) {
       if (url === '/api/environment') return Promise.resolve({ ok: true, json: async () => ({ testing: false }) });
@@ -775,4 +775,20 @@ test('TESTING ribbon stays until the backend confirms production', async () => {
   assert.equal(ribbon(a.render()).props.children, 'TESTING');
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(ribbon(a.render()), undefined);
+});
+
+test('production timetable upload requires the user to confirm replacement', async () => {
+  for (const approved of [false, true]) {
+    const confirmations = [];
+    const a = app(undefined, message => { confirmations.push(message); return approved; });
+    a.go('/settings');
+    const input = a.render().find(n => n.type === 'input' && n.props.type === 'file');
+    input.props.onChange({ target: { files: [{ name: 'orario.json', text: async () => '{"docenti":[],"orario":[]}' }] } });
+    await settle();
+    assert.equal(confirmations.length, 1);
+    assert.ok(confirmations[0].includes('orario.json'));
+    const uploads = a.requests.filter(r => r.url.startsWith('/api/timetable'));
+    assert.equal(uploads.length, approved ? 1 : 0);
+    if (approved) assert.equal(uploads[0].url, '/api/timetable?confirm=true');
+  }
 });
