@@ -672,3 +672,22 @@ test('manual permits save an undated number of hours without absence fields', as
   permitForm(a).props.onSubmit({ preventDefault() {} });
   assert.deepEqual(JSON.parse(a.requests.shift().options.body), { id: 't', hours: 10, editing: true });
 });
+
+test('trip choice saves teacher classification and groups mixed sources once', async () => {
+  const a = await loaded(entryData);
+  clickText(a, 'In gita');
+  search(a).props.onChange({ target: { value: 'anna' } }); submitEntry(a);
+  assert.equal(JSON.parse(a.requests[0].options.body).classification, 'trip');
+  assert.equal(JSON.parse(a.requests[0].options.body).group, 'abs');
+  const state = { ...data.state, abs: { [todayYmd]: { a: [2], b: [1], c: [3] } },
+    permessi: { [todayYmd]: { a: [3], b: [2], c: [4] } },
+    absenceKinds: { [todayYmd]: { a: 'trip', b: 'planned', c: 'trip' } },
+    permitKinds: { [todayYmd]: { a: 'planned', b: 'trip', c: 'last_minute' } } };
+  await resolveEntry(a, { ...entryData, state });
+  assert.equal(groupFor(a, 'Anna'), 'In gita');
+  assert.equal(groupFor(a, 'Barbara'), 'In gita');
+  assert.equal(groupFor(a, 'Carla'), 'Assenze last minute');
+  assert.equal(a.render().filter(n => n.props?.className === 'n' && n.props.children === 'Anna').length, 1);
+  clickText(a, 'In gita');
+  assert.equal(pressed(a, 'In gita'), false);
+});
