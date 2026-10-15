@@ -22,7 +22,8 @@ Dark mode, using fictional teachers and records created in an isolated demo data
 ### Plan the school day
 
 - Browse dates in a calendar and search for teachers or classes.
-- Record teacher absences for individual periods or across several days.
+- Select a teacher, review compact options, then add with **Aggiungi** or Enter. Record a whole-day absence or select individual periods; options stay set for the next entry.
+- Optionally mark absences **Programmata** or **Last minute**. The sidebar groups planned, unclassified and last-minute absences; a last-minute absence or permit takes precedence for that teacher and date.
 - Record classes that are away, making their teachers available where appropriate.
 - Add manual teacher availability and choose its campus.
 - See the classes needing cover, grouped by period, with room and campus information.
@@ -39,7 +40,9 @@ You can assign a substitute, record late entry or early exit at the class’s ef
 
 ### Manage short leave and recovery
 
-The **Permessi** register records a teacher’s leave date, selected periods, and optional request date. Leave automatically appears as a locked absence in the substitution planner. The daily limit is half the teacher’s scheduled periods, rounded down.
+The **Permessi** register records a teacher’s leave date, selected periods, and optional request date and planned/last-minute classification. Leave automatically appears as a locked absence in the substitution planner. The advisory daily limit is half the teacher’s scheduled periods, rounded down; exceeding it shows warnings but does not prevent saving. Dates use `dd/mm/yyyy`, with new leave and request dates defaulting to today.
+
+**Saldo manuale senza data** records outstanding hours from earlier periods without creating a dated absence in the substitution planner. Enter a teacher and total hours; manual balances have no automatic expiry and show their linked recoveries and remaining hours. Dated permits are recovered first. A balance with linked recoveries cannot be deleted or reduced below the hours already recovered.
 
 **RP — Recupero permesso** offers eligible teachers for otherwise unscheduled periods when they owe recovery hours. Each RP assignment pays back one hour from the oldest eligible permit. The register shows recovered hours, remaining debt, recovery assignments, and expired debt. The recovery window is one calendar month, inclusive, with month-end dates clamped to the last day of the following month. Adjacent lessons, gaps, and cross-campus travel restrictions affect RP eligibility. (Obviously, this is tailored to this specific school at the moment. Hope to generalize this as well).
 
@@ -156,6 +159,8 @@ There is no spreadsheet or Untis file importer: convert your timetable to this J
 ## Data and backups
 
 The default database is **`data/supplenze.sqlite`**. Container deployments store everything under the mounted `./data` directory, including backups in `data/backups/`; the prebuilt Windows app keeps the same files in a `data` folder beside the exe. Restarting or rebuilding the container keeps these records; deleting the directory does not.
+
+Archives include optional `absenceKinds` and `permitKinds` maps keyed by date and teacher, with values `planned` or `last_minute`. Missing entries are unclassified; existing data is not backfilled. Older archives remain importable, but editing or importing through an older app version may discard classification metadata.
 
 An automatic backup is created at startup when none exists for that calendar day.
 

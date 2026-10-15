@@ -30,6 +30,9 @@ def ledger(state, exclude=None):
             if pid:
                 permits[pid] = dict(id=pid, teacher=teacher, date=day, deadline=deadline(day),
                                     hours=len(hours), recoveries=[])
+    for teacher, entry in state.get('manualPermits', {}).items():
+        permits[entry['id']] = dict(id=entry['id'], teacher=teacher, date=None, deadline=None,
+                                   hours=entry['hours'], recoveries=[])
     for day, assignments in state['asg'].items():
         for key, a in assignments.items():
             if (day, key) == exclude or a.get('t') != 'RP':
@@ -44,21 +47,26 @@ def ledger(state, exclude=None):
     return permits
 
 
+def usable(p, day):
+    return p['date'] is None or p['date'] <= day <= p['deadline']
+
+
 def eligible(permits, teacher, day):
     return sorted((p for p in permits.values() if p['teacher'] == teacher and p['remaining'] > 0
-                   and p['date'] <= day <= p['deadline']), key=lambda p: (p['date'], p['id']))
+                   and usable(p, day)), key=lambda p: (p['date'] is None, p['date'] or '', p['id']))
 
 
 def summary(state, today=None):
     today = today or datetime.now(ZoneInfo('Europe/Rome')).date().isoformat()
     result, teachers = {}, {}
     for p in ledger(state).values():
-        p['expired'] = p['deadline'] < today and p['remaining'] > 0
-        result.setdefault(p['date'], {})[p['teacher']] = p
+        p['expired'] = bool(p['deadline'] and p['deadline'] < today and p['remaining'] > 0)
+        if p['date'] is not None:
+            result.setdefault(p['date'], {})[p['teacher']] = p
         t = teachers.setdefault(p['teacher'], dict(remaining=0, expired=0, eligible=0))
         t['remaining'] += p['remaining']
         t['expired'] += p['remaining'] if p['expired'] else 0
-        t['eligible'] += p['remaining'] if p['date'] <= today <= p['deadline'] else 0
+        t['eligible'] += p['remaining'] if usable(p, today) else 0
     return result, teachers
 
 
@@ -71,6 +79,11 @@ def validate(state):
             raise ValueError()
         actual = {(d, t) for d, ts in ids.items() for t in ts}
         values = [v for ts in ids.values() for v in ts.values()]
+        manual = state.get('manualPermits', {})
+        if not isinstance(manual, dict) or any(not isinstance(p, dict) or set(p) != {'id', 'hours'}
+                or type(p['hours']) is not int or p['hours'] < 1 for p in manual.values()):
+            raise ValueError()
+        values += [p['id'] for p in manual.values()]
         if actual != expected or any(not isinstance(v, str) or not v or len(v) > 100 for v in values) or len(values) != len(set(values)):
             raise ValueError()
         permits = ledger(state)
@@ -81,7 +94,7 @@ def validate(state):
                         raise ValueError()
                     continue
                 p = permits.get(a.get('permitId'))
-                if not p or p['teacher'] != a['v'] or not p['date'] <= day <= p['deadline'] or p['remaining'] < 0:
+                if not p or p['teacher'] != a['v'] or not usable(p, day) or p['remaining'] < 0:
                     raise ValueError()
     except (ValueError, TypeError, KeyError, AttributeError):
         raise ValueError('Recuperi non validi: verificare riferimenti, scadenze e ore disponibili.') from None

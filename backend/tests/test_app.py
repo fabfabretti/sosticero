@@ -51,11 +51,21 @@ class RulesTest(unittest.TestCase):
 
     def test_ranking_and_duties(self):
         cs = self.cs()
-        self.assertEqual([c['id'] for c in cs[:4]], ['co', 'pot', 'dis', 'utc'])
+        self.assertEqual([c['id'] for c in cs[:7]], ['co', 'ENTRA', 'ESCE', 'dis', 'pot', 'DIR', 'utc'])
         self.assertEqual(next(c for c in cs if c['id'] == 'dis')['ty'], 'DIS')
         self.ds['lessons']['pot|lun|2']['site'] = 'succursale'
         cs = self.cs()
-        self.assertGreater(next(c for c in cs if c['id'] == 'pot')['tier'], next(c for c in cs if c['id'] == 'support')['tier'])
+        self.assertLess(next(c for c in cs if c['id'] == 'pot')['tier'], next(c for c in cs if c['id'] == 'support')['tier'])
+        ids = [c['id'] for c in cs]
+        self.assertLess(ids.index('co'), ids.index('ENTRA'))
+        self.assertLess(ids.index('co'), ids.index('ESCE'))
+        self.assertLess(ids.index('ENTRA'), ids.index('pot'))
+        self.assertLess(ids.index('ESCE'), ids.index('dis'))
+        self.assertLess(ids.index('co'), ids.index('pot'))
+        self.assertLess(ids.index('pot'), ids.index('DIR'))
+        self.assertLess(ids.index('dis'), ids.index('DIR'))
+        self.assertLess(ids.index('DIR'), ids.index('utc'))
+        self.assertLess(ids.index('utc'), ids.index('support'))
 
     def test_class_out_releases_teacher_and_support_rows_remain(self):
         self.state['cf'][DAY] = {'2A': [2]}
@@ -64,6 +74,15 @@ class RulesTest(unittest.TestCase):
         self.assertEqual(len(rows(self.ds, self.state, DAY)), 1)
         self.state['cf'][DAY] = {}
         self.assertEqual(len(rows(self.ds, self.state, DAY)), 2)
+
+    def test_cross_campus_availability_ranks_before_same_campus_pot(self):
+        self.state['cf'][DAY] = {'2A': [2]}
+        self.ds['lessons']['support|lun|2']['site'] = 'succursale'
+        ids = [c['id'] for c in self.cs()]
+        self.assertLess(ids.index('support'), ids.index('pot'))
+        self.state['dis'][DAY] = {'blank': [2]}
+        ids = [c['id'] for c in self.cs()]
+        self.assertLess(ids.index('blank'), ids.index('pot'))
 
     def test_co_absent_teachers_merge_into_one_row(self):
         self.state['abs'][DAY] = {'absent': [2], 'co': [2]}
@@ -91,7 +110,7 @@ class RulesTest(unittest.TestCase):
         self.assertEqual(next(c for c in self.cs() if c['id'] == 'co')['ty'], 'C')
 
     def test_tie_break_uses_daily_then_total_load(self):
-        self.state['dis'][DAY] = {'blank': [2]}
+        self.state['dis'][DAY] = {'blank': [2], 'pot': [2]}
         self.state['disSites'][DAY] = {'blank': 'centrale'}
         self.state['asg']['2026-10-09'] = {'absent|1|1A': dict(v='blank', c='1A', t='D')}
         cs = self.cs()
@@ -100,7 +119,7 @@ class RulesTest(unittest.TestCase):
     def test_uts_forces_branch_and_manual_site_overrides(self):
         self.ds['lessons']['pot|lun|2']['special'] = 'UTS'
         c = next(c for c in self.cs() if c['id'] == 'pot')
-        self.assertEqual((c['ty'], c['loc'], c['tier']), ('UTS', 'succursale', 55))
+        self.assertEqual((c['ty'], c['loc'], c['tier']), ('UTS', 'succursale', 31))
         self.state['dis'][DAY] = {'pot': [2]}
         self.state['disSites'][DAY] = {'pot': 'centrale'}
         c = next(c for c in self.cs() if c['id'] == 'pot')
@@ -180,13 +199,16 @@ class RulesTest(unittest.TestCase):
         aa = auto_availability(self.ds, self.state, DAY)
         self.assertNotIn(2, aa.get('co', {}))
 
-    def test_auto_availability_classe_fuori_and_assigned_excluded(self):
+    def test_auto_availability_classe_fuori_keeps_assigned_teacher(self):
         self.state['cf'][DAY] = {'2A': [2]}
         aa = auto_availability(self.ds, self.state, DAY)
         self.assertEqual(aa['support'][2], ['2A classe fuori'])
-        self.state['asg'][DAY] = {'x|2|1A': dict(v='co', c='1A', t='C')}
+        self.state['asg'][DAY] = {'absent|2|1A': dict(v='support', c='1A', t='D')}
         aa = auto_availability(self.ds, self.state, DAY)
-        self.assertNotIn(2, aa.get('co', {}))
+        self.assertEqual(aa['support'][2], ['2A classe fuori'])
+        self.assertEqual(next(c for c in self.cs() if c['id'] == 'support')['why'], '')
+        other = dict(self.row, k='x|2|3A', c='3A')
+        self.assertEqual(next(c for c in candidates(self.ds, self.state, DAY, other) if c['id'] == 'support')['why'], 'Già assegnato in questa ora')
 
     def test_reject_duplicate_slot_and_unknown_teacher(self):
         x=fixture();x['orario'].append(x['orario'][0])

@@ -31,7 +31,7 @@ class PermessiTest(unittest.TestCase):
         self.assertEqual(self.permit().status_code, 422)
         edit = dict(day=DAY, id='absent', original_day=DAY, original_id='absent', hours=[1])
         self.assertEqual(self.client.post('/api/permessi', json=edit).status_code, 200)
-        edit['id'] = 'blank'
+        edit['id'] = 'missing'
         self.assertEqual(self.client.post('/api/permessi', json=edit).status_code, 422)
         self.assertEqual(self.register()[DAY]['absent'], [1])
         edit['id'] = 'co'
@@ -60,9 +60,9 @@ class PermessiTest(unittest.TestCase):
         self.assertEqual(self.client.get('/api/permessi').json()['permitRequests'][DAY], {})
 
     def test_limits_and_invalid_input(self):
-        for hours in ([], [2, 2], [True], [0], [8], [1, 2, 3]):
+        for hours in ([], [2, 2], [True], [0], [8]):
             self.assertEqual(self.client.post('/api/permessi', json=dict(day=DAY, id='absent', hours=hours)).status_code, 422)
-        for teacher, day in [('missing', DAY), ('blank', DAY), ('absent', '2026-10-13'), ('absent', 'bad')]:
+        for teacher, day in [('missing', DAY), ('absent', 'bad')]:
             self.assertEqual(self.client.post('/api/permessi', json=dict(day=day, id=teacher, hours=[1])).status_code, 422)
         self.assertEqual(self.client.post('/api/permessi', json=dict(day=DAY, id='absent', hours=[6, 7])).status_code, 200)
         for count, limit in [(5, 2), (6, 3)]:
@@ -70,9 +70,15 @@ class PermessiTest(unittest.TestCase):
             for h in range(5, count + 1):
                 ds['orario'].append(dict(docente='pot', giorno='lun', ora=h, classi=[]))
             self.client.post('/api/timetable', json=ds)
-            self.assertEqual(self.client.post('/api/permessi', json=dict(day=DAY, id='pot', hours=list(range(1, limit + 2)))).status_code, 422)
+            self.assertEqual(self.client.post('/api/permessi', json=dict(day=DAY, id='pot', hours=list(range(1, limit + 2)))).status_code, 200)
+            self.client.post('/api/permessi', json=dict(day=DAY, id='pot', hours=None))
             self.assertEqual(self.client.post('/api/permessi', json=dict(day=DAY, id='pot', hours=list(range(1, limit + 1)))).status_code, 200)
             self.client.post('/api/permessi', json=dict(day=DAY, id='pot', hours=None))
+
+    def test_above_half_day_and_no_scheduled_hours_are_allowed(self):
+        for teacher, day, hours in [('absent', DAY, [1, 2, 3]), ('blank', DAY, [1]), ('absent', '2026-10-13', [1])]:
+            self.assertEqual(self.client.post('/api/permessi', json=dict(day=day, id=teacher, hours=hours)).status_code, 200)
+            self.assertEqual(self.register()[day][teacher], hours)
 
     def test_effective_absence_and_manual_overlap(self):
         self.client.post('/api/entries', json=dict(day=DAY, group='abs', id='absent', hours=[2]))

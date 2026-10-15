@@ -58,7 +58,10 @@ class RecoveryTest(unittest.TestCase):
     def test_ranking_and_restrictions(self):
         self.permit('2026-10-05', 'bottom')
         for h in (1, 4, 6):
-            self.assertIn('rp', [c['id'] for c in self.cs(h)[:2]])
+            ids = [c['id'] for c in self.cs(h)]
+            self.assertLess(ids.index('DIR'), ids.index('rp'))
+            if not next(c for c in self.cs(h) if c['id'] == 'bottom')['convenient']:
+                self.assertLess(ids.index('rp'), ids.index('bottom'))
             self.assertTrue(next(c for c in self.cs(h) if c['id'] == 'rp')['convenient'])
         self.assertEqual(self.cs(7)[-1]['ty'], 'RP')
         self.assertNotIn('rp', [c['id'] for c in self.cs(2)])

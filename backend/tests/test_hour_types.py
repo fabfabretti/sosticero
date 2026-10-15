@@ -77,17 +77,16 @@ class HourTypesTest(unittest.TestCase):
         self.set_type('code:PE', school=False)
         self.assertEqual(before, self.choices())
         self.assertNotIn('GM', before)
-        self.assertTrue(before['co']['exceptional'])
+        self.assertFalse(before['co']['exceptional'])
         self.assertTrue(before['support']['exceptional'])
         self.set_type('derived:itp', visible=False)
         self.assertNotIn('co', self.choices())
         self.assertEqual(self.assign('co', True).status_code, 422)
 
     def test_exception_hard_blocks_and_stale_policy(self):
-        self.assertEqual(self.assign('co').status_code, 422)
-        self.assertEqual(self.assign('co', True).status_code, 200)
+        self.assertEqual(self.assign('co').status_code, 200)
         record = self.client.get('/api/export').json()['asg'][DAY][self.key]
-        self.assertTrue(record['exceptional'])
+        self.assertFalse(record.get('exceptional', False))
         self.set_type('derived:itp', visible=False)
         self.assertEqual(self.client.get('/api/export').json()['asg'][DAY][self.key], record)
         self.set_type('derived:itp', visible=True)
@@ -99,6 +98,42 @@ class HourTypesTest(unittest.TestCase):
         self.assertEqual(self.assign('PE').status_code, 422)
         self.client.post('/api/entries', json=dict(day=DAY, group='dis', id='PE', hours=[2]))
         self.assertFalse(self.choices()['PE']['exceptional'])
+
+    def test_curricular_teacher_covers_absent_itp_in_same_class(self):
+        self.client.post('/api/entries', json=dict(day=DAY, group='abs', id='absent', hours=[]))
+        self.client.post('/api/entries', json=dict(day=DAY, group='abs', id='co', hours=[2]))
+        self.key = 'co|2|1A'
+        candidate = self.choices()['absent']
+        self.assertEqual(candidate['ty'], 'C')
+        self.assertEqual(candidate['typeLabel'], 'Compresenza')
+        self.assertFalse(candidate['exceptional'])
+        self.assertEqual(self.assign('absent').status_code, 200)
+
+    def test_same_class_in_different_rooms_is_not_coteaching(self):
+        ds = normalize_dataset(self.raw)
+        ds['lessons']['absent|lun|2']['room'] = 'A4C'
+        ds['lessons']['co|lun|2']['room'] = 'A18C'
+        state = copy.deepcopy(EMPTY)
+        state['abs'][DAY] = {'absent': [2]}
+        row = rows(ds, state, DAY)[0]
+        rules = merge_types(ds, {})
+        for role in ('ITP', 'curricolare', 'sostegno'):
+            with self.subTest(role=role):
+                ds['teachers']['co']['role'] = role
+                cs = {c['id']: c for c in candidates(ds, state, DAY, row, rules)}
+                self.assertTrue('co' not in cs or cs['co']['ty'] != 'C')
+
+    def test_support_already_in_class_is_ordinary_cover(self):
+        ds = normalize_dataset(self.raw)
+        ds['lessons']['support|lun|2']['classes'] = ['1A']
+        state = copy.deepcopy(EMPTY)
+        state['abs'][DAY] = {'absent': [2]}
+        row = rows(ds, state, DAY)[0]
+        rules = merge_types(ds, {})
+        cs = {c['id']: c for c in candidates(ds, state, DAY, row, rules)}
+        self.assertEqual(cs['support']['ty'], 'C')
+        self.assertFalse(cs['support']['exceptional'])
+        self.assertEqual(validate_assignment(ds, state, DAY, row['k'], 'support', rules)['t'], 'C')
 
     def test_multi_code_and_class_out_precedence(self):
         ds = normalize_dataset(self.raw)

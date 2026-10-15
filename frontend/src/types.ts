@@ -1,3 +1,4 @@
+export type AbsenceKind = "planned" | "last_minute" | null;
 export type Teacher = {
   id: string;
   name: string;
@@ -47,7 +48,10 @@ export type Data = {
     warnings: unknown[];
   };
   state: {
+    absenceKinds?: Record<string, Record<string, AbsenceKind>>;
+    permitKinds?: Record<string, Record<string, AbsenceKind>>;
     permessi?: Record<string, Record<string, number[]>>;
+    permitRequests?: Record<string, Record<string, string>>;
     abs: Record<string, Record<string, number[]>>;
     cf: Record<string, Record<string, number[]>>;
     dis: Record<string, Record<string, number[]>>;

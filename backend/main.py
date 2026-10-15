@@ -1,6 +1,8 @@
 import os
 from datetime import date, timedelta, datetime
 from pathlib import Path
+from typing import Literal
+from uuid import uuid4
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, StrictInt, StrictBool
@@ -12,6 +14,7 @@ from . import statistics, recovery
 
 
 class Edit(BaseModel):
+    classification: Literal['planned', 'last_minute'] | None = None
     day: date
     until: date | None = None
     group: str
@@ -23,6 +26,7 @@ class Edit(BaseModel):
 
 
 class Permit(BaseModel):
+    classification: Literal['planned', 'last_minute'] | None = None
     requested_on: date | None = None
     day: date
     id: str
@@ -36,6 +40,12 @@ class Assignment(BaseModel):
     day: date
     key: str
     value: str | None = None
+
+
+class ManualPermit(BaseModel):
+    id: str
+    hours: StrictInt | None = None
+    editing: StrictBool = False
 
 
 class RestoreRequest(BaseModel):
@@ -136,6 +146,9 @@ def create_app(path=None, seed=None):
         state.setdefault('permessi', {})
         state.setdefault('permitRequests', {})
         state.setdefault('permitIds', {})
+        state.setdefault('absenceKinds', {})
+        state.setdefault('permitKinds', {})
+        state.setdefault('manualPermits', {})
         return ds, state
 
     def save_state(db, ds, state, days):
@@ -169,7 +182,30 @@ def create_app(path=None, seed=None):
         with store.connect() as db:
             ds, state = load(db)
         summaries, balances = recovery.summary(state)
-        return dict(dataset=ds, permessi=state['permessi'], permitRequests=state['permitRequests'], recoveries=summaries, balances=balances)
+        manual = {p['teacher']: p for p in recovery.ledger(state).values() if p['date'] is None}
+        return dict(dataset=ds, permessi=state['permessi'], permitRequests=state['permitRequests'], permitKinds=state['permitKinds'], recoveries=summaries, balances=balances, manualPermits=manual)
+
+    @app.post('/api/manual-permits')
+    def save_manual_permit(e: ManualPermit):
+        with store.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            ds, state = load(db)
+            existing = state['manualPermits'].get(e.id)
+            if e.id not in ds['teachers'] or (ds['teachers'][e.id].get('retired') and not existing):
+                raise ValueError('Docente non valido.')
+            if e.hours is not None and (e.hours < 1 or (existing and not e.editing) or (e.editing and not existing)):
+                raise ValueError('Ore non valide o saldo già presente: modifica la registrazione esistente.')
+            if existing:
+                p = recovery.ledger(state)[existing['id']]
+                if p['recovered'] and (e.hours is None or e.hours < p['recovered']):
+                    raise ValueError('Saldo con recuperi collegati: risolvi prima le assegnazioni RP interessate.')
+            if e.hours is None:
+                state['manualPermits'].pop(e.id, None)
+            else:
+                state['manualPermits'][e.id] = dict(id=existing['id'] if existing else uuid4().hex, hours=e.hours)
+            recovery.validate(state)
+            store.write(db, 'state', state)
+        return {'ok': True}
 
     @app.post('/api/permessi')
     def save_permit(e: Permit):
@@ -184,6 +220,7 @@ def create_app(path=None, seed=None):
             if source and source[1] not in permits.get(source[0], {}):
                 raise ValueError('Permesso originale non più presente.')
             old_day, old_teacher = source or (d, e.id)
+            classification = e.classification if 'classification' in e.model_fields_set else state['permitKinds'].get(old_day, {}).get(old_teacher)
             pid = state['permitIds'].get(old_day, {}).get(old_teacher)
             if pid:
                 recovery.protect(state, pid, e.id, d, e.hours)
@@ -191,20 +228,22 @@ def create_app(path=None, seed=None):
                 state['permitIds'].get(d, {}).pop(e.id, None)
                 permits.get(d, {}).pop(e.id, None)
                 state['permitRequests'].get(d, {}).pop(e.id, None)
+                state['permitKinds'].get(d, {}).pop(e.id, None)
             else:
                 validate_permit(ds, e.id, e.hours)
                 if ds['teachers'][e.id].get('retired') and (not source or source[1] != e.id):
                     raise ValueError('Docente non più in servizio.')
                 if e.id in permits.get(d, {}) and source != (d, e.id):
                     raise ValueError('Permesso già presente: modifica la registrazione esistente.')
-                maximum = sum(lesson(ds, e.id, d, h) is not None for h in HOURS) // 2
-                if len(e.hours) > maximum:
-                    raise ValueError(f'Massimo giornaliero: {maximum} ore di permesso.')
                 if source:
                     state['permitIds'].get(source[0], {}).pop(source[1], None)
                     permits[source[0]].pop(source[1])
                     state['permitRequests'].get(source[0], {}).pop(source[1], None)
+                    state['permitKinds'].get(source[0], {}).pop(source[1], None)
                 permits.setdefault(d, {})[e.id] = sorted(e.hours)
+                state['permitKinds'].get(d, {}).pop(e.id, None)
+                if classification:
+                    state['permitKinds'].setdefault(d, {})[e.id] = classification
                 state['permitRequests'].get(d, {}).pop(e.id, None)
                 if e.requested_on:
                     state['permitRequests'].setdefault(d, {})[e.id] = e.requested_on.isoformat()
@@ -234,6 +273,8 @@ def create_app(path=None, seed=None):
 
     @app.post('/api/entries')
     def edit(e: Edit):
+        if 'classification' in e.model_fields_set and e.group != 'abs':
+            raise ValueError('Classificazione consentita solo per assenze docenti.')
         if e.group not in ('abs', 'cf', 'dis'):
             raise ValueError('Gruppo non valido.')
         if e.hours is not None and any(type(h) is not int or h not in HOURS for h in e.hours):
@@ -260,10 +301,16 @@ def create_app(path=None, seed=None):
                 entries = state[e.group].setdefault(d, {})
                 if e.hours is None:
                     entries.pop(e.id, None)
+                    if e.group == 'abs':
+                        state['absenceKinds'].get(d, {}).pop(e.id, None)
                     if e.group == 'dis':
                         state['disSites'].setdefault(d, {}).pop(e.id, None)
                 else:
                     entries[e.id] = default_availability(ds, e.id, d) if e.defaults and e.group == "dis" else sorted(set(e.hours))
+                    if e.group == 'abs' and 'classification' in e.model_fields_set:
+                        state['absenceKinds'].get(d, {}).pop(e.id, None)
+                        if e.classification:
+                            state['absenceKinds'].setdefault(d, {})[e.id] = e.classification
                     if e.group == 'dis':
                         state['disSites'].setdefault(d, {})[e.id] = e.site or None
             save_state(db, ds, state, days if e.group != 'dis' else [])
@@ -317,12 +364,20 @@ def create_app(path=None, seed=None):
             for group, dates in state.items():
                 if not isinstance(dates, dict):
                     raise ValueError('Archivio non valido.')
+                if group == 'manualPermits':
+                    if any(i not in ds['teachers'] for i in dates):
+                        raise ValueError('Docente saldo manuale non valido.')
+                    continue
                 for d, entries in dates.items():
                     date.fromisoformat(d)
                     if not isinstance(entries, dict):
                         raise ValueError('Archivio non valido.')
                     for i, value in entries.items():
-                        if group == 'permitIds':
+                        if group in ('absenceKinds', 'permitKinds'):
+                            source = 'abs' if group == 'absenceKinds' else 'permessi'
+                            if i not in state[source].get(d, {}) or i not in ds['teachers'] or not isinstance(value, str) or value not in ('planned', 'last_minute'):
+                                raise ValueError('Classificazione assenza non valida.')
+                        elif group == 'permitIds':
                             if i not in state['permessi'].get(d, {}) or not isinstance(value, str):
                                 raise ValueError('Identità permesso non valida.')
                         elif group == 'permitRequests':
