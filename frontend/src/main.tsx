@@ -100,18 +100,22 @@ function Stub({ label }: { label: string }) {
   );
 }
 function HourHelp({ text, children }: { text: string; children: React.ReactNode }) {
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [tip, setTip] = useState<{ left: number; top: number; above: boolean } | null>(null);
   // Fixed positioning escapes the sidebar's scroll/overflow clipping; coords come from the trigger.
   const show = (e: React.MouseEvent<HTMLElement> | React.FocusEvent<HTMLElement>) => {
     const r = e.currentTarget.getBoundingClientRect();
-    const above = r.top > 80;
+    clearTimeout(hideTimer.current);
+    const above = r.top > window.innerHeight / 2;
     setTip({ left: Math.max(8, Math.min(r.left, window.innerWidth - 246)), top: above ? r.top - 6 : r.bottom + 6, above });
   };
+  const hide = () => { hideTimer.current = setTimeout(() => setTip(null), 150); };
   return <span className="hour-help" tabIndex={0} aria-label={text}
-    onMouseEnter={show} onMouseLeave={() => setTip(null)}
-    onFocus={show} onBlur={() => setTip(null)}>
+    onMouseEnter={show} onMouseLeave={hide}
+    onFocus={show} onBlur={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setTip(null); }}
+    onKeyDown={e => { if (e.key === "Escape") setTip(null); }}>
     {children}
-    {tip && <span role="tooltip" className="tip" style={{ left: tip.left, top: tip.top, transform: tip.above ? "translateY(-100%)" : undefined }}>{text}</span>}
+    {tip && <span role="tooltip" tabIndex={0} className="tip" onMouseEnter={() => clearTimeout(hideTimer.current)} style={{ maxHeight: Math.max(40, (tip.above ? tip.top : window.innerHeight - tip.top) - 8), left: tip.left, top: tip.top, transform: tip.above ? "translateY(-100%)" : undefined }}>{text}</span>}
   </span>;
 }
 function ClassificationChoices({ value, onChange }: { value: AbsenceKind; onChange: (value: AbsenceKind) => void }) {
@@ -125,12 +129,13 @@ function Permessi() {
   const [manualHours, setManualHours] = useState("");
   const [editingManual, setEditingManual] = useState(false);
   const [sort, setSort] = useState<{ field: "date" | "requested"; ascending: boolean }>({ field: "date", ascending: false });
-  const [data, setData] = useState<{ dataset: Data["dataset"]; permessi: Record<string, Record<string, number[]>>; permitRequests?: Record<string, Record<string, string>>; permitKinds?: Record<string, Record<string, AbsenceKind>>; recoveries?: Record<string, Record<string, import("./types").PermitRecovery>>; balances?: Record<string, { remaining: number; expired: number; eligible: number }>; manualPermits?: Record<string, { id: string; hours: number; recovered: number; remaining: number; recoveries: { date: string; h: number; key: string }[] }> }>();
+  const [data, setData] = useState<{ dataset: Data["dataset"]; permessi: Record<string, Record<string, number[]>>; permitRequests?: Record<string, Record<string, string>>; permitNotes?: Record<string, Record<string, string>>; permitKinds?: Record<string, Record<string, AbsenceKind>>; recoveries?: Record<string, Record<string, import("./types").PermitRecovery>>; balances?: Record<string, { remaining: number; expired: number; eligible: number }>; manualPermits?: Record<string, { id: string; hours: number; recovered: number; remaining: number; recoveries: { date: string; h: number; key: string }[] }> }>();
   const [dayInput, setDayInput] = useState(italianDate(localDate(new Date())));
   const [requestedInput, setRequestedInput] = useState(italianDate(localDate(new Date())));
   const day = parseItalianDate(dayInput);
   const requestedOn = parseItalianDate(requestedInput);
   const invalidDates = !day || (!!requestedInput && !requestedOn);
+  const [note, setNote] = useState("");
   const [newClassification, setNewClassification] = useState<AbsenceKind>(null);
   const [editClassification, setEditClassification] = useState<AbsenceKind>(null);
   const [teacher, setTeacher] = useState("");
@@ -160,6 +165,7 @@ function Permessi() {
     setQuery(data?.dataset.teachers[id]?.name || id);
   };
   const reset = () => {
+    setNote("");
     setManualHours("");
     setEditingManual(false);
     setDayInput(italianDate(localDate(new Date())));
@@ -193,7 +199,7 @@ function Permessi() {
   </HourHelp>;
   return <div className="app permessi">
     <aside>
-    <form className="permit-form" onSubmit={e => { e.preventDefault(); if (manual) { if (teacher && Number.isInteger(Number(manualHours)) && Number(manualHours) > 0) void save({ id: teacher, hours: Number(manualHours), editing: editingManual }, "manual-permits"); return; } if (invalidDates || !teacher || !selected.length) return; void save({ day, id: teacher, requested_on: requestedOn || null, classification: original ? editClassification : newClassification, hours: selected, ...(original ? { original_day: original.day, original_id: original.id } : {}) }); }}>
+    <form className="permit-form" onSubmit={e => { e.preventDefault(); if (manual) { if (teacher && Number.isInteger(Number(manualHours)) && Number(manualHours) > 0) void save({ id: teacher, hours: Number(manualHours), editing: editingManual }, "manual-permits"); return; } if (invalidDates || !teacher || !selected.length) return; void save({ day, id: teacher, requested_on: requestedOn || null, note, classification: original ? editClassification : newClassification, hours: selected, ...(original ? { original_day: original.day, original_id: original.id } : {}) }); }}>
       <h2>{manual ? (editingManual ? "Modifica saldo manuale" : "Aggiungi saldo manuale") : original ? "Modifica permesso" : "Aggiungi permesso"}</h2>
       <label className="manual-permit-toggle"><input type="checkbox" checked={manual} disabled={busy} onChange={e => { reset(); setManual(e.target.checked); setError(""); }} />Saldo manuale senza data</label>
       <fieldset disabled={busy || !data}>
@@ -221,6 +227,7 @@ function Permessi() {
           {editingManual && <p className="sub">Il totale include le ore già recuperate: {data?.manualPermits?.[teacher]?.recovered ?? 0}.</p>}
         </> : <>
         <ClassificationChoices value={original ? editClassification : newClassification} onChange={original ? setEditClassification : setNewClassification} />
+        <label>Note (facoltative)<textarea aria-label="Note permesso" value={note} onChange={e => setNote(e.target.value)} /></label>
         <label>Data permesso<input required aria-label="Data permesso" type="text" inputMode="numeric" placeholder="gg/mm/aaaa" pattern="[0-9]{2}/[0-9]{2}/[0-9]{4}" value={dayInput} aria-invalid={!!dayInput && !day} onChange={e => setDayInput(e.target.value)} /></label>
         <label>Data richiesta (facoltativa)<input aria-label="Data richiesta" type="text" inputMode="numeric" placeholder="gg/mm/aaaa" pattern="[0-9]{2}/[0-9]{2}/[0-9]{4}" value={requestedInput} aria-invalid={!!requestedInput && !requestedOn} onChange={e => setRequestedInput(e.target.value)} /></label>
         <div><span>Ore di permesso</span><div className="hrs permit-hours">{hours.map(h => <span className="permit-hour" key={h}>
@@ -249,7 +256,7 @@ function Permessi() {
         <td>{r.recovery?.recovered ?? 0}</td>
         <td>{r.recovery?.recoveries.length ? <ul className="recovery-details">{r.recovery.recoveries.map(item => <li key={item.date + item.key}>{item.date.split("-").reverse().join("/")} · {item.h}ª ora</li>)}</ul> : "—"}</td>
         <td><span className="permit-remaining">{r.recovery?.remaining ?? r.periods.length}</span>{r.recovery?.expired && <strong className="permit-expired">Scadute</strong>}</td>
-        <td className="permit-actions"><button className="lk" aria-label={`Modifica permesso di ${data?.dataset.teachers[r.id]?.name || r.id}`} title="Modifica permesso" disabled={busy} onClick={() => { setManual(false); setEditingManual(false); setDayInput(italianDate(r.date)); setRequestedInput(italianDate(data?.permitRequests?.[r.date]?.[r.id] || "")); selectTeacher(r.id); setSelected(r.periods); setEditClassification(data?.permitKinds?.[r.date]?.[r.id] || null); setOriginal({ day: r.date, id: r.id }); setError(""); }}><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15Z" fill="none" stroke="currentColor" strokeWidth="1.6"/></svg></button>
+        <td className="permit-actions"><button className="lk" aria-label={`Modifica permesso di ${data?.dataset.teachers[r.id]?.name || r.id}`} title="Modifica permesso" disabled={busy} onClick={() => { setManual(false); setEditingManual(false); setDayInput(italianDate(r.date)); setRequestedInput(italianDate(data?.permitRequests?.[r.date]?.[r.id] || "")); selectTeacher(r.id); setSelected(r.periods); setNote(data?.permitNotes?.[r.date]?.[r.id] || ""); setEditClassification(data?.permitKinds?.[r.date]?.[r.id] || null); setOriginal({ day: r.date, id: r.id }); setError(""); }}><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15Z" fill="none" stroke="currentColor" strokeWidth="1.6"/></svg></button>
         <button className="x" aria-label={`Rimuovi permesso di ${data?.dataset.teachers[r.id]?.name || r.id}`} title="Rimuovi permesso" disabled={busy} onClick={() => void save({ day: r.date, id: r.id, hours: null })}>×</button></td>
       </tr>)}</tbody></table></div>
     {!!Object.keys(data?.manualPermits || {}).length && <section className="manual-permits">
@@ -425,6 +432,7 @@ function Supplenze() {
     [classification, setClassification] = useState<AbsenceKind>(null),
     [chosen, setChosen] = useState<{ id: string; label: string; group: "abs" | "dis" | "cf" }>(),
     [editingKind, setEditingKind] = useState<string>(),
+    [absenceNote, setAbsenceNote] = useState(""),
     [site, setSite] = useState("centrale"),
     [filter, setFilter] = useState(() => {
       try {
@@ -462,6 +470,8 @@ function Supplenze() {
     ++candidateRequest.current;
     setOpen(undefined);
     void refresh();
+    setEditingKind(undefined);
+    setAbsenceNote("");
   }, [day]);
   const mutate = async (url: string, body: unknown) => {
     ++candidateRequest.current;
@@ -559,7 +569,10 @@ function Supplenze() {
       const hs = entries(g)[id] || [];
       const permit = g === "abs" ? data?.state.permessi?.[day]?.[id] || [] : [];
       const requested = g === "abs" ? data?.state.permitRequests?.[day]?.[id] : "";
+      const manualNote = g === "abs" ? data?.state.absenceNotes?.[day]?.[id] : "";
+      const savedPermitNote = g === "abs" ? data?.state.permitNotes?.[day]?.[id] : "";
       const permitNote = requested ? `Permesso concesso il ${requested.split("-").reverse().join("/")}` : "Permesso";
+      const info = [permit.length ? permitNote : "", manualNote ? `Assenza: ${manualNote}` : "", savedPermitNote ? `Permesso: ${savedPermitNote}` : ""].filter(Boolean).join("\n\n");
       return (
         <div className="entry-row" key={g + id}>
         <div className="rw">
@@ -579,8 +592,8 @@ function Supplenze() {
           >
             {g === "cf" ? "Classe " + id : name(id)}
           </button>
-          {g === "abs" && permit.length > 0 && (
-            <HourHelp text={permitNote}><i className="why">i</i></HourHelp>
+          {g === "abs" && info && (
+            <HourHelp text={info}><i className="why">i</i></HourHelp>
           )}
           <div className="hrs">
             {hours.map((h) => {
@@ -631,7 +644,7 @@ function Supplenze() {
               <option value="succursale">S</option>
             </select>
           )}
-          {g === "abs" && Object.hasOwn(entries(g), id) && <button className="edit-kind" aria-label={"Classifica assenza di " + name(id)} aria-expanded={editingKind === id} onClick={() => setEditingKind(editingKind === id ? undefined : id)}>⋯</button>}
+          {g === "abs" && Object.hasOwn(entries(g), id) && <button className="edit-kind" aria-label={"Modifica assenza di " + name(id)} aria-expanded={editingKind === id} onClick={() => { setEditingKind(editingKind === id ? undefined : id); setAbsenceNote(data?.state.absenceNotes?.[day]?.[id] || ""); }}>⋯</button>}
           <button
             className="x"
             aria-label={"Rimuovi " + name(id)}
@@ -641,7 +654,11 @@ function Supplenze() {
             ×
           </button>
         </div>
-        {g === "abs" && editingKind === id && Object.hasOwn(entries(g), id) && <ClassificationChoices value={data?.state.absenceKinds?.[day]?.[id] || null} onChange={value => void mutate("entries", { day, group: "abs", id, hours: hs, classification: value })} />}
+        {g === "abs" && editingKind === id && Object.hasOwn(entries(g), id) && <div className="absence-editor">
+          <ClassificationChoices value={data?.state.absenceKinds?.[day]?.[id] || null} onChange={value => void mutate("entries", { day, group: "abs", id, hours: hs, classification: value })} />
+          <label>Note (facoltative)<textarea aria-label={"Note assenza di " + name(id)} value={absenceNote} disabled={busy} onChange={e => setAbsenceNote(e.target.value)} /></label>
+          <button disabled={busy} onClick={() => void mutate("entries", { day, group: "abs", id, hours: hs, note: absenceNote })}>Salva nota</button>
+        </div>}
         </div>
       );
     });

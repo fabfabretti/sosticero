@@ -1128,6 +1128,14 @@ td.none {
 .permit-form .manual-permit-toggle { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
 .permit-form .manual-permit-toggle input { width: auto; }
 .manual-permits { margin-top: 24px; }
+
+/* Notes remain plain text and readable in compact sidebars. */
+.absence-editor { padding: 4px 0 8px; }
+.absence-editor label, .permit-form label:has(textarea) { display: grid; gap: 4px; }
+.absence-editor textarea, .permit-form textarea { width: 100%; min-width: 0; box-sizing: border-box; min-height: 64px; resize: vertical; font: inherit; color: var(--ink); background: var(--pan); border: 1px solid var(--line); border-radius: 4px; padding: 6px; }
+.absence-editor > button { margin-top: 4px; }
+.tip { box-sizing: border-box; max-width: calc(100vw - 16px); white-space: pre-wrap; overflow-wrap: anywhere; overflow-y: auto; }
+.tip:focus-visible, textarea:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
 .testing-ribbon {
   position: fixed;
   top: 20px;

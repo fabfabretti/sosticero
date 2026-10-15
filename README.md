@@ -196,6 +196,8 @@ npm --prefix frontend test
 Always use an isolated database for development. See [AGENTS.md](AGENTS.md) for this repository’s data protection and deployment rules. Planning documents and detailed behavior specifications live under [openspec/](openspec/).
 
 
+Manual teacher absences support an optional plain-text note: open the row’s **⋯** controls, enter **Note** and select **Salva nota**. Dated permit notes are entered and edited from the **Permessi** form. Hover or focus the **(i)** on the daily Assenze row to read both notes, labelled **Assenza** and **Permesso**, alongside existing permit information. Clearing the text removes that source’s note.
+
 ### Recognizing test deployments
 
 Normal `podman compose up` uses `data/supplenze.sqlite` and sets `APP_ENV=production`.
