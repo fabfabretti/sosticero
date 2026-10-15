@@ -2,7 +2,7 @@ import json
 import sqlite3
 from contextlib import contextmanager, closing
 
-EMPTY = {k: {} for k in ('abs', 'cf', 'dis', 'disSites', 'asg', 'permessi', 'permitRequests', 'permitIds')}
+EMPTY = {k: {} for k in ('abs', 'cf', 'dis', 'disSites', 'asg', 'permessi', 'permitRequests', 'permitIds', 'absenceKinds', 'permitKinds', 'manualPermits')}
 
 
 class Store:

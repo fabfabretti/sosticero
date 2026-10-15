@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./style.css";
-import type { Row, Candidate, Data } from "./types";
+import type { Row, Candidate, Data, AbsenceKind } from "./types";
 import { HourTypes } from "./HourTypes";
 import { CandidateDrawer } from "./CandidateDrawer";
 import { Stats } from "./Stats";
@@ -14,6 +14,13 @@ const norm = (s: string) =>
 const hours = [1, 2, 3, 4, 5, 6, 7];
 const localDate = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const italianDate = (value: string) => value.split("-").reverse().join("/");
+const parseItalianDate = (value: string) => {
+  if (!/^\d{2}\/\d{2}\/\d{4}$/.test(value)) return "";
+  const iso = value.split("/").reverse().join("-");
+  const parsed = new Date(iso + "T12:00");
+  return !Number.isNaN(parsed.getTime()) && localDate(parsed) === iso ? iso : "";
+};
 async function api<T>(url: string, body?: unknown): Promise<T> {
   const r = await fetch(
     "/api/" + url,
@@ -93,15 +100,39 @@ function Stub({ label }: { label: string }) {
   );
 }
 function HourHelp({ text, children }: { text: string; children: React.ReactNode }) {
-  return <span className="hour-help" tabIndex={0} aria-label={text}>
-    {children}<span role="tooltip">{text}</span>
+  const [tip, setTip] = useState<{ left: number; top: number; above: boolean } | null>(null);
+  // Fixed positioning escapes the sidebar's scroll/overflow clipping; coords come from the trigger.
+  const show = (e: React.MouseEvent<HTMLElement> | React.FocusEvent<HTMLElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    const above = r.top > 80;
+    setTip({ left: Math.max(8, Math.min(r.left, window.innerWidth - 246)), top: above ? r.top - 6 : r.bottom + 6, above });
+  };
+  return <span className="hour-help" tabIndex={0} aria-label={text}
+    onMouseEnter={show} onMouseLeave={() => setTip(null)}
+    onFocus={show} onBlur={() => setTip(null)}>
+    {children}
+    {tip && <span role="tooltip" className="tip" style={{ left: tip.left, top: tip.top, transform: tip.above ? "translateY(-100%)" : undefined }}>{text}</span>}
   </span>;
 }
+function ClassificationChoices({ value, onChange }: { value: AbsenceKind; onChange: (value: AbsenceKind) => void }) {
+  return <div className="opt classification" role="group" aria-label="Tipo di assenza">
+    {([["planned", "Programmata"], ["last_minute", "Last minute"]] as const).map(([kind, label]) =>
+      <button key={kind} type="button" aria-pressed={value === kind} className={value === kind ? "on" : ""} onClick={() => onChange(value === kind ? null : kind)}>{label}</button>)}
+  </div>;
+}
 function Permessi() {
+  const [manual, setManual] = useState(false);
+  const [manualHours, setManualHours] = useState("");
+  const [editingManual, setEditingManual] = useState(false);
   const [sort, setSort] = useState<{ field: "date" | "requested"; ascending: boolean }>({ field: "date", ascending: false });
-  const [data, setData] = useState<{ dataset: Data["dataset"]; permessi: Record<string, Record<string, number[]>>; permitRequests?: Record<string, Record<string, string>>; recoveries?: Record<string, Record<string, import("./types").PermitRecovery>>; balances?: Record<string, { remaining: number; expired: number; eligible: number }> }>();
-  const [day, setDay] = useState(localDate(new Date()));
-  const [requestedOn, setRequestedOn] = useState("");
+  const [data, setData] = useState<{ dataset: Data["dataset"]; permessi: Record<string, Record<string, number[]>>; permitRequests?: Record<string, Record<string, string>>; permitKinds?: Record<string, Record<string, AbsenceKind>>; recoveries?: Record<string, Record<string, import("./types").PermitRecovery>>; balances?: Record<string, { remaining: number; expired: number; eligible: number }>; manualPermits?: Record<string, { id: string; hours: number; recovered: number; remaining: number; recoveries: { date: string; h: number; key: string }[] }> }>();
+  const [dayInput, setDayInput] = useState(italianDate(localDate(new Date())));
+  const [requestedInput, setRequestedInput] = useState(italianDate(localDate(new Date())));
+  const day = parseItalianDate(dayInput);
+  const requestedOn = parseItalianDate(requestedInput);
+  const invalidDates = !day || (!!requestedInput && !requestedOn);
+  const [newClassification, setNewClassification] = useState<AbsenceKind>(null);
+  const [editClassification, setEditClassification] = useState<AbsenceKind>(null);
   const [teacher, setTeacher] = useState("");
   const [query, setQuery] = useState("");
   const [suggestionIndex, setSuggestionIndex] = useState(0);
@@ -115,7 +146,8 @@ function Permessi() {
     const weekday = ["dom", "lun", "mar", "mer", "gio", "ven", "sab"][new Date(date + "T12:00").getDay()];
     return !!data?.dataset.lessons[`${id}|${weekday}|${h}`];
   };
-  const maximum = Math.floor(hours.filter(h => scheduled(teacher, day, h)).length / 2);
+  const dailyMaximum = (id: string, date: string) => Math.floor(hours.filter(h => scheduled(id, date, h)).length / 2);
+  const maximum = dailyMaximum(teacher, day);
   const overLimit = !!teacher && selected.length > maximum;
   const suggestions = query && !teacher
     ? Object.values(data?.dataset.teachers || {})
@@ -128,17 +160,20 @@ function Permessi() {
     setQuery(data?.dataset.teachers[id]?.name || id);
   };
   const reset = () => {
-    setRequestedOn("");
+    setManualHours("");
+    setEditingManual(false);
+    setDayInput(italianDate(localDate(new Date())));
+    setRequestedInput(italianDate(localDate(new Date())));
     setOriginal(undefined);
     setTeacher("");
     setQuery("");
     setSelected([]);
   };
-  const save = async (body: unknown) => {
+  const save = async (body: unknown, endpoint = "permessi") => {
     setBusy(true);
     setError("");
     try {
-      await api("permessi", body);
+      await api(endpoint, body);
       await refresh();
       reset();
     } catch (e) {
@@ -158,13 +193,14 @@ function Permessi() {
   </HourHelp>;
   return <div className="app permessi">
     <aside>
-    <form className="permit-form" onSubmit={e => { e.preventDefault(); if (overLimit || !teacher) return; void save({ day, id: teacher, requested_on: requestedOn || null, hours: selected, ...(original ? { original_day: original.day, original_id: original.id } : {}) }); }}>
-      <h2>{original ? "Modifica permesso" : "Aggiungi permesso"}</h2>
+    <form className="permit-form" onSubmit={e => { e.preventDefault(); if (manual) { if (teacher && Number.isInteger(Number(manualHours)) && Number(manualHours) > 0) void save({ id: teacher, hours: Number(manualHours), editing: editingManual }, "manual-permits"); return; } if (invalidDates || !teacher || !selected.length) return; void save({ day, id: teacher, requested_on: requestedOn || null, classification: original ? editClassification : newClassification, hours: selected, ...(original ? { original_day: original.day, original_id: original.id } : {}) }); }}>
+      <h2>{manual ? (editingManual ? "Modifica saldo manuale" : "Aggiungi saldo manuale") : original ? "Modifica permesso" : "Aggiungi permesso"}</h2>
+      <label className="manual-permit-toggle"><input type="checkbox" checked={manual} disabled={busy} onChange={e => { reset(); setManual(e.target.checked); setError(""); }} />Saldo manuale senza data</label>
       <fieldset disabled={busy || !data}>
         <div className="permit-teacher">
           <label htmlFor="permit-teacher">Docente</label>
           <div className="sw">
-            <input id="permit-teacher" aria-label="Cerca docente" placeholder="Docente, es. ros" autoComplete="off" value={query}
+            <input id="permit-teacher" disabled={editingManual} aria-label="Cerca docente" placeholder="Docente, es. ros" autoComplete="off" value={query}
               onChange={e => { setQuery(e.target.value); setTeacher(""); setSuggestionIndex(0); }}
               onKeyDown={e => {
                 if (e.key === "Escape") { setQuery(""); setTeacher(""); }
@@ -179,37 +215,56 @@ function Permessi() {
             )}</div>}
           </div>
         </div>
-        <label>Data permesso<input required aria-label="Data permesso" type="date" value={day} onChange={e => setDay(e.target.value)} /></label>
-        <label>Data richiesta (facoltativa)<input aria-label="Data richiesta" type="date" value={requestedOn} onChange={e => setRequestedOn(e.target.value)} /></label>
+        {manual ? <>
+          <label>Ore totali da recuperare<input aria-label="Ore totali da recuperare" type="number" min="1" step="1" required value={manualHours} onChange={e => setManualHours(e.target.value)} /></label>
+          <p className="sub">Per ore pregresse senza registrazione giornaliera. Nessuna assenza in Supplenze e nessuna scadenza automatica. I recuperi RP scalano questo saldo.</p>
+          {editingManual && <p className="sub">Il totale include le ore già recuperate: {data?.manualPermits?.[teacher]?.recovered ?? 0}.</p>}
+        </> : <>
+        <ClassificationChoices value={original ? editClassification : newClassification} onChange={original ? setEditClassification : setNewClassification} />
+        <label>Data permesso<input required aria-label="Data permesso" type="text" inputMode="numeric" placeholder="gg/mm/aaaa" pattern="[0-9]{2}/[0-9]{2}/[0-9]{4}" value={dayInput} aria-invalid={!!dayInput && !day} onChange={e => setDayInput(e.target.value)} /></label>
+        <label>Data richiesta (facoltativa)<input aria-label="Data richiesta" type="text" inputMode="numeric" placeholder="gg/mm/aaaa" pattern="[0-9]{2}/[0-9]{2}/[0-9]{4}" value={requestedInput} aria-invalid={!!requestedInput && !requestedOn} onChange={e => setRequestedInput(e.target.value)} /></label>
         <div><span>Ore di permesso</span><div className="hrs permit-hours">{hours.map(h => <span className="permit-hour" key={h}>
           <button type="button" aria-label={`Permesso ${h}ª ora`} aria-pressed={selected.includes(h)} className={selected.includes(h) ? "on" : ""} onClick={() => setSelected(selected.includes(h) ? selected.filter(v => v !== h) : [...selected, h])}>{h}</button>
           {teacher && selected.includes(h) && (overLimit || !scheduled(teacher, day, h)) && warning([overLimit ? `Massimo giornaliero: ${maximum} ore di permesso; selezionate ${selected.length}.` : "", !scheduled(teacher, day, h) ? `${h}ª ora: nessuna attività prevista nell’orario per questa ora.` : ""].filter(Boolean).join(" "))}
         </span>)}</div></div>
 
         <p className="sub">Massimo giornaliero: {maximum} ore · Selezionate: {selected.length}. Sono comprese tutte le attività in orario, inclusi POT e DIS.</p>
-        <button className="permit-save" type="submit" disabled={!teacher || !day || !selected.length || overLimit}>{busy ? "Salvataggio…" : "Salva permesso"}</button>
-        {original && <button type="button" onClick={reset}>Annulla modifica</button>}
+        </>}
+        <button className="permit-save" type="submit" disabled={!teacher || (manual ? !Number.isInteger(Number(manualHours)) || Number(manualHours) < 1 : invalidDates || !selected.length)}>{busy ? "Salvataggio…" : manual ? "Salva saldo manuale" : "Salva permesso"}</button>
+        {(original || editingManual) && <button type="button" onClick={reset}>Annulla modifica</button>}
       </fieldset>
-      <div className="permit-feedback" aria-live="polite">{(error || overLimit) && <p role="alert">{error || `Superato il massimo giornaliero di ${maximum} ore di permesso.`}</p>}</div>
+      <div className="permit-feedback" aria-live="polite">{!manual && invalidDates && <p role="alert">Inserisci date valide nel formato gg/mm/aaaa.</p>}{(error || (!manual && overLimit)) && <p role="alert">{error || `Superato il massimo giornaliero di ${maximum} ore di permesso.`}</p>}</div>
     </form>
     </aside>
     <main>
     <h1>Permessi</h1>
-    <p className="sub">Recupero entro un mese dal permesso, scadenza inclusa. Le assegnazioni RP future riservano già le ore e sono elencate per data.</p>
+    <p className="sub">Per i permessi con data, recupero entro un mese dal permesso, scadenza inclusa. Le assegnazioni RP future riservano già le ore e sono elencate per data.</p>
     {!data && !error && <p role="status">Caricamento…</p>}
     <div className="permit-table"><table><thead><tr><th>Docente</th>{([ ["date", "Data permesso"], ["requested", "Data richiesta"] ] as const).map(([field, title]) => <th key={field} aria-sort={sort.field === field ? (sort.ascending ? "ascending" : "descending") : "none"}><button className="lk" onClick={() => setSort({ field, ascending: sort.field === field ? !sort.ascending : false })}>{title}{sort.field === field ? (sort.ascending ? " ↑" : " ↓") : " ↕"}</button></th>)}{["Ore di permesso", "Scadenza recupero", "Ore recuperate", "Dettaglio recuperi", "Ore da recuperare", "Azioni"].map(title => <th key={title}>{title}</th>)}</tr></thead>
       <tbody>{records.map(r => <tr key={r.date + r.id} className={(data?.balances?.[r.id]?.remaining ?? r.periods.length) > 0 ? "permit-outstanding" : undefined}>
-        <td>{data?.dataset.teachers[r.id]?.name || r.id}</td><td>{r.date.split("-").reverse().join("/")}</td>
+        <td><span className="permit-name">{data?.dataset.teachers[r.id]?.name || r.id}</span></td><td>{r.date.split("-").reverse().join("/")}</td>
         <td>{data?.permitRequests?.[r.date]?.[r.id]?.split("-").reverse().join("/") || "—"}</td>
-        <td>{r.periods.map(h => <span className="permit-period" key={h}>{h}ª{!scheduled(r.id, r.date, h) && warning(`${h}ª ora: nessuna attività prevista nell’orario per questa ora`)}</span>)}</td>
+        <td>{r.periods.map(h => <span className="permit-period" key={h}>{h}ª{(r.periods.length > dailyMaximum(r.id, r.date) || !scheduled(r.id, r.date, h)) && warning([r.periods.length > dailyMaximum(r.id, r.date) ? "Superato il massimo giornaliero di ore di permesso." : "", !scheduled(r.id, r.date, h) ? `${h}ª ora: nessuna attività prevista nell’orario per questa ora` : ""].filter(Boolean).join(" "))}</span>)}</td>
         <td>{r.recovery?.deadline.split("-").reverse().join("/") || "—"}</td>
         <td>{r.recovery?.recovered ?? 0}</td>
         <td>{r.recovery?.recoveries.length ? <ul className="recovery-details">{r.recovery.recoveries.map(item => <li key={item.date + item.key}>{item.date.split("-").reverse().join("/")} · {item.h}ª ora</li>)}</ul> : "—"}</td>
-        <td>{r.recovery?.remaining ?? r.periods.length}{r.recovery?.expired && <strong className="permit-expired">Scadute</strong>}</td>
-        <td className="permit-actions"><button className="lk" aria-label={`Modifica permesso di ${data?.dataset.teachers[r.id]?.name || r.id}`} title="Modifica permesso" disabled={busy} onClick={() => { setDay(r.date); setRequestedOn(data?.permitRequests?.[r.date]?.[r.id] || ""); selectTeacher(r.id); setSelected(r.periods); setOriginal({ day: r.date, id: r.id }); setError(""); }}><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15Z" fill="none" stroke="currentColor" strokeWidth="1.6"/></svg></button>
+        <td><span className="permit-remaining">{r.recovery?.remaining ?? r.periods.length}</span>{r.recovery?.expired && <strong className="permit-expired">Scadute</strong>}</td>
+        <td className="permit-actions"><button className="lk" aria-label={`Modifica permesso di ${data?.dataset.teachers[r.id]?.name || r.id}`} title="Modifica permesso" disabled={busy} onClick={() => { setManual(false); setEditingManual(false); setDayInput(italianDate(r.date)); setRequestedInput(italianDate(data?.permitRequests?.[r.date]?.[r.id] || "")); selectTeacher(r.id); setSelected(r.periods); setEditClassification(data?.permitKinds?.[r.date]?.[r.id] || null); setOriginal({ day: r.date, id: r.id }); setError(""); }}><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15Z" fill="none" stroke="currentColor" strokeWidth="1.6"/></svg></button>
         <button className="x" aria-label={`Rimuovi permesso di ${data?.dataset.teachers[r.id]?.name || r.id}`} title="Rimuovi permesso" disabled={busy} onClick={() => void save({ day: r.date, id: r.id, hours: null })}>×</button></td>
       </tr>)}</tbody></table></div>
-    {data && !records.length && <p className="none">Nessun permesso registrato.</p>}
+    {!!Object.keys(data?.manualPermits || {}).length && <section className="manual-permits">
+      <h2>Saldi manuali</h2>
+      <p className="sub">Ore pregresse senza data e senza scadenza automatica.</p>
+      <div className="permit-table"><table><thead><tr>{["Docente", "Ore totali", "Ore recuperate", "Dettaglio recuperi", "Ore da recuperare", "Azioni"].map(title => <th key={title}>{title}</th>)}</tr></thead><tbody>
+      {Object.entries(data?.manualPermits || {}).sort(([a], [b]) => (data?.dataset.teachers[a]?.name || a).localeCompare(data?.dataset.teachers[b]?.name || b)).map(([id, p]) => <tr key={id} className={p.remaining > 0 ? "permit-outstanding" : undefined}>
+        <td><span className="permit-name">{data?.dataset.teachers[id]?.name || id}</span></td><td>{p.hours}</td><td>{p.recovered}</td>
+        <td>{p.recoveries.length ? <ul className="recovery-details">{p.recoveries.map(item => <li key={item.date + item.key}>{italianDate(item.date)} · {item.h}ª ora</li>)}</ul> : "—"}</td>
+        <td><span className="permit-remaining">{p.remaining}</span></td>
+        <td className="permit-actions"><button className="lk" disabled={busy} aria-label={`Modifica saldo manuale di ${data?.dataset.teachers[id]?.name || id}`} onClick={() => { reset(); setManual(true); selectTeacher(id); setManualHours(String(p.hours)); setEditingManual(true); setError(""); }}>Modifica</button>
+        <button className="x" disabled={busy} aria-label={`Rimuovi saldo manuale di ${data?.dataset.teachers[id]?.name || id}`} onClick={() => void save({ id, hours: null }, "manual-permits")}>×</button></td>
+      </tr>)}</tbody></table></div>
+    </section>}
+    {data && !records.length && !Object.keys(data.manualPermits || {}).length && <p className="none">Nessun permesso registrato.</p>}
     </main>
   </div>;
 }
@@ -353,9 +408,11 @@ function Supplenze() {
     [error, setError] = useState(""),
     [query, setQuery] = useState(""),
     [kind, setKind] = useState<"abs" | "dis">("abs"),
-    [some, setSome] = useState(false),
-    [multi, setMulti] = useState(false),
-    [until, setUntil] = useState(""),
+    [wholeDay, setWholeDay] = useState(true),
+    [entryHours, setEntryHours] = useState<number[]>([]),
+    [classification, setClassification] = useState<AbsenceKind>(null),
+    [chosen, setChosen] = useState<{ id: string; label: string; group: "abs" | "dis" | "cf" }>(),
+    [editingKind, setEditingKind] = useState<string>(),
     [site, setSite] = useState("centrale"),
     [filter, setFilter] = useState(() => {
       try {
@@ -367,6 +424,14 @@ function Supplenze() {
     [cands, setCands] = useState<Candidate[]>([]),
     [busy, setBusy] = useState(false),
     [selected, setSelected] = useState(0);
+  const adding = useRef(false);
+  const focusAfterAdd = useRef(false);
+  useEffect(() => {
+    if (!busy && !chosen && focusAfterAdd.current) {
+      document.getElementById("q")?.focus();
+      focusAfterAdd.current = false;
+    }
+  }, [busy, chosen]);
   const request = useRef(0);
   const candidateRequest = useRef(0);
   useEffect(() => {
@@ -394,8 +459,10 @@ function Supplenze() {
     try {
       await api(url, body);
       await refresh();
+      return true;
     } catch (e) {
       setError(String(e));
+      return false;
     } finally {
       setBusy(false);
     }
@@ -422,7 +489,7 @@ function Supplenze() {
     id;
   const entries = (g: "abs" | "cf" | "dis") => data?.state[g][day] || {};
   const suggestions =
-    query && data
+    query && !chosen && data
       ? [
           ...Object.values(data.dataset.teachers)
             .filter(
@@ -447,28 +514,43 @@ function Supplenze() {
           )
           .slice(0, 6)
       : [];
-  const add = (s: (typeof suggestions)[number]) => {
-    void mutate("entries", {
-      day,
-      until: multi && until ? until : null,
-      group: s.group,
-      id: s.id,
-      hours: some ? [] : hours,
-      site,
-      defaults: !some,
-    });
-    setQuery("");
-    setUntil("");
-    setMulti(false);
-    setSelected(0);
-    document.getElementById("q")?.focus();
+  const target = chosen || suggestions[selected];
+  const add = async () => {
+    if (busy || adding.current || !target || (!wholeDay && !entryHours.length)) return;
+    const group = target.group === "cf" ? "cf" : kind;
+    if (entries(group)[target.id] || (group === "cf" && kind !== "abs")) return;
+    adding.current = true;
+    try {
+      const saved = await mutate("entries", {
+        day, group, id: target.id,
+        hours: wholeDay ? hours : entryHours,
+        site, defaults: wholeDay,
+        ...(group === "abs" ? { classification } : {}),
+      });
+      if (saved) {
+        focusAfterAdd.current = true;
+        setQuery("");
+        setChosen(undefined);
+        setSelected(0);
+      }
+    } finally {
+      adding.current = false;
+    }
   };
-  const renderEntries = (g: "abs" | "cf" | "dis") =>
-    Object.keys({ ...entries(g), ...(g === "abs" ? data?.state.permessi?.[day] : {}) }).map((id) => {
+  const absenceKind = (id: string): AbsenceKind => {
+    const kinds = [data?.state.absenceKinds?.[day]?.[id], data?.state.permitKinds?.[day]?.[id]];
+    return kinds.includes("last_minute") ? "last_minute" : kinds.includes("planned") ? "planned" : null;
+  };
+  const absentIds = Object.keys({ ...entries("abs"), ...data?.state.permessi?.[day] });
+  const renderEntries = (g: "abs" | "cf" | "dis", ids = Object.keys(entries(g))) =>
+    ids.map((id) => {
       const hs = entries(g)[id] || [];
       const permit = g === "abs" ? data?.state.permessi?.[day]?.[id] || [] : [];
+      const requested = g === "abs" ? data?.state.permitRequests?.[day]?.[id] : "";
+      const permitNote = requested ? `Permesso concesso il ${requested.split("-").reverse().join("/")}` : "Permesso";
       return (
-        <div className="rw" key={g + id}>
+        <div className="entry-row" key={g + id}>
+        <div className="rw">
           <button
             className="n"
             title={name(id)}
@@ -485,33 +567,37 @@ function Supplenze() {
           >
             {g === "cf" ? "Classe " + id : name(id)}
           </button>
+          {g === "abs" && permit.length > 0 && (
+            <HourHelp text={permitNote}><i className="why">i</i></HourHelp>
+          )}
           <div className="hrs">
-            {hours.map((h) => (
-              <span key={h} className={permit.includes(h) ? "hour-help" : undefined} tabIndex={permit.includes(h) ? 0 : undefined} aria-label={permit.includes(h) ? `${name(id)}, ${h}ª ora: Permesso` : undefined}>
-              <button
-                key={h}
-                aria-label={`${name(id)}, ${h}ª ora`}
-                aria-pressed={hs.includes(h) || permit.includes(h)}
-                className={(hs.includes(h) || permit.includes(h) ? "on " : "") + (permit.includes(h) ? "auto" : "")}
-                disabled={permit.includes(h)}
-                title={permit.includes(h) ? "Permesso: modifica dalla pagina Permessi" : undefined}
-                onClick={() =>
-                  void mutate("entries", {
-                    day,
-                    group: g,
-                    id,
-                    hours: hs.includes(h)
-                      ? hs.filter((x) => x !== h)
-                      : [...hs, h],
-                    site: data?.state.disSites[day]?.[id],
-                  })
-                }
-              >
-                {h}
-              </button>
-              {permit.includes(h) && <span role="tooltip">Permesso: modifica dalla pagina Permessi</span>}
-              </span>
-            ))}
+            {hours.map((h) => {
+              const locked = permit.includes(h);
+              const btn = (
+                <button
+                  aria-label={`${name(id)}, ${h}ª ora`}
+                  aria-pressed={hs.includes(h) || locked}
+                  className={(hs.includes(h) || locked ? "on " : "") + (locked ? "auto" : "")}
+                  disabled={locked}
+                  onClick={() =>
+                    void mutate("entries", {
+                      day,
+                      group: g,
+                      id,
+                      hours: hs.includes(h)
+                        ? hs.filter((x) => x !== h)
+                        : [...hs, h],
+                      site: data?.state.disSites[day]?.[id],
+                    })
+                  }
+                >
+                  {h}
+                </button>
+              );
+              return locked
+                ? <HourHelp key={h} text="Modifica dalla pagina permessi">{btn}</HourHelp>
+                : <React.Fragment key={h}>{btn}</React.Fragment>;
+            })}
           </div>
           {g === "dis" && (
             <select
@@ -533,6 +619,7 @@ function Supplenze() {
               <option value="succursale">S</option>
             </select>
           )}
+          {g === "abs" && Object.hasOwn(entries(g), id) && <button className="edit-kind" aria-label={"Classifica assenza di " + name(id)} aria-expanded={editingKind === id} onClick={() => setEditingKind(editingKind === id ? undefined : id)}>⋯</button>}
           <button
             className="x"
             aria-label={"Rimuovi " + name(id)}
@@ -541,6 +628,8 @@ function Supplenze() {
           >
             ×
           </button>
+        </div>
+        {g === "abs" && editingKind === id && Object.hasOwn(entries(g), id) && <ClassificationChoices value={data?.state.absenceKinds?.[day]?.[id] || null} onChange={value => void mutate("entries", { day, group: "abs", id, hours: hs, classification: value })} />}
         </div>
       );
     });
@@ -556,6 +645,7 @@ function Supplenze() {
       const hs = manual[id] || [];
       const reasons = auto[id] || {};
       const hasManual = hs.length > 0;
+      const why = Array.from(new Set(Object.values(reasons).flat())).join(", ");
       const toggled = (h: number) =>
         hs.includes(h) ? hs.filter((x) => x !== h) : [...hs, h];
       return (
@@ -575,27 +665,28 @@ function Supplenze() {
             }
           >
             {Object.keys(reasons).length > 0 && (
-              <i className="auto-dot" title="Disponibilità automatica" />
+              <i className="auto-dot" />
             )}
             {name(id)}
           </button>
+          {why && (
+            <HourHelp text={why}><i className="why">i</i></HourHelp>
+          )}
           <div className="hrs">
             {hours.map((h) => {
               const locked = reasons[h] !== undefined;
-              return (
+              const assignments = Object.entries(data?.state.asg[day] || {}).filter(([key, a]) => a.v === id && Number(key.split("|")[1]) === h);
+              const assigned = assignments.length > 0 && (locked || hs.includes(h));
+              const help = [locked ? "Automatico: " + reasons[h].join(", ") : "", assigned ? "Assegnato: " + assignments.map(([, a]) => a.c).join(", ") : ""].filter(Boolean).join(" · ");
+              const btn = (
                 <button
-                  key={h}
                   aria-label={`${name(id)}, ${h}ª ora`}
+                  aria-description={assigned ? help : undefined}
                   aria-pressed={hs.includes(h)}
                   className={
-                    (hs.includes(h) ? "on " : "") + (locked ? "auto" : "")
+                    (hs.includes(h) ? "on " : "") + (locked ? "auto " : "") + (assigned ? "assigned" : "")
                   }
                   disabled={locked}
-                  title={
-                    locked
-                      ? "Automatico: " + reasons[h].join(", ")
-                      : undefined
-                  }
                   onClick={() =>
                     void mutate("entries", {
                       day,
@@ -609,6 +700,9 @@ function Supplenze() {
                   {h}
                 </button>
               );
+              return help
+                ? <HourHelp key={h} text={help}>{btn}</HourHelp>
+                : <React.Fragment key={h}>{btn}</React.Fragment>;
             })}
           </div>
           {hasManual && (
@@ -715,8 +809,9 @@ function Supplenze() {
               })}
             </div>
           </div>
-          <section>
-            <h2>Aggiungi assenti o a disposizione</h2>
+          <form className="daily-entry" onSubmit={e => { e.preventDefault(); void add(); }}>
+            <h2><label htmlFor="q">Aggiungi assenti o a disposizione</label></h2>
+            <div className="entry-search">
             <div className="sw">
               <input
                 id="q"
@@ -729,10 +824,12 @@ function Supplenze() {
                 value={query}
                 onChange={(e) => {
                   setQuery(e.target.value);
+                  setChosen(undefined);
                   setSelected(0);
                 }}
                 onKeyDown={(e) => {
-                  if (e.key === "Escape") setQuery("");
+                  if (e.nativeEvent?.isComposing) { if (e.key === "Enter") e.preventDefault(); return; }
+                  if (e.key === "Escape") { setQuery(""); setChosen(undefined); }
                   if (e.key === "ArrowDown") {
                     e.preventDefault();
                     setSelected(
@@ -746,8 +843,7 @@ function Supplenze() {
                         Math.max(1, suggestions.length),
                     );
                   }
-                  if (e.key === "Enter" && suggestions[selected])
-                    add(suggestions[selected]);
+                  if (e.key === "Enter") { e.preventDefault(); void add(); }
                 }}
               />
               {!!suggestions.length && (
@@ -756,7 +852,8 @@ function Supplenze() {
                     <button
                       key={s.group + s.id}
                       className={selected === i ? "on" : ""}
-                      onClick={() => add(s)}
+                      type="button"
+                      onClick={() => { setChosen(s); setQuery(s.label); }}
                     >
                       {s.label}
                       <small>
@@ -767,29 +864,26 @@ function Supplenze() {
                 </div>
               )}
             </div>
+            <button className="entry-submit" type="submit" disabled={busy || !target || (!wholeDay && !entryHours.length)}>{busy ? "…" : "Aggiungi"}</button>
+            </div>
             <div className="opt">
-              <button
-                className={some ? "on" : ""}
-                aria-pressed={some}
-                onClick={() => setSome(!some)}
+              <button type="button"
+                className={wholeDay ? "on" : ""}
+                aria-pressed={wholeDay}
+                onClick={() => setWholeDay(!wholeDay)}
               >
-                Alcune ore
+                Tutto il giorno
               </button>
-              <button
+              <button type="button"
                 className={kind === "dis" ? "on" : ""}
                 aria-pressed={kind === "dis"}
-                onClick={() => setKind(kind === "abs" ? "dis" : "abs")}
+                onClick={() => { setKind(kind === "abs" ? "dis" : "abs"); setChosen(undefined); setSelected(0); }}
               >
                 A disposizione
               </button>
-              <button
-                className={multi ? "on" : ""}
-                aria-pressed={multi}
-                onClick={() => setMulti(!multi)}
-              >
-                Più giorni
-              </button>
             </div>
+            {!wholeDay && <div className="hrs entry-hours" role="group" aria-label="Ore da aggiungere">{hours.map(h => <button key={h} type="button" aria-label={`Aggiungi ${h}ª ora`} aria-pressed={entryHours.includes(h)} className={entryHours.includes(h) ? "on" : ""} onClick={() => setEntryHours(entryHours.includes(h) ? entryHours.filter(v => v !== h) : [...entryHours, h])}>{h}</button>)}</div>}
+            {kind === "abs" && target?.group !== "cf" && <ClassificationChoices value={classification} onChange={setClassification} />}
             {kind === "dis" && (
               <label className="dis-location">
                 Sede della disposizione
@@ -799,22 +893,13 @@ function Supplenze() {
                 </select>
               </label>
             )}
-            {multi && (
-              <label className="until">
-                Fino al
-                <input
-                  type="date"
-                  min={day}
-                  value={until}
-                  onChange={(e) => setUntil(e.target.value)}
-                />
-              </label>
-            )}
-          </section>
+          </form>
           <div className="lists">
-            <h2>Assenti</h2>
-            {renderEntries("abs")}
-            {renderEntries("cf")}
+            {([["planned", "Assenze programmate"], [null, "Assenze non classificate"], ["last_minute", "Assenze last minute"]] as const).map(([value, label]) => {
+              const ids = absentIds.filter(id => absenceKind(id) === value);
+              return ids.length > 0 && <section key={label}><h2>{label}</h2>{renderEntries("abs", ids)}</section>;
+            })}
+            {Object.keys(entries("cf")).length > 0 && <section><h2>Classi assenti</h2>{renderEntries("cf")}</section>}
             <h2>A disposizione</h2>
             {renderDis()}
           </div>
@@ -943,7 +1028,8 @@ function Supplenze() {
           </table>
           <p className="note">
             Ore libere utilizzabili come RP solo con permessi da recuperare entro scadenza.
-            Priorità: RP in ore favorevoli, compresenza, POT/disposizione stessa sede, UTC/UTS/DI.S
+            A disposizione ha priorità su POT anche da altra sede.
+            Priorità: RP in ore favorevoli, compresenza, disposizione, POT, UTC/UTS/DI.S
             stessa sede, rottura compresenza, dirigente, ingresso/uscita,
             opzioni fuori sede, altri RP. Le opzioni manuali e gli spostamenti richiedono
             verifica.

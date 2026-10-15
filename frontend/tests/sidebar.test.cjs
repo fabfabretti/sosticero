@@ -49,7 +49,7 @@ function app(localStorage = { getItem: () => null, setItem() {} }) {
   }).outputText;
   runInNewContext(code, {
     exports: {}, URLSearchParams, Date, localStorage,
-    document: { getElementById: () => ({}) },
+    document: { getElementById: () => ({ focus() {} }) },
     fetch(url, options) {
       return new Promise(resolve => requests.push({
         url, options,
@@ -205,7 +205,7 @@ test('auto availability hours lock while other hours toggle manual', async () =>
   const hour = label => a.render().find(n => n.props['aria-label'] === label);
   const locked = hour('Auto T, 2ª ora');
   assert.equal(locked.props.disabled, true);
-  assert.ok(String(locked.props.title).includes('entra dopo'));
+  assert.ok(a.render().some(n => n.props?.['aria-label'] === 'Automatico: 1A entra dopo'), 'locked hour keeps its reason in the tooltip');
   const free = hour('Auto T, 4ª ora');
   assert.equal(free.props.disabled, false);
   free.props.onClick();
@@ -218,6 +218,23 @@ test('auto availability hours lock while other hours toggle manual', async () =>
   await settle();
   assert.equal(hour('Auto T, 4ª ora').props['aria-pressed'], true);
   assert.equal(hour('Auto T, 2ª ora').props.disabled, true);
+  assert.ok(a.render().some(n => n.props?.['aria-label'] === '1A entra dopo, 1A esce prima'), 'locked reason shown as (i) tooltip');
+});
+
+test('assigned availability stays visible with status for automatic and manual hours', async () => {
+  const a = await loaded({
+    dataset: { teachers: { auto: { name: 'Auto T' }, manual: { name: 'Manual T' } }, classes: [], warnings: [] },
+    state: { abs: {}, cf: {}, dis: { [todayYmd]: { manual: [2] } }, disSites: {}, asg: {
+      [todayYmd]: { 'x|2|1A': { v: 'auto', c: '1A', t: 'D' }, 'y|2|2A': { v: 'manual', c: '2A', t: 'D' } },
+    } },
+    autoDis: { [todayYmd]: { auto: { 2: ['3A classe fuori'] } } },
+  });
+  for (const name of ['Auto T', 'Manual T']) {
+    const hour = a.render().find(n => n.props['aria-label'] === `${name}, 2ª ora`);
+    assert.ok(hour.props.className.includes('assigned'));
+    assert.ok(hour.props['aria-description'].includes('Assegnato:'));
+  }
+  assert.equal(a.render().find(n => n.props['aria-label'] === 'Auto T, 2ª ora').props.disabled, true);
 });
 
 test('reminds about next-day class entry and exit changes', async () => {
@@ -362,7 +379,7 @@ test('permit form warns about unscheduled periods and saves them within limit', 
   assert.ok(!a.render().some(n => n.props?.className === 'stub'));
   permitTeacher(a).props.onChange({ target: { value: 'cont' } });
   permitTeacher(a).props.onKeyDown({ key: 'Enter', preventDefault() {} });
-  permitDay(a).props.onChange({ target: { value: '2026-10-12' } });
+  permitDay(a).props.onChange({ target: { value: '12/10/2026' } });
   permitHour(a, 3).props.onClick(); permitHour(a, 4).props.onClick();
   assert.equal(a.render().filter(n => n.props?.className === 'warning-icon').length, 0, 'scheduled POT/DIS have no warning');
   permitHour(a, 3).props.onClick(); permitHour(a, 4).props.onClick();
@@ -371,18 +388,18 @@ test('permit form warns about unscheduled periods and saves them within limit', 
   assert.ok(a.render().some(n => n.props?.tabIndex === 0 && n.props['aria-label']?.includes('nessuna attività')));
   permitForm(a).props.onSubmit({ preventDefault() {} });
   const req = a.requests.shift();
-  assert.deepEqual(JSON.parse(req.options.body), { day: '2026-10-12', id: 't', requested_on: null, hours: [6,7] });
+  assert.deepEqual(JSON.parse(req.options.body), { day: '2026-10-12', id: 't', requested_on: todayYmd, classification: null, hours: [6,7] });
   req.resolve({ ok: true }); await settle();
   a.requests.shift().resolve({ ...permitData, permessi: { '2026-10-12': { t: [6,7] } } }); await settle();
   assert.equal(a.render().filter(n => n.props?.className === 'permit-period').length, 2);
-  assert.ok(a.render().some(n => n.type === 'td' && n.props.children?.[0] === 2));
+  assert.ok(a.render().some(n => n.props?.className === 'permit-remaining' && n.props.children === 2));
 });
 
 test('permit errors preserve form; editing supplies original identity and deletion is explicit', async () => {
   const a = await permitsLoaded({ '2026-10-12': { t: [2,3] } });
   a.render().find(n => n.props?.['aria-label'] === 'Modifica permesso di Contartase').props.onClick();
   assert.equal(permitTeacher(a).props.value, 'Contartase');
-  assert.equal(permitDay(a).props.value, '2026-10-12');
+  assert.equal(permitDay(a).props.value, '12/10/2026');
   permitForm(a).props.onSubmit({ preventDefault() {} });
   const req = a.requests.shift();
   assert.equal(JSON.parse(req.options.body).original_id, 't');
@@ -399,6 +416,8 @@ test('permit absences lock and keep manual control payloads separate', async () 
   assert.equal(button(2).props.disabled, true);
   assert.equal(button(3).props['aria-pressed'], true);
   assert.equal(button(4).props.disabled, false);
+  assert.ok(a.render().some(n => n.props?.['aria-label'] === 'Permesso'), 'permit reason shown as (i) tooltip');
+  assert.ok(a.render().some(n => n.props?.['aria-label'] === 'Modifica dalla pagina permessi'), 'disabled permit hours explain themselves');
   button(4).props.onClick();
   assert.deepEqual(JSON.parse(a.requests.shift().options.body).hours, [2,4]);
   a.render().find(n => n.type === 'button' && n.props?.className === 'n' && n.props.children === 'Contartase').props.onClick();
@@ -414,13 +433,13 @@ test('permit search supports keyboard selection and immediately warns above the 
   permitTeacher(a).props.onChange({ target: { value: 'cont' } });
   permitTeacher(a).props.onKeyDown({ key: 'Enter', preventDefault() {} });
   assert.equal(permitTeacher(a).props.value, 'Contartase');
-  permitDay(a).props.onChange({ target: { value: '2026-10-12' } });
+  permitDay(a).props.onChange({ target: { value: '12/10/2026' } });
   for (const h of [1,2,3]) permitHour(a,h).props.onClick();
   assert.equal(a.render().filter(n => n.props?.className === 'warning-icon').length, 3);
   assert.ok(a.render().some(n => n.props?.role === 'alert'));
-  assert.equal(a.render().find(n => n.props?.className === 'permit-save').props.disabled, true);
+  assert.equal(a.render().find(n => n.props?.className === 'permit-save').props.disabled, false);
   permitForm(a).props.onSubmit({ preventDefault() {} });
-  assert.equal(a.requests.length, 0);
+  assert.deepEqual(JSON.parse(a.requests.shift().options.body).hours, [1,2,3]);
   permitHour(a,3).props.onClick();
   assert.equal(a.render().filter(n => n.props?.className === 'warning-icon').length, 0);
   assert.equal(a.render().find(n => n.props?.className === 'permit-save').props.disabled, false);
@@ -430,8 +449,8 @@ test('request date is optional, submitted and restored when editing', async () =
   const a = await permitsLoaded();
   permitTeacher(a).props.onChange({ target: { value: 'cont' } });
   permitTeacher(a).props.onKeyDown({ key: 'Enter', preventDefault() {} });
-  permitDay(a).props.onChange({ target: { value: '2026-10-12' } });
-  a.render().find(n => n.props?.['aria-label'] === 'Data richiesta').props.onChange({ target: { value: '2026-10-09' } });
+  permitDay(a).props.onChange({ target: { value: '12/10/2026' } });
+  a.render().find(n => n.props?.['aria-label'] === 'Data richiesta').props.onChange({ target: { value: '09/10/2026' } });
   permitHour(a,2).props.onClick();
   permitForm(a).props.onSubmit({ preventDefault() {} });
   const req = a.requests.shift();
@@ -440,7 +459,7 @@ test('request date is optional, submitted and restored when editing', async () =
   a.requests.shift().resolve({ ...permitData, permessi: { '2026-10-12': { t: [2] } }, permitRequests: { '2026-10-12': { t: '2026-10-09' } } }); await settle();
   assert.ok(a.render().some(n => n.type === 'td' && n.props.children === '09/10/2026'));
   a.render().find(n => n.props?.['aria-label'] === 'Modifica permesso di Contartase').props.onClick();
-  assert.equal(a.render().find(n => n.props?.['aria-label'] === 'Data richiesta').props.value, '2026-10-09');
+  assert.equal(a.render().find(n => n.props?.['aria-label'] === 'Data richiesta').props.value, '09/10/2026');
   assert.ok(a.render().some(n => n.props?.className === 'permit-feedback'));
 });
 
@@ -497,4 +516,159 @@ test('permit recovery register shows dated links, expiry, totals and refreshes o
   a.requests.shift().resolve(data); await settle();
   a.go('/permessi'); a.render();
   assert.equal(a.requests.shift().url, '/api/permessi');
+});
+
+const entryData = { ...data, dataset: { ...data.dataset, teachers: {
+  a: { id: 'a', name: 'Anna', code: 'A' }, b: { id: 'b', name: 'Barbara', code: 'B' }, c: { id: 'c', name: 'Carla', code: 'C' },
+}, classes: ['1A'] } };
+const search = a => a.render().find(n => n.props?.id === 'q');
+const submitEntry = a => a.render().find(n => n.type === 'form' && n.props.className === 'daily-entry').props.onSubmit({ preventDefault() {} });
+const entrySubmit = a => a.render().find(n => n.props?.className === 'entry-submit');
+const suggestion = (a, name) => a.render().find(n => n.type === 'button' && n.props.children?.[0] === name && n.props.children?.[1]?.type === 'small');
+const pressed = (a, text) => a.render().find(n => n.type === 'button' && n.props.children === text).props['aria-pressed'];
+async function resolveEntry(a, response = entryData) {
+  a.requests.shift().resolve({ ok: true }); await settle();
+  a.requests.shift().resolve(response); await settle();
+}
+test('daily selection, explicit submit and Enter retain options for consecutive entries', async () => {
+  const a = await loaded(entryData);
+  assert.equal(pressed(a, 'Tutto il giorno'), true);
+  assert.ok(!a.render().some(n => n.props?.children === 'Più giorni'));
+  search(a).props.onChange({ target: { value: 'anna' } }); suggestion(a, 'Anna').props.onClick();
+  assert.equal(a.requests.length, 0);
+  clickText(a, 'Tutto il giorno'); assert.equal(entrySubmit(a).props.disabled, true);
+  submitEntry(a); assert.equal(a.requests.length, 0);
+  for (const h of [2,3]) a.render().find(n => n.props?.['aria-label'] === `Aggiungi ${h}ª ora`).props.onClick();
+  clickText(a, 'Programmata'); submitEntry(a);
+  assert.deepEqual(JSON.parse(a.requests[0].options.body), { day: todayYmd, group: 'abs', id: 'a', hours: [2,3], site: 'centrale', defaults: false, classification: 'planned' });
+  submitEntry(a); assert.equal(a.requests.length, 1);
+  await resolveEntry(a); assert.equal(search(a).props.value, '');
+  assert.equal(a.render().find(n => n.props?.['aria-label'] === 'Aggiungi 2ª ora').props['aria-pressed'], true);
+  search(a).props.onChange({ target: { value: 'bar' } }); search(a).props.onKeyDown({ key: 'Enter', preventDefault() {} });
+  const body = JSON.parse(a.requests[0].options.body);
+  assert.equal(body.id, 'b'); assert.equal(body.classification, 'planned'); assert.deepEqual(body.hours, [2,3]);
+  await resolveEntry(a);
+  clickText(a, 'Last minute'); assert.equal(pressed(a, 'Programmata'), false);
+  clickText(a, 'Last minute'); assert.equal(pressed(a, 'Last minute'), false);
+});
+test('daily keyboard, invalidation, composition and failed save preserve draft', async () => {
+  const a = await loaded(entryData);
+  search(a).props.onChange({ target: { value: 'a' } });
+  search(a).props.onKeyDown({ key: 'ArrowDown', preventDefault() {} });
+  search(a).props.onKeyDown({ key: 'Enter', nativeEvent: { isComposing: true }, preventDefault() {} }); assert.equal(a.requests.length, 0);
+  search(a).props.onKeyDown({ key: 'Enter', preventDefault() {} }); assert.equal(JSON.parse(a.requests[0].options.body).id, 'b');
+  a.requests.shift().resolve({ detail: 'Errore prova' }, false); await settle(); assert.equal(search(a).props.value, 'a');
+  assert.ok(a.render().some(n => n.props?.role === 'alert' && n.props.children.includes('Errore prova')));
+  search(a).props.onChange({ target: { value: 'anna' } }); suggestion(a, 'Anna').props.onClick();
+  search(a).props.onChange({ target: { value: 'missing' } }); assert.equal(entrySubmit(a).props.disabled, true);
+  submitEntry(a); assert.equal(a.requests.length, 0);
+  search(a).props.onKeyDown({ key: 'Escape' }); assert.equal(search(a).props.value, '');
+});
+test('availability and class entries omit classification while defaults and campus persist', async () => {
+  const a = await loaded(entryData); clickText(a, 'Last minute'); clickText(a, 'A disposizione');
+  assert.ok(!a.render().some(n => n.props?.children === 'Last minute'));
+  a.render().find(n => n.props?.className === 'dis-location').props.children[1].props.onChange({ target: { value: 'succursale' } });
+  search(a).props.onChange({ target: { value: 'anna' } }); submitEntry(a);
+  assert.deepEqual(JSON.parse(a.requests[0].options.body), { day: todayYmd, group: 'dis', id: 'a', hours: [1,2,3,4,5,6,7], site: 'succursale', defaults: true });
+  await resolveEntry(a); search(a).props.onChange({ target: { value: 'bar' } }); submitEntry(a);
+  assert.equal(JSON.parse(a.requests[0].options.body).site, 'succursale'); await resolveEntry(a);
+  clickText(a, 'A disposizione'); search(a).props.onChange({ target: { value: '1A' } });
+  assert.ok(!a.render().some(n => n.props?.children === 'Last minute')); submitEntry(a);
+  const body = JSON.parse(a.requests[0].options.body); assert.equal(body.group, 'cf'); assert.ok(!('classification' in body));
+  await resolveEntry(a); assert.equal(pressed(a, 'Last minute'), true);
+});
+const groupFor = (a, teacher) => {
+  const nodes = a.render(), index = nodes.findIndex(n => n.type === 'button' && n.props.className === 'n' && n.props.children === teacher);
+  return nodes.slice(0, index).filter(n => n.type === 'h2').at(-1)?.props.children;
+};
+test('sidebar combines hours once, resolves mixed classifications and allows manual reclassification', async () => {
+  const state = { ...data.state, abs: { [todayYmd]: { a: [2], b: [1], c: [3] } }, permessi: { [todayYmd]: { a: [3], b: [2] } },
+    absenceKinds: { [todayYmd]: { a: 'last_minute', b: 'planned' } }, permitKinds: { [todayYmd]: { a: 'planned', b: 'last_minute' } } };
+  const response = { ...entryData, state }, a = await loaded(response);
+  assert.equal(groupFor(a, 'Anna'), 'Assenze last minute'); assert.equal(groupFor(a, 'Barbara'), 'Assenze last minute'); assert.equal(groupFor(a, 'Carla'), 'Assenze non classificate');
+  assert.equal(a.render().filter(n => n.props?.className === 'n' && n.props.children === 'Anna').length, 1);
+  for (const h of [2,3]) assert.equal(a.render().find(n => n.props?.['aria-label'] === `Anna, ${h}ª ora`).props['aria-pressed'], true);
+  assert.equal(a.render().find(n => n.props?.['aria-label'] === 'Anna, 3ª ora').props.disabled, true);
+  a.render().find(n => n.props?.['aria-label'] === 'Classifica assenza di Anna').props.onClick();
+  a.render().filter(n => n.props?.className === 'opt classification').at(-1).props.children[0].props.onClick();
+  assert.deepEqual(JSON.parse(a.requests[0].options.body), { day: todayYmd, group: 'abs', id: 'a', hours: [2], classification: 'planned' });
+  const changed = { ...state, absenceKinds: { [todayYmd]: { a: 'planned', b: 'planned' } } };
+  await resolveEntry(a, { ...response, state: changed }); assert.equal(groupFor(a, 'Anna'), 'Assenze programmate');
+  const headings = a.render().filter(n => n.type === 'h2').map(n => n.props.children);
+  assert.ok(headings.indexOf('Assenze programmate') < headings.indexOf('Assenze non classificate')); assert.ok(headings.indexOf('Assenze non classificate') < headings.indexOf('Assenze last minute'));
+  a.render().filter(n => n.props?.className === 'opt classification').at(-1).props.children[0].props.onClick();
+  assert.equal(JSON.parse(a.requests[0].options.body).classification, null);
+  await resolveEntry(a, { ...response, state: { ...changed, absenceKinds: {} } }); assert.equal(groupFor(a, 'Anna'), 'Assenze programmate');
+  a.render().find(n => n.props?.['aria-label'] === 'Rimuovi Anna').props.onClick();
+  await resolveEntry(a, { ...response, state: { ...state, abs: {}, absenceKinds: {}, permitKinds: { [todayYmd]: { a: 'planned', b: 'last_minute' } } } });
+  assert.equal(groupFor(a, 'Anna'), 'Assenze programmate'); assert.equal(groupFor(a, 'Barbara'), 'Assenze last minute');
+});
+test('permit classification loads saved choice and keeps separate creation preference', async () => {
+  const a = await permitsLoaded(); clickText(a, 'Last minute');
+  permitTeacher(a).props.onChange({ target: { value: 'cont' } }); permitTeacher(a).props.onKeyDown({ key: 'Enter', preventDefault() {} });
+  permitDay(a).props.onChange({ target: { value: '12/10/2026' } }); permitHour(a, 2).props.onClick(); permitForm(a).props.onSubmit({ preventDefault() {} });
+  assert.equal(JSON.parse(a.requests[0].options.body).classification, 'last_minute');
+  a.requests.shift().resolve({ ok: true }); await settle();
+  const response = { ...permitData, permessi: { '2026-10-12': { t: [2] } }, permitKinds: { '2026-10-12': { t: 'planned' } } };
+  a.requests.shift().resolve(response); await settle(); assert.equal(pressed(a, 'Last minute'), true);
+  a.render().find(n => n.props?.['aria-label'] === 'Modifica permesso di Contartase').props.onClick(); assert.equal(pressed(a, 'Programmata'), true);
+  clickText(a, 'Programmata'); permitForm(a).props.onSubmit({ preventDefault() {} }); assert.equal(JSON.parse(a.requests[0].options.body).classification, null);
+  a.requests.shift().resolve({ ok: true }); await settle(); a.requests.shift().resolve({ ...response, permitKinds: {} }); await settle(); assert.equal(pressed(a, 'Last minute'), true);
+  a.render().find(n => n.props?.['aria-label'] === 'Modifica permesso di Contartase').props.onClick(); assert.equal(pressed(a, 'Last minute'), false);
+  clickText(a, 'Programmata'); clickText(a, 'Annulla modifica'); assert.equal(pressed(a, 'Last minute'), true);
+});
+
+test('permit dates default to today in Italian format and reject invalid calendar dates', async () => {
+  const a = await permitsLoaded();
+  const today = todayYmd.split('-').reverse().join('/');
+  assert.equal(permitDay(a).props.value, today);
+  assert.equal(a.render().find(n => n.props?.['aria-label'] === 'Data richiesta').props.value, today);
+  permitTeacher(a).props.onChange({ target: { value: 'cont' } });
+  permitTeacher(a).props.onKeyDown({ key: 'Enter', preventDefault() {} });
+  permitHour(a, 1).props.onClick();
+  for (const value of ['31/02/2026', '10/2026', '02/29/2026']) {
+    permitDay(a).props.onChange({ target: { value } });
+    assert.equal(a.render().find(n => n.props?.className === 'permit-save').props.disabled, true);
+    permitForm(a).props.onSubmit({ preventDefault() {} });
+    assert.equal(a.requests.length, 0);
+  }
+  permitDay(a).props.onChange({ target: { value: '12/10/2026' } });
+  a.render().find(n => n.props?.['aria-label'] === 'Data richiesta').props.onChange({ target: { value: '' } });
+  permitForm(a).props.onSubmit({ preventDefault() {} });
+  const body = JSON.parse(a.requests.shift().options.body);
+  assert.equal(body.day, '2026-10-12');
+  assert.equal(body.requested_on, null);
+});
+
+test('saved over-limit permits keep warnings and highlight name and remaining hours', async () => {
+  const a = await permitsLoaded({ '2026-10-12': { t: [1,2,3] } });
+  assert.equal(a.render().filter(n => n.props?.className === 'warning-icon').length, 3);
+  assert.ok(a.render().some(n => n.props?.className === 'permit-outstanding'));
+  assert.ok(a.render().some(n => n.props?.className === 'permit-name' && n.props.children === 'Contartase'));
+  assert.ok(a.render().some(n => n.props?.className === 'permit-remaining' && n.props.children === 3));
+});
+
+test('manual permits save an undated number of hours without absence fields', async () => {
+  const a = await permitsLoaded();
+  const toggle = a.render().find(n => n.type === 'input' && n.props.type === 'checkbox' && n.props.checked === false);
+  toggle.props.onChange({ target: { checked: true } });
+  assert.equal(permitDay(a), undefined);
+  permitTeacher(a).props.onChange({ target: { value: 'cont' } });
+  permitTeacher(a).props.onKeyDown({ key: 'Enter', preventDefault() {} });
+  const total = () => a.render().find(n => n.props?.['aria-label'] === 'Ore totali da recuperare');
+  total().props.onChange({ target: { value: '8' } });
+  assert.equal(a.render().find(n => n.props?.className === 'permit-save').props.disabled, false);
+  permitForm(a).props.onSubmit({ preventDefault() {} });
+  const req = a.requests.shift();
+  assert.equal(req.url, '/api/manual-permits');
+  assert.deepEqual(JSON.parse(req.options.body), { id: 't', hours: 8, editing: false });
+  req.resolve({ ok: true }); await settle();
+  a.requests.shift().resolve({ ...permitData, manualPermits: { t: { id: 'm', hours: 8, recovered: 2, remaining: 6, recoveries: [] } } }); await settle();
+  assert.ok(a.render().some(n => n.props?.className === 'permit-remaining' && n.props.children === 6));
+  a.render().find(n => n.props?.['aria-label'] === 'Modifica saldo manuale di Contartase').props.onClick();
+  assert.equal(total().props.value, '8');
+  assert.equal(permitTeacher(a).props.disabled, true);
+  total().props.onChange({ target: { value: '10' } });
+  permitForm(a).props.onSubmit({ preventDefault() {} });
+  assert.deepEqual(JSON.parse(a.requests.shift().options.body), { id: 't', hours: 10, editing: true });
 });

@@ -8,9 +8,10 @@ HOURS = list(range(1, 8))
 DAYS = ['lun', 'mar', 'mer', 'gio', 'ven', 'sab', 'dom']
 SITES = ('centrale', 'succursale')
 # Category + campus tier; ties use daily load, total load, name, stable ID.
-PRIORITIES = {'C': (0, 0, 0), 'POT': (10, 50, 70), 'D': (10, 50, 70),
-              'UTC': (15, 55, 72), 'UTS': (15, 55, 72), 'DIS': (15, 55, 72),
-              'TC': (20, 60, 74), 'DIR': (30, 65, 76), 'SPECIAL': (40, 40, 40)}
+PRIORITIES = {'C': (0, 0, 0), 'POT': (13, 14, 15), 'D': (10, 11, 12),
+              'DIS': (10, 11, 12), 'DIR': (20, 21, 22),
+              'UTC': (30, 31, 32), 'UTS': (30, 31, 32),
+              'TC': (40, 41, 42), 'RP': (40, 41, 42), 'SPECIAL': (5, 5, 5)}
 LABELS = {'C': 'Compresenza', 'POT': 'POT', 'D': 'A disposizione', 'UTC': 'UTC',
           'UTS': 'UTS', 'DIS': 'DI.S', 'TC': 'Rottura compresenza', 'DIR': 'Dirigente', 'SPECIAL': 'Entrata / uscita'}
 # Denominazioni ufficiali classi di concorso (A/B: DPR 19/2016, AS: DM 255/2023). Codici non in tabella restano così come sono.
@@ -142,7 +143,7 @@ def rows(ds, state, day):
 def rank_candidate(candidate, row):
     loc = candidate['loc']
     index = 0 if loc and loc == row['sede'] else 1 if loc and row['sede'] else 2
-    return PRIORITIES.get(candidate['ty'], PRIORITIES['POT'])[index]
+    return PRIORITIES.get(candidate['ty'], PRIORITIES['TC'])[index]
 
 
 def eligibility(ds, state, day, row, teacher, policies=None):
@@ -150,6 +151,7 @@ def eligibility(ds, state, day, row, teacher, policies=None):
     if i in row['ids'] or teacher.get('retired'):
         return None
     l = lesson(ds, i, day, h)
+    same_room = not l or not l.get('room') or not row.get('aula') or l['room'] == row['aula']
     manual = h in state['dis'].get(day, {}).get(i, [])
     ty = ''
     keys = []
@@ -159,14 +161,14 @@ def eligibility(ds, state, day, row, teacher, policies=None):
     elif l and activity_codes(l):
         ty = l.get('special') if policies is None and l.get('special') else activity_codes(l)[0]
         keys = ['code:' + code for code in activity_codes(l)]
-    elif policies is None and l and row['c'] in l['classes'] and l['site'] and l['site'] == row['sede']:
-        ty, keys = 'C', ['derived:itp']
+    elif l and row['c'] in l['classes'] and l['site'] and l['site'] == row['sede'] and same_room:
+        ty, keys = 'C', ['derived:support' if teacher['role'] == 'sostegno' else 'derived:itp']
     elif l and l['classes'] and teacher['role'] == 'sostegno':
         ty, keys = 'TC', ['derived:support']
     elif l and l['classes'] and teacher['role'].upper() == 'ITP':
         shared = any(k != f"{i}|{DAYS[date.fromisoformat(day).weekday()]}|{h}" and k.endswith(f"|{DAYS[date.fromisoformat(day).weekday()]}|{h}") and set(other['classes']) & set(l['classes']) for k, other in ds['lessons'].items())
         if shared:
-            if row['c'] not in l['classes'] or not l['site'] or l['site'] != row['sede']:
+            if row['c'] not in l['classes'] or not l['site'] or l['site'] != row['sede'] or not same_room:
                 return None
             ty, keys = 'C', ['derived:itp']
     if not ty and policies is not None and l and l['classes']:
@@ -176,13 +178,16 @@ def eligibility(ds, state, day, row, teacher, policies=None):
     policy = [policies[k] for k in keys] if policies is not None else []
     if policy and not all(p['visible'] for p in policy):
         return None
-    exceptional = bool(policy and not all(p['available'] for p in policy))
+    # Staying in the covered class does not release a teacher from another lesson.
+    exceptional = bool(ty != 'C' and policy and not all(p['available'] for p in policy))
     loc = state['disSites'].get(day, {}).get(i) if manual else None
     loc = loc or ('centrale' if ty == 'UTC' else 'succursale' if ty == 'UTS' else l['site'] if l else None)
     why = 'Assente' if h in absences(state, day).get(i, []) else ''
     if not why and any(k != row['k'] and int(k.split('|')[1]) == h and a['v'] == i for k, a in state['asg'].get(day, {}).items()):
         why = 'Già assegnato in questa ora'
     label = ' / '.join(p['label'] for p in policy) or LABELS.get(ty, ty)
+    if ty == 'C' and teacher['role'] not in ('sostegno', 'ITP'):
+        label = LABELS['C']
     return dict(id=i, name=teacher['name'], ty=ty, loc=loc, why=why, tag=why or ('Occupato · ' if exceptional else '') + label,
                 typeLabel=label, color=policy[0]['color'] if policy else None, exceptional=exceptional)
 
@@ -267,7 +272,7 @@ def candidates(ds, state, day, row, policies=None):
         c['today'] = sum(a['v'] == c['id'] for a in state['asg'].get(day, {}).values()) if c['id'] in ds['teachers'] else 0
         c['total'] = sum(a['v'] == c['id'] for assignments in state['asg'].values() for a in assignments.values()) if c['id'] in ds['teachers'] else 0
         c['tier'] = rank_candidate(c, row)
-    return sorted(result, key=lambda c: ((0 if c.get('convenient') and not c['why'] else 2) if c['ty'] == 'RP' else 1, bool(c.get('exceptional')), bool(c['why']), c['tier'], c['today'], c['total'], c['name'].casefold(), c['id']))
+    return sorted(result, key=lambda c: (bool(c.get('exceptional')), bool(c['why']), c['tier'], (0 if c.get('convenient') else 2) if c['ty'] == 'RP' else 1, c['today'], c['total'], c['name'].casefold(), c['id']))
 
 
 def validate_assignment(ds, state, day, key, value, policies=None, exceptional=False, saved=False):
@@ -315,8 +320,7 @@ def auto_availability(ds, state, day):
         hours = {}
         for h in HOURS:
             l = lesson(ds, i, day, h)
-            if (not l or not l['classes'] or h in absences(state, day).get(i, [])
-                    or any(a['v'] == i and int(k.split('|')[1]) == h for k, a in state['asg'].get(day, {}).items())):
+            if not l or not l['classes'] or h in absences(state, day).get(i, []):
                 continue
             reasons = []
             for c in l['classes']:
