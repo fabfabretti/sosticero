@@ -1,4 +1,4 @@
-export type AbsenceKind = "planned" | "last_minute" | null;
+export type AbsenceKind = "planned" | "last_minute" | "trip" | null;
 export type Teacher = {
   id: string;
   name: string;

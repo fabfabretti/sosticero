@@ -14,7 +14,7 @@ from . import statistics, recovery
 
 
 class Edit(BaseModel):
-    classification: Literal['planned', 'last_minute'] | None = None
+    classification: Literal['planned', 'last_minute', 'trip'] | None = None
     day: date
     until: date | None = None
     group: str
@@ -26,7 +26,7 @@ class Edit(BaseModel):
 
 
 class Permit(BaseModel):
-    classification: Literal['planned', 'last_minute'] | None = None
+    classification: Literal['planned', 'last_minute', 'trip'] | None = None
     requested_on: date | None = None
     day: date
     id: str
@@ -375,7 +375,7 @@ def create_app(path=None, seed=None):
                     for i, value in entries.items():
                         if group in ('absenceKinds', 'permitKinds'):
                             source = 'abs' if group == 'absenceKinds' else 'permessi'
-                            if i not in state[source].get(d, {}) or i not in ds['teachers'] or not isinstance(value, str) or value not in ('planned', 'last_minute'):
+                            if i not in state[source].get(d, {}) or i not in ds['teachers'] or not isinstance(value, str) or value not in ('planned', 'last_minute', 'trip'):
                                 raise ValueError('Classificazione assenza non valida.')
                         elif group == 'permitIds':
                             if i not in state['permessi'].get(d, {}) or not isinstance(value, str):
