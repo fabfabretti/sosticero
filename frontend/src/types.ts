@@ -48,6 +48,9 @@ export type Data = {
     warnings: unknown[];
   };
   state: {
+    absenceAttachments?: Record<string, Record<string, string>>;
+    permitAttachments?: Record<string, Record<string, string>>;
+    disAttachments?: Record<string, Record<string, string>>;
     absenceNotes?: Record<string, Record<string, string>>;
     permitNotes?: Record<string, Record<string, string>>;
     absenceKinds?: Record<string, Record<string, AbsenceKind>>;

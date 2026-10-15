@@ -185,29 +185,9 @@ def restore_backup(db_path: str, backup_path: str) -> bool:
     if not _is_valid_sqlite(backup_path):
         raise ValueError('Invalid or corrupted backup file')
     
-    # Remove WAL/SHM files from current DB if they exist
-    for ext in ['.wal', '.shm']:
-        wal_path = db_path.with_suffix(db_path.suffix + ext) if False else Path(str(db_path) + ext)
-        # simpler
-        pass
-    
-    db_wal = Path(str(db_path) + '.wal')
-    db_shm = Path(str(db_path) + '.shm')
-    if db_wal.exists():
-        db_wal.unlink(missing_ok=True)
-    if db_shm.exists():
-        db_shm.unlink(missing_ok=True)
-    
-    # Copy backup over database
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    # Use copyfile to overwrite
-    import shutil
-    shutil.copy2(str(backup_path), str(db_path))
-    
-    # Clean up any WAL/SHM from restored state if they somehow appeared
-    if db_wal.exists():
-        db_wal.unlink(missing_ok=True)
-    if db_shm.exists():
-        db_shm.unlink(missing_ok=True)
-    
+    # SQLite coordinates the restore with WAL readers and commits it atomically.
+    from contextlib import closing
+    with closing(sqlite3.connect(str(backup_path))) as source:
+        with closing(sqlite3.connect(str(db_path), timeout=15)) as destination:
+            source.backup(destination)
     return True
