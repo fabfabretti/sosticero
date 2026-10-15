@@ -51,6 +51,7 @@ function app(localStorage = { getItem: () => null, setItem() {} }) {
     exports: {}, URLSearchParams, Date, localStorage,
     document: { getElementById: () => ({ focus() {} }) },
     fetch(url, options) {
+      if (url === '/api/environment') return Promise.resolve({ ok: true, json: async () => ({ testing: false }) });
       return new Promise(resolve => requests.push({
         url, options,
         resolve: (data, ok = true) => resolve({ ok, json: async () => data }),
@@ -690,4 +691,12 @@ test('trip choice saves teacher classification and groups mixed sources once', a
   assert.equal(a.render().filter(n => n.props?.className === 'n' && n.props.children === 'Anna').length, 1);
   clickText(a, 'In gita');
   assert.equal(pressed(a, 'In gita'), false);
+});
+
+test('TESTING ribbon stays until the backend confirms production', async () => {
+  const a = app();
+  const ribbon = nodes => nodes.find(n => n.props?.className === 'testing-ribbon');
+  assert.equal(ribbon(a.render()).props.children, 'TESTING');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(ribbon(a.render()), undefined);
 });
