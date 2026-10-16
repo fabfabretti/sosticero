@@ -202,6 +202,11 @@ def create_app(path=None, seed=None):
         store.write(db, 'state', state)
         attachments.prune(db, state)
 
+    from .inbox import Inbox
+    inbox = Inbox(store, database, load, save_state)
+    inbox.register(app)
+    app.state.inbox = inbox
+
     @app.get('/api/attachments/{identifier}')
     def get_attachment(identifier: str):
         from fastapi.responses import Response
@@ -609,8 +614,10 @@ def create_app(path=None, seed=None):
                     break
             if not backup_path:
                 raise ValueError('Backup non trovato')
-            backup.restore_backup(str(database), backup_path)
-            Store(str(database))
+            with inbox.lock:
+                backup.restore_backup(str(database), backup_path)
+                Store(str(database))
+                inbox.initialize()
             with store.connect() as db:
                 db.execute('BEGIN IMMEDIATE')
                 state = store.read(db, 'state', EMPTY)

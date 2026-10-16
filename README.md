@@ -313,3 +313,37 @@ e restituisce l'impatto con `token`. Per applicare inviare lo stesso JSON a
 Una conferma scaduta restituisce 409, dati non validi o un backup fallito 422.
 Il caricamento iniziale senza orario resta compatibile con il vecchio endpoint;
 in servizio operativo richiede comunque `confirm=true`.
+
+### Importazione assenze da Google Forms
+
+In **Settings → Assenze da Google Forms**, carica il JSON dell'account di servizio,
+inserisci URL/ID del foglio e nome della scheda (ad esempio `Risposte del modulo 1`),
+e salva. Abilita Google Sheets API nel progetto Cloud e condividi il foglio con
+l'email mostrata come **Visualizzatore**. Usa **Test connessione salvata** per
+controllare l'accesso. Il test non aggiunge elementi; la sincronizzazione automatica
+parte dopo il salvataggio e legge tutte le risposte, anche passate.
+
+Ogni 30 secondi il server controlla le risposte; una notifica nella barra permette
+di aprire **Inbox**, disponibile anche dal menu. Un breve suono segnala nuove
+comunicazioni dopo la prima interazione con la pagina (richiesta del browser per
+abilitare l’audio); il caricamento iniziale e le accettazioni non suonano. **Accetta** aggiunge solo le ore
+mancanti, conservando note, classificazione e allegati, e aggiunge la nota
+`imported from sheet` una sola volta per docente e data. **Ignora** lascia invariato
+il calendario. I periodi di più giorni includono solo lunedì–venerdì. Le assenze
+orarie non generano debiti da recuperare. I nomi non riconosciuti richiedono la
+selezione manuale di un docente; dati non validi bloccano l'accettazione.
+
+Aggiungi risposte tramite il modulo: le modifiche a vecchie righe non sono
+sincronizzate come correzioni. Eliminare righe di prova prima del primo collegamento
+ne evita l'importazione; dopo il caricamento occorre ignorarle in Inbox o correggere
+le assenze accettate da Supplenze. Eliminare/spostare righe non duplica le altre
+comunicazioni. Senza un ID del modulo, eliminare e ricreare una risposta perfettamente
+identica (incluso timestamp) non è distinguibile dalla stessa risposta già vista.
+
+La chiave è salvata in `data/keys/google-service-account.json`, con directory 0700
+e file 0600, esclusa da Git, immagine container, esportazioni e backup. Non inserire
+mai il JSON nel repository. Su una nuova macchina è necessario caricarlo nuovamente;
+un ripristino conserva la chiave locale. I backup SQLite comprendono configurazione
+e cronologia Inbox: ripristinarli può riproporre comunicazioni successive al backup.
+Le esportazioni JSON delle supplenze non trasferiscono l'integrazione Inbox.
+Mantieni il servizio sull'accesso localhost previsto dalla configurazione esistente.

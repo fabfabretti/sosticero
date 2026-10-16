@@ -31,6 +31,7 @@ const tooltip = (() => {
 // Run the actual App handlers with deferred HTTP responses and minimal hook storage.
 function app(localStorage = { getItem: () => null, setItem() {} }, confirm = () => false) {
   const effects = [], requests = [], comps = new Map();
+  const inboxStatus = { pending: 0 };
   let App, pathname = '/', current = null;
   const envelope = () => {
     let e = comps.get(current);
@@ -93,6 +94,7 @@ function app(localStorage = { getItem: () => null, setItem() {} }, confirm = () 
       if (id === './HourTypes') return { HourTypes: 'hour-types' };
       if (id === './CandidateDrawer') return { CandidateDrawer: 'drawer' };
       if (id === './Attachments') return { AttachmentField: 'attachment-field', RecordInfo: 'record-info' };
+      if (id === './Inbox') return { AbsenceInbox: 'absence-inbox', SheetsSettings: 'sheets-settings', InboxNotice: () => null, useInboxStatus: () => inboxStatus };
       if (id === './Stats') return { Stats: 'stats' };
       if (id === './TeacherTimetables') return { TeacherTimetables: 'teacher-timetables' };
       if (id === './Tooltip') return tooltip;
@@ -126,7 +128,7 @@ function app(localStorage = { getItem: () => null, setItem() {} }, confirm = () 
     effects.splice(0).forEach(fn => fn());
     return nodes;
   }
-  return { render, requests, go: p => {
+  return { render, requests, inboxStatus, go: p => {
     const screen = path => ['/permessi', '/settings', '/stats', '/banca-ore', '/orari'].includes(path) ? path : '/';
     if (screen(p) !== screen(pathname)) for (const component of comps.keys()) {
       if (['Supplenze', 'Permessi', 'Settings', 'BackupSection'].includes(component?.name)) comps.delete(component);
@@ -329,19 +331,20 @@ test('co-absent teachers render as one merged label', async () => {
 const tabLinks = a => a.render().filter(n => n.type === 'a' && n.props?.href?.startsWith('#/'));
 const currentTab = a => tabLinks(a).find(l => l.props.className === 'on');
 
-test('shell shows brand, glasses icon and six tabs, defaulting to Supplenze', async () => {
+test('shell shows brand, glasses icon and seven tabs, defaulting to Supplenze', async () => {
   const a = await loaded();
   assert.ok(a.render().find(n => n.props?.className === 'bar'), 'top bar present');
   const svg = a.render().find(n => n.type === 'svg' && n.props?.viewBox === '0 0 24 24');
   assert.ok(svg, 'glasses icon rendered');
   assert.equal(svg.props.children.props.stroke, 'currentColor', 'icon themes with currentColor');
   const links = tabLinks(a);
-  assert.deepEqual(links.map(l => [l.props.href, l.props.children]), [
+  assert.deepEqual(links.map(l => [l.props.href, Array.isArray(l.props.children) ? l.props.children[0] : l.props.children]), [
     ['#/', 'Supplenze'],
     ['#/permessi', 'Permessi'],
     ['#/orari', 'Orari'],
     ['#/banca-ore', 'Banca ore'],
     ['#/stats', 'Stats'],
+    ['#/inbox', 'Inbox'],
     ['#/settings', 'Settings'],
   ]);
   assert.equal(currentTab(a).props.href, '#/', 'home tab is current');
@@ -898,4 +901,18 @@ test('permit warning uses the timetable effective on the selected date', async (
   assert.equal(a.render().filter(n => n.props?.className === 'hour-help').length, 0);
   permitDay(a).props.onChange({target:{value:'19/10/2026'}});
   assert.ok(a.render().some(n => n.props?.className === 'hour-help' && n.props['aria-label'].includes('nessuna attività')));
+});
+
+
+test('Inbox status changes preserve the active absence draft and current route', async () => {
+  const a = await loaded(entryData);
+  search(a).props.onChange({ target: { value: 'anna' } });
+  suggestion(a, 'Anna').props.onClick();
+  noteField(a, 'Note nuova assenza').props.onChange({ target: { value: 'keep draft' } });
+  a.inboxStatus.pending = 3;
+  a.render();
+  assert.equal(noteField(a, 'Note nuova assenza').props.value, 'keep draft');
+  assert.equal(search(a).props.value, 'Anna');
+  assert.equal(currentTab(a).props.href, '#/');
+  assert.ok(a.render().some(n => n.props?.className === 'inbox-count' && n.props.children === 3));
 });

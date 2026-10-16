@@ -260,7 +260,7 @@ select {
   display: flex;
   gap: 2px;
 }
-.hrs button {
+.hrs button, .inbox-hours span {
   width: 21px;
   height: 22px;
   font-size: 12px;
@@ -268,7 +268,7 @@ select {
   border-radius: 3px;
   color: var(--mute);
 }
-.hrs button.on {
+.hrs button.on, .inbox-hours span.on {
   background: var(--acc);
   border-color: var(--acc);
   color: var(--on);
@@ -1187,3 +1187,59 @@ td.none {
 .timetable-import button { min-height: 44px; justify-self: start; }
 .timetable-preview { border: 1px solid var(--line); padding: 16px; border-radius: 8px; overflow-wrap: anywhere; }
 .timetable-preview details { padding: 8px 0; }
+
+/* Inbox uses the existing app surfaces and controls. */
+.inbox-page { width: 100%; max-width: 1100px; margin: 0 auto; padding: 24px 28px 48px; }
+.inbox-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.inbox-heading h1, .inbox-heading h2 { margin: 0; }
+.inbox-empty, .sheets-settings { padding: 20px; border: 1px solid var(--line); background: var(--pan); border-radius: 8px; margin-top: 16px; }
+
+.inbox-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.sheets-settings form { display: grid; gap: 12px; max-width: 640px; }
+.sheets-settings label { display: grid; gap: 5px; }
+.sheets-settings input, select.inbox-teacher { width: 100%; min-width: 0; font: inherit; padding: 9px; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; }
+
+.sheets-settings button, .inbox-heading button { min-height: 44px; }
+.inbox-count { margin-left: 6px; padding: 1px 6px; border-radius: 10px; background: var(--soft); color: var(--acc); }
+.inbox-notice:empty { display: none; }
+.inbox-notice { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 12px; padding: 8px 16px; background: var(--soft); color: var(--ink); border-bottom: 1px solid var(--line); }
+.inbox-notice a { color: var(--acc); padding: 5px; }
+.sheets-settings details { margin-top: 12px; overflow-wrap: anywhere; }
+.sheets-settings summary { cursor: pointer; padding: 6px 0; }
+.inbox-item dl > div { display: grid; grid-template-columns: minmax(100px, 1fr) 3fr; gap: 8px; }
+.inbox-item dd { margin: 0; }
+@media (max-width: 600px) { .inbox-page { padding: 16px 12px 32px; } .sheets-settings { padding: 14px; } }
+
+.inbox-actions button { padding: 8px 12px; border: 1px solid var(--line); border-radius: 4px; }
+.inbox-actions button:hover:not(:disabled), .inbox-actions button.on { background: var(--soft); }
+.inbox-actions .inbox-accept { background: var(--acc); color: var(--on); border-color: var(--acc); }
+.inbox-actions .inbox-accept:hover:not(:disabled) { background: var(--acc); filter: brightness(.95); }
+.inbox-actions button:disabled { opacity: .5; cursor: not-allowed; }
+.inbox-page a { color: var(--acc); }
+.inbox-page .error, .sheets-settings .error { border-left: 3px solid var(--acc); padding-left: 10px; }
+
+.inbox-item { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--pan); }
+.inbox-absence { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; flex: 1; min-width: 200px; }
+.inbox-absence strong { font-weight: 500; white-space: nowrap; }
+.inbox-hours span { display: inline-grid; place-items: center; }
+select.inbox-teacher { width: 220px; padding: 5px 8px; height: 32px; }
+.inbox-item .inbox-actions { margin: 0; gap: 6px; }
+.inbox-item .inbox-actions button { padding: 5px 10px; min-height: 32px; }
+.inbox-person { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 140px; }
+.inbox-name { font-weight: 600; }
+.inbox-submitted { color: var(--mute); font-size: 12px; white-space: nowrap; }
+.inbox-result { color: var(--mute); }
+.inbox-details { flex: 0 0 auto; }
+.inbox-details summary { cursor: pointer; color: var(--mute); padding: 4px 8px; list-style: none; font-size: 20px; }
+.inbox-details summary::-webkit-details-marker { display: none; }
+.inbox-details[open] { flex-basis: 100%; }
+.inbox-details[open] summary { width: fit-content; margin-left: auto; }
+.inbox-details .sub { margin-bottom: 8px; }
+.inbox-item > .error { flex-basis: 100%; margin: 0; }
+@media (max-width: 600px) {
+  .inbox-item { gap: 8px; }
+  .inbox-absence { flex-basis: 100%; }
+  .inbox-person { flex-basis: 100%; }
+  select.inbox-teacher { flex: 1; width: 140px; }
+  select.inbox-teacher, .inbox-item .inbox-actions button, .inbox-details summary { min-height: 44px; }
+}

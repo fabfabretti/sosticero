@@ -8,6 +8,7 @@ import { CandidateDrawer } from "./CandidateDrawer";
 import { AttachmentField, RecordInfo, type ImageDraft, type AttachmentMap } from "./Attachments";
 import { Stats } from "./Stats";
 import { TeacherTimetables } from "./TeacherTimetables";
+import { AbsenceInbox, SheetsSettings, InboxNotice, useInboxStatus } from "./Inbox";
 import { norm } from "./timetables";
 import { HourHelp } from "./Tooltip";
 import { HashRouter, Link, useLocation } from "react-router";
@@ -47,6 +48,7 @@ const TABS = [
   { path: "/orari", label: "Orari" },
   { path: "/banca-ore", label: "Banca ore" },
   { path: "/stats", label: "Stats" },
+  { path: "/inbox", label: "Inbox" },
   { path: "/settings", label: "Settings" },
 ];
 // Unknown routes fall back to Supplenze (home).
@@ -71,7 +73,7 @@ function Glasses() {
     </svg>
   );
 }
-function TopBar({ current }: { current: string }) {
+function TopBar({ current, pending = 0 }: { current: string; pending?: number }) {
   return (
     <header className="bar">
       <span className="brand">
@@ -85,7 +87,7 @@ function TopBar({ current }: { current: string }) {
             className={t.path === current ? "on" : ""}
             aria-current={t.path === current ? "page" : undefined}
           >
-            {t.label}
+            {t.label}{t.path === "/inbox" && pending > 0 && <span className="inbox-count">{pending}</span>}
           </Link>
         ))}
       </nav>
@@ -351,6 +353,7 @@ function Settings() {
         <div className="db-status">Dati salvati nel database SQLite.</div>
       </section>
       <HourTypes key={JSON.stringify(data?.dataset)} api={api} />
+      <SheetsSettings api={api} />
       <BackupSection />
     </section>
   );
@@ -358,15 +361,19 @@ function Settings() {
 function Shell() {
   const { pathname } = useLocation();
   const tab = screenFor(pathname);
+  const inboxStatus = useInboxStatus(api, true);
   return (
     <div className="shell">
-      <TopBar current={tab.path} />
+      <TopBar current={tab.path} pending={inboxStatus.pending} />
+      <InboxNotice count={inboxStatus.pending} />
       {tab.path === "/" ? (
         <Supplenze />
       ) : tab.path === "/permessi" ? (
         <Permessi />
       ) : tab.path === "/orari" ? (
         <TeacherTimetables api={api} />
+      ) : tab.path === "/inbox" ? (
+        <AbsenceInbox api={api} />
       ) : tab.path === "/settings" ? (
         <Settings />
       ) : tab.path === "/stats" ? (
