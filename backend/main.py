@@ -275,7 +275,8 @@ def create_app(path=None, seed=None):
             raise ValueError('Carica prima un orario.')
         if data.get('basis') != timetables.digest(history):
             raise HTTPException(status_code=409, detail='Orario modificato: ricarica e verifica la bozza.')
-        document, report = overrides.propose(history['_overrides'], history, data)
+        deleting = data.get('delete') is True
+        document, report = overrides.remove(history['_overrides'], data) if deleting else overrides.propose(history['_overrides'], history, data)
         proposed = dict(history, _overrides=document)
         state = store.read(db, 'state', EMPTY)
         facts = store.read(db, 'statistics', statistics.empty())
@@ -290,16 +291,16 @@ def create_app(path=None, seed=None):
                 schedules[key] = timetables.dataset(source, day)
             return schedules[key]
         rules = merge_types(schedule(proposed, data['start']), store.read(db, 'hourTypes', {}))
-        evidence = dict(record=document['records'][-1]['id'], previous={}, assignments={})
+        evidence = dict(record=document['records'][-1]['id'], previous={}, assignments={}) if not deleting else None
         days = []
         affected = {}
         problems_by_day = {}
-        affected_weekdays = {overrides.DAYS.index(key.split('|')[0]) for record in document['records'] if record['teacher'] == data['teacher']
+        affected_weekdays = {overrides.DAYS.index(key.split('|')[0]) for record in history['_overrides']['records'] + document['records'] if record['teacher'] == data['teacher']
                              for group in record['groups'] for key in group['before']}
         same_start_revision = any(r['teacher'] == data['teacher'] and r['start'] == data['start']
                                   for r in history['_overrides']['records'])
         for day in timetables.dates(state, facts):
-            if day < data['start'] or (data.get('end') and day > data['end'] and not same_start_revision) or date.fromisoformat(day).weekday() not in affected_weekdays:
+            if day < data['start'] or (not deleting and data.get('end') and day > data['end'] and not same_start_revision) or date.fromisoformat(day).weekday() not in affected_weekdays:
                 continue
             before, after = schedule(history, day), schedule(proposed, day)
             if before == after:
@@ -307,8 +308,9 @@ def create_app(path=None, seed=None):
             problems = timetables.issues(after, state, day, rules)
             affected[day] = after
             problems_by_day[day] = problems
-            evidence['previous'][day] = facts['days'].get(day)
-            evidence['assignments'][day] = {k: timetables.conflict_context(history, day, k, a) or timetables.context(history, state, day, k, facts, before) for k, a in state['asg'].get(day, {}).items()}
+            if evidence is not None:
+                evidence['previous'][day] = facts['days'].get(day)
+                evidence['assignments'][day] = {k: timetables.conflict_context(history, day, k, a) or timetables.context(history, state, day, k, facts, before) for k, a in state['asg'].get(day, {}).items()}
             previous_problems = timetables.issues(before, state, day, rules)
             days.append(dict(day=day, issues=[p for p in problems if p not in previous_problems], assignments=list(state['asg'].get(day, {}))))
         result = deepcopy(facts)
@@ -322,7 +324,8 @@ def create_app(path=None, seed=None):
                 for demand in result['days'][day]['demand'].values():
                     if demand['key'] in problem_keys:
                         demand.update(eligible=False, valid=False, outcome='pending')
-        document['evidence'].append(evidence)
+        if evidence is not None:
+            document['evidence'].append(evidence)
         documents = db.execute('SELECT key, value FROM documents ORDER BY key').fetchall()
         # UUIDs are evidence identities, not part of the preview fingerprint.
         token = timetables.digest([documents, {k: v for k, v in data.items() if k != 'token'}])

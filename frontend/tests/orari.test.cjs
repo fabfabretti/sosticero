@@ -4,11 +4,11 @@ const { readFileSync } = require('node:fs');
 const { runInNewContext } = require('node:vm');
 const ts = require('typescript');
 
-function load(file, require) {
+function load(file, require, confirm = () => true) {
   const exports = {};
   runInNewContext(ts.transpileModule(readFileSync(file, 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
-  }).outputText, { exports, require, URLSearchParams, setTimeout, document: { elementFromPoint: () => null } });
+  }).outputText, { exports, require, URLSearchParams, setTimeout, window: { confirm }, document: { elementFromPoint: () => null } });
   return exports;
 }
 const timetables = load('src/timetables.ts');
@@ -19,7 +19,7 @@ const tooltip = load('src/Tooltip.tsx', id => {
 });
 
 // Run the real component with minimal hook storage and a fake api.
-function component(file) {
+function component(file, confirm) {
   const slots = []; let cursor = 0; const effects = [];
   const react = {
     useState(initial) { const i = cursor++; if (!(i in slots)) slots[i] = typeof initial === 'function' ? initial() : initial; return [slots[i], v => slots[i] = typeof v === 'function' ? v(slots[i]) : v]; },
@@ -34,7 +34,7 @@ function component(file) {
     if (id === './timetables') return timetables;
     if (id === './Tooltip') return tooltip;
     throw Error(id);
-  });
+  }, confirm);
   return { render(props) {
     cursor = 0;
     const nodes = [];
@@ -54,15 +54,15 @@ const orari = { day: '2026-10-18', basis: 'basis', overrides: [], effective: '20
 } };
 const types = { types: { 'code:POT': { label: 'POT', color: 'amber', available: true, visible: true, school: true } } };
 
-function screen(handler) {
-  const c = component('src/TeacherTimetables.tsx');
+function screen(handler, confirm) {
+  const c = component('src/TeacherTimetables.tsx', confirm);
   const calls = [];
   const api = async (url, body) => { calls.push(url); return handler ? handler(url, body) : url.startsWith('orari?') ? orari : types; };
   const props = { api };
   return { c, calls, props, nodes: () => c.render(props) };
 }
-async function loaded(handler) {
-  const s = screen(handler);
+async function loaded(handler, confirm) {
+  const s = screen(handler, confirm);
   s.c.render(s.props); s.c.start();
   await settle();
   return s;
@@ -183,6 +183,29 @@ test('editor offers accessible movement, date boundaries and cancel without writ
   assert.equal(s.calls.length, 1);
 });
 
+test('changing the start date of an untouched draft needs no confirmation', async () => {
+  const prompts = [];
+  const s = await loaded(undefined, message => { prompts.push(message); return false; });
+  s.nodes().find(n => n.props?.['aria-label'] === 'Modifica orario di Anna').props.onClick();
+  const start = s.nodes().find(n => n.type === 'input' && n.props.required);
+  await start.props.onChange({ target: { value: '2026-10-19' } });
+  assert.deepEqual(prompts, []);
+  assert.ok(s.calls.some(url => url === 'orari?day=2026-10-19'));
+  assert.equal(s.nodes().find(n => n.type === 'input' && n.props.required).props.value, '2026-10-19');
+});
+
+test('changing the start date asks only when the draft has unsaved edits', async () => {
+  const prompts = [];
+  const s = await loaded(undefined, message => { prompts.push(message); return false; });
+  s.nodes().find(n => n.props?.['aria-label'] === 'Modifica orario di Anna').props.onClick();
+  s.nodes().find(n => n.props?.['aria-label'] === 'Disabilita Mar 2ª POT').props.onClick();
+  await s.nodes().find(n => n.type === 'input' && n.props.required).props.onChange({ target: { value: '2026-10-19' } });
+  assert.equal(prompts.length, 1);
+  assert.match(prompts[0], /modifiche non salvate/);
+  assert.equal(s.calls.length, 1);
+  assert.ok(s.nodes().some(n => n.props?.['aria-label'] === 'Riattiva Mar 2ª POT'));
+});
+
 test('failed save preserves the edited draft and clears stale preview', async () => {
   let previewBody;
   const s = await loaded(async (url, body) => {
@@ -240,4 +263,42 @@ test('unaffected saved assignments do not interrupt saving or display a list of 
   await s.nodes().find(n => n.type === 'button' && n.props.children === 'Salva').props.onClick();
   assert.ok(calls.includes('orari/override'));
   assert.ok(!s.nodes().some(n => n.props?.['aria-label'] === 'Conferma modifica'));
+});
+
+test('a saved override can be deleted without creating a reset', async () => {
+  const record = { id: 'revision', teacher: 'a', start: '2026-10-12', end: null, reset: false, groups: [{ before: {}, after: {}, conflicts: [] }] };
+  let current = { ...orari, overrides: [record] };
+  const calls = [];
+  const s = await loaded(async (url, body) => {
+    calls.push([url, body]);
+    if (url.startsWith('orari?')) return current;
+    if (url === 'orari/preview') return { token: 'delete-token', days: [] };
+    current = { ...current, overrides: [] };
+    return { ok: true };
+  });
+  const header = s.nodes().find(n => n.props?.className === 'orari-card-actions');
+  assert.ok(!header.props.children.some(child => child?.props?.children === 'Elimina'));
+  assert.ok(s.nodes().some(n => n.props?.className === 'orari-history'));
+  await s.nodes().find(n => n.props?.['aria-label'] === 'Elimina modifica di Anna dal 12/10/2026').props.onClick();
+  assert.equal(calls[1][0], 'orari/preview');
+  assert.equal(JSON.stringify(calls[1][1]), JSON.stringify({ delete: true, id: 'revision', teacher: 'a', start: '2026-10-12', basis: 'basis' }));
+  assert.equal(calls[2][0], 'orari/override');
+  assert.equal(calls[2][1].token, 'delete-token');
+  assert.ok(!s.nodes().some(n => n.props?.className === 'orari-history'));
+});
+
+test('deleting an override shows only new assignment problems before confirmation', async () => {
+  const record = { id: 'reset', teacher: 'a', start: '2026-10-19', end: null, reset: true, groups: [] };
+  const calls = [];
+  const s = await loaded(async (url, body) => {
+    calls.push([url, body]);
+    if (url.startsWith('orari?')) return { ...orari, overrides: [record] };
+    if (url === 'orari/preview') return { token: 'delete-token', days: [{ day: '2026-10-19', assignments: ['a|2|1A'], issues: [{ key: 'a|2|1A', message: 'Ora disabilitata' }] }] };
+    return { ok: true };
+  });
+  await s.nodes().find(n => n.props?.['aria-label'] === 'Elimina modifica di Anna dal 19/10/2026').props.onClick();
+  assert.ok(!calls.some(([url]) => url === 'orari/override'));
+  assert.ok(s.nodes().some(n => n.props?.['aria-label'] === 'Conferma eliminazione'));
+  await s.nodes().find(n => n.props?.children === 'Conferma ed elimina').props.onClick();
+  assert.ok(calls.some(([url, body]) => url === 'orari/override' && body.token === 'delete-token'));
 });

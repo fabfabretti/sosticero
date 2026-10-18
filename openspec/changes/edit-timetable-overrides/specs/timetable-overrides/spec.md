@@ -68,6 +68,13 @@ Staff SHALL be able to select Ripristina originale from a chosen date. Reset SHA
 - **WHEN** staff reset from November 2
 - **THEN** earlier dates retain their overrides and November 2 onward uses the imported timetable until a later override applies
 
+### Requirement: Delete saved override
+Staff SHALL be able to delete a saved override, including all revisions with the same teacher and start date. Deletion SHALL restore the previous applicable override or the imported timetable without adding a reset record. The system SHALL preview new assignment issues, preserve saved assignments, reject stale requests atomically, and remove the deleted revisions and their associated override evidence from archives.
+
+#### Scenario: Delete a reset
+- **WHEN** staff delete a reset that suppressed an earlier ongoing override
+- **THEN** the earlier override applies again from the deleted reset's start date, and any new assignment issues are shown for confirmation
+
 ### Requirement: Import compatibility and review
 Import preview SHALL identify overrides that carry forward and edits requiring review. An edit SHALL carry forward only when its affected imported source and destination hours remain unchanged. A conflicting move or swap SHALL be suspended as a whole, showing newly imported hours for all its cells; independent compatible edits SHALL remain applied. Review status SHALL persist until staff explicitly review and save or discard the affected edit.
 

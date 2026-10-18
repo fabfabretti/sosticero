@@ -133,6 +133,20 @@ def propose(document, history, data):
     return reconcile(result, history)
 
 
+def remove(document, data):
+    if set(data) - {'teacher', 'start', 'id', 'basis', 'token', 'delete'} or data.get('delete') is not True:
+        raise ValueError('Richiesta eliminazione non valida.')
+    teacher, start, identifier = data.get('teacher'), iso(data.get('start')), data.get('id')
+    latest = next((r for r in reversed(document['records']) if r['teacher'] == teacher and r['start'] == start), None)
+    if not latest or latest['id'] != identifier:
+        raise ValueError('Modifica non trovata o già aggiornata.')
+    result = deepcopy(document)
+    deleted = {r['id'] for r in result['records'] if r['teacher'] == teacher and r['start'] == start}
+    result['records'] = [r for r in result['records'] if r['id'] not in deleted]
+    result['evidence'] = [e for e in result['evidence'] if e['record'] not in deleted]
+    return result, []
+
+
 def validate(document, history):
     try:
         if not isinstance(document, dict) or set(document) != {'schema', 'records', 'evidence'} or type(document['schema']) is not int or document['schema'] != 1 or not isinstance(document['records'], list) or not isinstance(document['evidence'], list):

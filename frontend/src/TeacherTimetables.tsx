@@ -12,6 +12,7 @@ type Override = { id: string; teacher: string; start: string; end: string | null
 type Orari = { effective: string | null; day: string; basis: string; version: string; imported: Dataset; dataset: Dataset; overrides: Override[] };
 type Draft = { teacher: string; start: string; end: string; cells: Record<string, Lesson | null>; basis: string; reset: boolean };
 type Impact = { token: string; days: { day: string; assignments: string[]; issues: { key: string; message: string }[] }[] };
+type Deletion = { record: Override; basis: string; impact: Impact };
 const DAY_LABELS: Record<string, string> = { lun: 'Lun', mar: 'Mar', mer: 'Mer', gio: 'Gio', ven: 'Ven' };
 const today = () => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Rome' }).format(new Date());
 const dateLabel = (s: string) => s.split('-').reverse().join('/');
@@ -36,11 +37,13 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
   const [query, setQuery] = useState('');
   const [draft, setDraft] = useState<Draft>();
   const [impact, setImpact] = useState<Impact>();
+  const [deletion, setDeletion] = useState<Deletion>();
   const [busy, setBusy] = useState(false);
   const [drag, setDrag] = useState<{ x: number; y: number; slot: string; target: string }>();
   const pointer = useRef<{ teacher: string; slot: string; x: number; y: number; moved: boolean } | undefined>(undefined);
   const suppressClick = useRef(false);
   const request = useRef(0);
+  const baseline = useRef<Draft | undefined>(undefined);
   const dirty = !!draft;
   const endpoint = (day: string) => 'orari?' + new URLSearchParams({ day });
   useEffect(() => {
@@ -74,21 +77,28 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
     return q ? grids.filter(g => norm(g.name + ' ' + g.code).includes(q)) : grids;
   }, [grids, query]);
   const name = (id: string) => data?.dataset.teachers[id]?.name || id;
-  const discard = () => { request.current++; setDraft(undefined); setImpact(undefined); setDrag(undefined); setError(''); };
+  const discard = () => { request.current++; baseline.current = undefined; setDraft(undefined); setImpact(undefined); setDeletion(undefined); setDrag(undefined); setError(''); };
   const begin = (teacher: string) => {
     if (!data || busy || (draft && !window.confirm('Scartare la bozza corrente?'))) return;
     const current = activeOverride(data.overrides || [], teacher, viewDay);
-    setDraft({ teacher, start: viewDay, end: current?.end || '', cells: week(data.dataset, teacher), basis: data.basis, reset: false });
-    setImpact(undefined); setDrag(undefined); setError('');
+    const next = { teacher, start: viewDay, end: current?.end || '', cells: week(data.dataset, teacher), basis: data.basis, reset: false };
+    baseline.current = next;
+    setDraft(next);
+    setImpact(undefined); setDeletion(undefined); setDrag(undefined); setError('');
   };
   const change = (values: Partial<Draft>) => { setDraft(d => d && ({ ...d, ...values })); setImpact(undefined); setError(''); };
   const startAt = async (start: string) => {
-    if (!draft || !start || !window.confirm('Caricare l’orario della nuova decorrenza? La bozza corrente verrà scartata.')) return;
+    if (!draft || !start || start === draft.start) return;
+    const changed = draft.reset !== baseline.current?.reset || draft.end !== baseline.current?.end || JSON.stringify(draft.cells) !== JSON.stringify(baseline.current?.cells);
+    if (changed && !window.confirm('Scartare le modifiche non salvate e cambiare la decorrenza?')) return;
     setBusy(true); setError('');
     try {
       const result = await api<Orari>(endpoint(start));
+      const current = activeOverride(result.overrides || [], draft.teacher, start);
+      const next = { teacher: draft.teacher, start, end: current?.end || '', cells: week(result.dataset, draft.teacher), basis: result.basis, reset: false };
       setData(result); setViewDay(start);
-      setDraft({ ...draft, start, cells: week(result.dataset, draft.teacher), basis: result.basis });
+      baseline.current = next;
+      setDraft(next);
       setImpact(undefined); setDrag(undefined);
     } catch (e) { setError(String(e)); }
     finally { setBusy(false); }
@@ -126,6 +136,22 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
     } catch (e) { if (n === request.current) setError(String(e)); }
     finally { setBusy(false); }
   };
+  const remove = async (record: Override, confirmed?: Deletion) => {
+    if (!data || busy || (!confirmed && !window.confirm(`Eliminare la modifica dal ${dateLabel(record.start)} e tutte le sue revisioni?`))) return;
+    const n = ++request.current;
+    const basis = confirmed?.basis || data.basis;
+    const body = { delete: true, id: record.id, teacher: record.teacher, start: record.start, basis };
+    setBusy(true); setError(''); if (!confirmed) setDeletion(undefined);
+    try {
+      const result = confirmed?.impact || await api<Impact>('orari/preview', body);
+      if (n !== request.current) return;
+      if (!confirmed && result.days.some(d => d.issues.length > 0)) { setDeletion({ record, basis, impact: result }); return; }
+      await api('orari/override', { ...body, token: result.token });
+      const updated = await api<Orari>(endpoint(viewDay));
+      if (n === request.current) { setData(updated); setDeletion(undefined); }
+    } catch (e) { if (n === request.current) setError(String(e)); }
+    finally { setBusy(false); }
+  };
   const dragged = drag && draft?.cells[drag.slot];
   return <section className="orari" aria-labelledby="orari-title">
     <h2 id="orari-title">Orari</h2>
@@ -158,7 +184,8 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
           {!editing && <button className="orari-action" disabled={busy} onClick={() => begin(g.id)} aria-label={`Modifica orario di ${g.name}`}>Modifica</button>}
         </div></div>
         {g.cdcName && <p className="orari-cdc" title={`${g.cdc ? g.cdc + ' · ' : ''}${g.cdcName}`}>{g.cdc ? `${g.cdc} · ` : ''}{g.cdcName}</p>}
-        {!!records.length && !editing && <details className="orari-history"><summary>Modifiche salvate ({records.length})</summary>{records.map(r => <button key={r.id} disabled={busy} onClick={() => { if (draft && !window.confirm('Scartare la bozza corrente?')) return; if (r.start === viewDay) { begin(g.id); } else { discard(); setData(undefined); setViewDay(r.start); } }}>{r.reset ? 'Ripristino' : 'Modifica'} dal {dateLabel(r.start)}{r.end ? ` al ${dateLabel(r.end)}` : ''}</button>)}</details>}
+        {!!records.length && !editing && <details className="orari-history"><summary>Modifiche salvate ({records.length})</summary>{records.map(r => <div className="orari-history-row" key={r.id}><button disabled={busy} onClick={() => { if (r.start === viewDay) { begin(g.id); } else { discard(); setData(undefined); setViewDay(r.start); } }}>{r.reset ? 'Ripristino' : 'Modifica'} dal {dateLabel(r.start)}{r.end ? ` al ${dateLabel(r.end)}` : ''}</button><button className="orari-action" disabled={busy} aria-label={`Elimina modifica di ${g.name} dal ${dateLabel(r.start)}`} onClick={() => remove(r)}>Elimina</button></div>)}</details>}
+        {deletion?.record.teacher === g.id && <div className="orari-impact" aria-label="Conferma eliminazione"><p>Eliminare la modifica dal {dateLabel(deletion.record.start)}? {deletion.impact.days.reduce((sum, d) => sum + d.issues.length, 0)} assegnazioni da verificare. Le assegnazioni restano conservate.</p><details><summary>Mostra dettagli</summary>{deletion.impact.days.filter(d => d.issues.length > 0).map(d => <div key={d.day}><p>{dateLabel(d.day)}</p>{d.issues.map(i => <p key={i.key}>{i.key}: {i.message}</p>)}</div>)}</details><button className="permit-save" disabled={busy} onClick={() => remove(deletion.record, deletion)}>Conferma ed elimina</button> <button className="orari-action" disabled={busy} onClick={() => setDeletion(undefined)}>Annulla</button></div>}
         {editing && draft && <>
           <div className="orari-edit-toolbar" role="group" aria-label={`Modifica orario di ${g.name}`}>
             <label>Dal<input type="date" required value={draft.start} disabled={busy} onChange={e => startAt(e.target.value)} /></label>
