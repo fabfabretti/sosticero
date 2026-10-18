@@ -306,7 +306,13 @@ function Settings() {
   const upload = async (file: File | undefined, target: string) => {
     if (!file) return;
     try {
-      await api(target, JSON.parse(await file.text()));
+      const content = JSON.parse(await file.text());
+      if (target === 'import') {
+        const preview = await api<{ overrides: { teacher: string; review: boolean }[] }>('import/preview', content);
+        const review = preview.overrides.filter(r => r.review);
+        if (!window.confirm(`Ripristinare l’archivio? ${review.length} modifiche manuali richiedono verifica${review.length ? ': ' + [...new Set(review.map(r => r.teacher))].join(', ') : ''}. Le modifiche incompatibili useranno le ore importate fino alla verifica.`)) return;
+      }
+      await api(target, content);
       await refresh();
     } catch (e) {
       setError(String(e));

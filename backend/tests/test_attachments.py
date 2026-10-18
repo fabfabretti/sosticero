@@ -121,7 +121,7 @@ class AttachmentsTest(unittest.TestCase):
     def test_archives_backup_and_timetable(self):
         self.entry(attachment=image(), until='2026-10-13').raise_for_status()
         url = self.url(); archive = self.state()
-        self.assertEqual(archive['schema'], 4)
+        self.assertEqual(archive['schema'], 5)
         self.client.post('/api/import', json=archive).raise_for_status()
         self.assertEqual(archive, self.state())
         for change in ('missing', 'orphan', 'source', 'corrupt', 'old', 'unknown', 'invalid-id'):
@@ -136,7 +136,7 @@ class AttachmentsTest(unittest.TestCase):
             if change == 'source': bad['absenceAttachments'][DAY]['unknown'] = next(iter(bad['attachments']))
             if change == 'corrupt': bad['attachments'][next(iter(bad['attachments']))]['data'] = 'broken'
             if change == 'old': bad['schema'] = 2
-            if change == 'unknown': bad['schema'] = 5
+            if change == 'unknown': bad['schema'] = 6
             self.assertEqual(self.client.post('/api/import', json=bad).status_code, 422)
             self.assertEqual(archive, self.state())
         snapshot = backup.backup_database(str(self.path), str(Path(self.tmp.name) / 'snapshots'))

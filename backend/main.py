@@ -11,9 +11,10 @@ from .domain import normalize_dataset, rows, candidates, validate_assignment, de
 from .storage import Store, EMPTY
 from . import backup, attachments
 from .hour_types import merge_types, validate_types
-from . import statistics, recovery, timetables
+from . import statistics, recovery, timetables, overrides
 from zoneinfo import ZoneInfo
 from hashlib import sha256
+from copy import deepcopy
 
 
 class Attachment(BaseModel):
@@ -104,14 +105,24 @@ def create_app(path=None, seed=None):
             import json
             store.write(db, 'dataset', normalize_dataset(json.loads(Path(seed).read_text())))
 
+    def read_history(db):
+        value = store.read(db, 'timetables')
+        if value is not None:
+            value['_overrides'] = store.read(db, 'timetableOverrides', overrides.empty())
+        return value
+
+    def write_history(db, value):
+        store.write(db, 'timetables', {k: v for k, v in value.items() if k != '_overrides'})
+        store.write(db, 'timetableOverrides', value.get('_overrides', overrides.empty()))
+
     def initialize_statistics():
         with store.connect() as db:
             db.execute('BEGIN IMMEDIATE')
             ds = store.read(db, 'dataset')
-            if ds and store.read(db, 'timetables') is None:
+            if ds and read_history(db) is None:
                 store.write(db, 'timetables', timetables.baseline(ds))
             if ds and store.read(db, 'statistics') is None:
-                store.write(db, 'statistics', timetables.sync(store.read(db, 'timetables'), store.read(db, 'state', EMPTY), statistics.empty(), reconstructed=True))
+                store.write(db, 'statistics', timetables.sync(read_history(db), store.read(db, 'state', EMPTY), statistics.empty(), reconstructed=True))
 
     # Perform startup backup if enabled
     if backup_on_startup and database.exists():
@@ -159,7 +170,7 @@ def create_app(path=None, seed=None):
     def get_types():
         with store.connect() as db:
             db.execute("BEGIN IMMEDIATE")
-            history = store.read(db, "timetables")
+            history = read_history(db)
             ds = timetables.dataset(history, datetime.now(ZoneInfo("Europe/Rome")).date().isoformat()) if history else store.read(db, "dataset")
             return dict(types=policies(db, ds), needsReimport=bool(ds and any("activities" not in l for l in ds["lessons"].values())))
 
@@ -178,7 +189,7 @@ def create_app(path=None, seed=None):
             return current
 
     def load(db, day=None):
-        history = store.read(db, 'timetables')
+        history = read_history(db)
         ds = timetables.dataset(history, day or datetime.now(ZoneInfo('Europe/Rome')).date().isoformat()) if history else store.read(db, 'dataset')
         if ds is None:
             raise ValueError('Carica prima un orario.')
@@ -198,7 +209,7 @@ def create_app(path=None, seed=None):
 
     def save_state(db, ds, state, days, revalidate=False):
         facts = store.read(db, 'statistics', statistics.empty())
-        store.write(db, 'statistics', timetables.sync(store.read(db, 'timetables'), state, facts, days, revalidate=revalidate))
+        store.write(db, 'statistics', timetables.sync(read_history(db), state, facts, days, revalidate=revalidate))
         store.write(db, 'state', state)
         attachments.prune(db, state)
 
@@ -229,7 +240,7 @@ def create_app(path=None, seed=None):
         with store.connect() as db:
             ds, state = load(db, day.isoformat())
             rules = policies(db, ds)
-            history = store.read(db, 'timetables')
+            history = read_history(db)
             facts = store.read(db, 'statistics', statistics.empty())
         d = day.isoformat()
         rs = rows(ds, state, d)
@@ -241,24 +252,105 @@ def create_app(path=None, seed=None):
                     timetable=dict(id=selected['id'], effective=selected['effective']), autoDis={d: auto_availability(ds, state, d)})
 
     @app.get('/api/orari')
-    def get_orari():
+    def get_orari(day: date | None = None):
+        viewed = (day or datetime.now(ZoneInfo("Europe/Rome")).date()).isoformat()
         with store.connect() as db:
-            history = store.read(db, 'timetables')
+            history = read_history(db)
             if history:
-                selected = timetables.version(history, datetime.now(ZoneInfo('Europe/Rome')).date().isoformat())
-                effective, ds = selected['effective'], selected['dataset']
+                selected = timetables.version(history, viewed)
+                effective, ds = selected['effective'], timetables.dataset(history, viewed)
             else:
                 ds, effective = store.read(db, 'dataset'), None
                 if ds is None:
                     raise ValueError('Carica prima un orario.')
         teachers = {i: dict(t, cdcName=CDC_NAMES.get(t.get('classe_concorso', ''), t.get('classe_concorso', ''))) for i, t in ds['teachers'].items()}
-        return dict(effective=effective, dataset=dict(ds, teachers=teachers))
+        return dict(effective=effective, day=viewed, version=selected['id'] if history else '', dataset=dict(ds, teachers=teachers),
+                    basis=timetables.digest(history), imported=selected['dataset'] if history else ds,
+                    overrides=history.get('_overrides', overrides.empty())['records'] if history else [])
+
+    def override_plan(db, data):
+        history = read_history(db)
+        if not history:
+            raise ValueError('Carica prima un orario.')
+        if data.get('basis') != timetables.digest(history):
+            raise HTTPException(status_code=409, detail='Orario modificato: ricarica e verifica la bozza.')
+        document, report = overrides.propose(history['_overrides'], history, data)
+        proposed = dict(history, _overrides=document)
+        state = store.read(db, 'state', EMPTY)
+        facts = store.read(db, 'statistics', statistics.empty())
+        schedules = {}
+        def schedule(source, day):
+            selected = timetables.version(source, day)
+            records = source['_overrides']['records']
+            active = tuple(sorted((teacher, record['id'] if record else None) for teacher in {r['teacher'] for r in records}
+                                  if (record := overrides.selected(source['_overrides'], teacher, day))))
+            key = id(source), selected['id'], active
+            if key not in schedules:
+                schedules[key] = timetables.dataset(source, day)
+            return schedules[key]
+        rules = merge_types(schedule(proposed, data['start']), store.read(db, 'hourTypes', {}))
+        evidence = dict(record=document['records'][-1]['id'], previous={}, assignments={})
+        days = []
+        affected = {}
+        problems_by_day = {}
+        affected_weekdays = {overrides.DAYS.index(key.split('|')[0]) for record in document['records'] if record['teacher'] == data['teacher']
+                             for group in record['groups'] for key in group['before']}
+        same_start_revision = any(r['teacher'] == data['teacher'] and r['start'] == data['start']
+                                  for r in history['_overrides']['records'])
+        for day in timetables.dates(state, facts):
+            if day < data['start'] or (data.get('end') and day > data['end'] and not same_start_revision) or date.fromisoformat(day).weekday() not in affected_weekdays:
+                continue
+            before, after = schedule(history, day), schedule(proposed, day)
+            if before == after:
+                continue
+            problems = timetables.issues(after, state, day, rules)
+            affected[day] = after
+            problems_by_day[day] = problems
+            evidence['previous'][day] = facts['days'].get(day)
+            evidence['assignments'][day] = {k: timetables.conflict_context(history, day, k, a) or timetables.context(history, state, day, k, facts, before) for k, a in state['asg'].get(day, {}).items()}
+            previous_problems = timetables.issues(before, state, day, rules)
+            days.append(dict(day=day, issues=[p for p in problems if p not in previous_problems], assignments=list(state['asg'].get(day, {}))))
+        result = deepcopy(facts)
+        for day in affected:
+            result['days'].pop(day, None)
+        result = statistics.sync(lambda day: affected[day], state, result, affected)
+        for day, problems in problems_by_day.items():
+            if day in result['days']:
+                result['days'][day]['issues'] = sorted(set(result['days'][day]['issues']) | {i['key'] for i in problems})
+                problem_keys = {i['key'] for i in problems}
+                for demand in result['days'][day]['demand'].values():
+                    if demand['key'] in problem_keys:
+                        demand.update(eligible=False, valid=False, outcome='pending')
+        document['evidence'].append(evidence)
+        documents = db.execute('SELECT key, value FROM documents ORDER BY key').fetchall()
+        # UUIDs are evidence identities, not part of the preview fingerprint.
+        token = timetables.digest([documents, {k: v for k, v in data.items() if k != 'token'}])
+        return document, result, dict(token=token, days=days, overrides=report)
+
+    @app.post('/api/orari/preview')
+    def preview_override(data: dict):
+        with store.connect() as db:
+            db.execute('BEGIN')
+            _, _, impact = override_plan(db, data)
+        return impact
+
+    @app.post('/api/orari/override')
+    def save_override(data: dict):
+        with store.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            document, facts, impact = override_plan(db, data)
+            if not data.get('token') or data['token'] != impact['token']:
+                raise HTTPException(status_code=409, detail='Anteprima scaduta: genera una nuova anteprima.')
+            backup.backup_database(str(database), str(backup_dir))
+            store.write(db, 'timetableOverrides', document)
+            store.write(db, 'statistics', facts)
+        return dict(ok=True)
 
     @app.get('/api/permessi')
     def get_permits():
         with store.connect() as db:
             ds, state = load(db)
-            versions = store.read(db, 'timetables')['versions']
+            versions = read_history(db)['versions']
         summaries, balances = recovery.summary(state)
         manual = {p['teacher']: p for p in recovery.ledger(state).values() if p['date'] is None}
         return dict(dataset=ds, timetableVersions=[dict(effective=v['effective'], dataset=v['dataset']) for v in versions], permitAttachments=state['permitAttachments'], permessi=state['permessi'], permitRequests=state['permitRequests'], permitNotes=state['permitNotes'], permitKinds=state['permitKinds'], recoveries=summaries, balances=balances, manualPermits=manual, manualPermitNotes=state['manualPermitNotes'])
@@ -353,7 +445,7 @@ def create_app(path=None, seed=None):
 
     def timetable_plan(db, data, effective):
         ds = normalize_dataset(data)
-        history = store.read(db, 'timetables')
+        history = read_history(db)
         state = store.read(db, 'state', EMPTY)
         for group in EMPTY:
             state.setdefault(group, {})
@@ -379,7 +471,7 @@ def create_app(path=None, seed=None):
     def import_timetable(data: dict, confirm: bool = False, effective: date | None = None, token: str | None = None):
         with store.connect() as db:
             db.execute('BEGIN IMMEDIATE')
-            history = store.read(db, 'timetables')
+            history = read_history(db)
             # Initial loading remains compatible; replacing any existing timetable requires review.
             if (history or not testing) and not confirm:
                 raise HTTPException(status_code=409, detail='Conferma esplicita richiesta per importare l’orario.')
@@ -392,7 +484,7 @@ def create_app(path=None, seed=None):
                 snapshot = backup.backup_database(str(database), str(backup_dir))
             except Exception as exc:
                 raise ValueError('Backup prima dell’importazione fallito. Nessun dato modificato: ' + str(exc)) from exc
-            store.write(db, 'timetables', proposed)
+            write_history(db, proposed)
             store.write(db, 'statistics', facts)
             # Legacy dataset is a preserved baseline, never the latest scheduled version.
             if not history:
@@ -432,7 +524,7 @@ def create_app(path=None, seed=None):
             attachment_group = {'abs': 'absenceAttachments', 'dis': 'disAttachments'}.get(e.group)
             for d in days:
                 ds, _ = load(db, d)
-                active = timetables.version(store.read(db, 'timetables'), d)['dataset']
+                active = timetables.version(read_history(db), d)['dataset']
                 if e.id not in (ds['classes'] if e.group == 'cf' else ds['teachers']):
                     raise ValueError('Docente o classe sconosciuto.')
                 if e.hours is not None and e.id not in state[e.group].get(d, {}) and e.id not in (active['classes'] if e.group == 'cf' else active['teachers']):
@@ -503,22 +595,26 @@ def create_app(path=None, seed=None):
             ds, state = load(db)
             rules = policies(db, ds)
             facts = store.read(db, 'statistics', statistics.empty())
-            history = store.read(db, 'timetables')
+            history = read_history(db)
             images = attachments.export(db, state)
-        return dict(schema=4, timetables=history, attachments=images, datasetId='v1:'+','.join(sorted(ds['teachers'])), hourTypes=rules, statistics=facts, **state)
+        return dict(schema=5, timetables={k: v for k, v in history.items() if k != '_overrides'}, timetableOverrides=history['_overrides'], attachments=images, datasetId='v1:'+','.join(sorted(ds['teachers'])), hourTypes=rules, statistics=facts, **state)
 
     @app.post('/api/import')
-    def import_state(data: dict):
+    def import_state(data: dict, preview: bool = False):
         with store.connect() as db:
             db.execute('BEGIN IMMEDIATE')
-            history = timetables.validate(data.get('timetables')) if data.get('schema') == 4 else store.read(db, 'timetables')
-            if data.get('schema') != 4:
+            history = timetables.validate(data.get('timetables')) if data.get('schema') in (4, 5) else read_history(db)
+            retained = store.read(db, 'timetableOverrides', overrides.empty())
+            document = overrides.validate(data.get('timetableOverrides'), history) if data.get('schema') == 5 else retained
+            document, restore_review = overrides.reconcile(document, history)
+            history['_overrides'] = document
+            if data.get('schema') not in (4, 5):
                 ds, _ = load(db)
-            if data.get('schema') == 4:
+            if data.get('schema') in (4, 5):
                 ds = timetables.dataset(history, datetime.now(ZoneInfo('Europe/Rome')).date().isoformat())
             identifier = data.get('datasetId')
-            compatible = identifier == 'v1:'+','.join(sorted(ds['teachers'])) if data.get('schema') == 4 else isinstance(identifier, str) and identifier.startswith('v1:') and set(identifier[3:].split(',')) <= set(ds['teachers'])
-            if type(data.get('schema')) is not int or data['schema'] not in (1, 2, 3, 4) or not compatible:
+            compatible = identifier == 'v1:'+','.join(sorted(ds['teachers'])) if data.get('schema') in (4, 5) else isinstance(identifier, str) and identifier.startswith('v1:') and set(identifier[3:].split(',')) <= set(ds['teachers'])
+            if type(data.get('schema')) is not int or data['schema'] not in (1, 2, 3, 4, 5) or not compatible:
                 raise ValueError('Archivio non compatibile.')
             rules = validate_types(data['hourTypes']) if 'hourTypes' in data else None
             state = {k: data.get(k, {}) for k in EMPTY}
@@ -574,16 +670,23 @@ def create_app(path=None, seed=None):
                     raise ValueError('Archivio recuperi richiede schema 2.')
                 recovery.migrate(state)
             recovery.validate(state)
-            attachments.import_images(db, state, data, data['schema'])
             facts = statistics.validate(data['statistics'], lambda day: timetables.dataset(history, day), state) if 'statistics' in data else timetables.sync(history, state, statistics.empty(), reconstructed=True)
-            if data['schema'] == 4:
-                store.write(db, 'timetables', history)
+            if preview:
+                return dict(overrides=restore_review)
+            attachments.import_images(db, state, data, data['schema'])
+            if data['schema'] in (4, 5):
+                write_history(db, history)
                 store.write(db, 'dataset', history['versions'][0]['dataset'])
             if rules is not None:
                 store.write(db, 'hourTypes', merge_types(ds, rules))
             store.write(db, 'state', state)
             store.write(db, 'statistics', facts)
-        return {'ok': True}
+            store.write(db, 'timetableOverrides', document)
+        return {'ok': True, 'overrides': restore_review}
+
+    @app.post('/api/import/preview')
+    def preview_archive(data: dict):
+        return import_state(data, preview=True)
 
     @app.get('/api/backups')
     def list_backups_endpoint():

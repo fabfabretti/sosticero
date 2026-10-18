@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { todayInRome } from './StatsCalendar';
 
 type Impact = {
+  overrides?: { teacher: string; start: string; version: string; group: number; review: boolean }[];
   token: string; effective: string; end: string | null; initial: boolean;
   changedLessons: number; added: string[]; removed: string[]; changedTeachers: string[];
   teachers: Record<string, string>; previousTeachers?: Record<string, string>;
@@ -55,6 +56,7 @@ export function TimetableImport({ api, onImported }: { api: <T>(url: string, bod
       <p>{impact.changedLessons} lezioni settimanali cambiate · {impact.days.length} giornate registrate coinvolte.</p>
       <p>Docenti aggiunti: {names(impact.added)}</p><p>Docenti rimossi: {names(impact.removed, true)}</p><p>Anagrafiche modificate: {names(impact.changedTeachers)}</p>
       {(impact.added.length > 0 || impact.removed.length > 0) && <p>Controlla gli ID: rimozioni e aggiunte non trasferiscono le registrazioni tra docenti. Verifica che il file sia completo.</p>}
+      {!!impact.overrides?.length && <details><summary>Modifiche manuali: {impact.overrides.filter(r => r.review).length} da verificare, {impact.overrides.filter(r => !r.review).length} compatibili</summary>{impact.overrides.map((r, n) => <p key={n}>{impact.teachers[r.teacher] || impact.previousTeachers?.[r.teacher] || r.teacher} · dal {r.start} · {r.review ? 'Da verificare: verranno usate le ore importate per questa modifica' : 'Modifica conservata'}</p>)}</details>}
       {impact.days.map(d => <details key={d.day}>
         <summary>{d.day}: {d.before.length} → {d.after.length} righe, {d.issues.length} assegnazioni da verificare</summary>
         <p>Prima: {d.before.map(r => `${r.h}ª ${r.c} (${r.sede || 'sede ignota'})`).join(', ') || 'Nessuna riga'}</p>
