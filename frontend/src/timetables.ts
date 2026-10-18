@@ -7,13 +7,13 @@ export const norm = (s: string) =>
     .normalize("NFD")
     .replace(/[\u0300-\u036f.\s]/g, "");
 
-type Lesson = { classes?: string[]; activities?: string[]; special?: string };
+type Lesson = { classes?: string[]; activities?: string[]; special?: string; site?: string | null };
 type Dataset = {
   teachers: Record<string, { name: string; code?: string; classe_concorso?: string; cdcName?: string; retired?: boolean }>;
   lessons: Record<string, Lesson>;
 };
 
-export type TimetableCell = { classes: string[]; codes: string[]; partners: string[] };
+export type TimetableCell = { classes: string[]; codes: string[]; partners: string[]; site: string | null };
 export type TeacherTimetable = {
   id: string;
   name: string;
@@ -49,6 +49,7 @@ export function buildTeacherTimetables(dataset: Dataset): TeacherTimetable[] {
             for (const other of byClass[`${day}|${h}|${c}`] || []) if (other !== id) partners.add(other);
           return {
             classes,
+            site: l.site || null,
             codes: l.activities?.length ? l.activities : l.special ? [l.special] : [],
             partners: [...partners],
           };

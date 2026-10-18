@@ -5,7 +5,7 @@ from hashlib import sha256
 import json
 
 from .domain import normalize_dataset, lesson, rows, validate_assignment, HOURS, SITES
-from . import statistics
+from . import statistics, overrides
 
 
 def digest(value):
@@ -22,7 +22,8 @@ def version(history, day):
 
 def dataset(history, day):
     """Keep historical IDs addressable without making inactive teachers candidates."""
-    active = version(history, day)['dataset']
+    chosen = version(history, day)
+    active = overrides.apply(history.get('_overrides', overrides.empty()), chosen, chosen['dataset'], day)
     selected = dict(active, teachers=dict(active['teachers']))
     teachers = {}
     classes = set()
@@ -57,8 +58,8 @@ def issues(ds, state, day, policies=None):
     return result
 
 
-def context(history, state, day, key, facts):
-    ds = dataset(history, day)
+def context(history, state, day, key, facts, ds=None):
+    ds = ds if ds is not None else dataset(history, day)
     teacher, h, cls = key.split('|')
     l = lesson(ds, teacher, day, int(h)) or {}
     slot = facts['days'].get(day, {}).get('absences', {}).get(f'{teacher}|{h}', {})
@@ -69,7 +70,7 @@ def context(history, state, day, key, facts):
 
 
 def conflict_context(history, day, key, assignment):
-    for correction in reversed(history['corrections']):
+    for correction in reversed(history.get('_overrides', overrides.empty())['evidence'] + history['corrections']):
         saved = correction['assignments'].get(day, {}).get(key)
         if saved and saved['assignment'] == assignment:
             return saved
@@ -100,6 +101,7 @@ def plan(history, ds, effective, state, facts, policies):
     new = dict(id=digest([effective, ds]), effective=effective, dataset=ds)
     proposed['versions'].append(new)
     proposed['versions'].sort(key=lambda v: v['effective'] or '')
+    proposed['_overrides'], override_report = overrides.reconcile(proposed.get('_overrides', overrides.empty()), proposed)
     later = next((v['effective'] for v in proposed['versions'] if v['effective'] and v['effective'] > effective), None)
     affected = [d for d in dates(state, facts) if d >= effective and (later is None or d < later)]
     old_ds = version(history, effective)['dataset']
@@ -127,7 +129,7 @@ def plan(history, ds, effective, state, facts, policies):
                             references=reference_issues(proposed, state, day)))
     proposed['corrections'].append(evidence)
     return proposed, result, dict(effective=effective, end=(date.fromisoformat(later)-timedelta(days=1)).isoformat() if later else None,
-        initial=False, days=changes, added=sorted(set(ds['teachers'])-set(old_ds['teachers'])),
+        initial=False, days=changes, overrides=override_report, added=sorted(set(ds['teachers'])-set(old_ds['teachers'])),
         removed=sorted(set(old_ds['teachers'])-set(ds['teachers'])),
         changedTeachers=sorted(i for i in set(ds['teachers']) & set(old_ds['teachers']) if ds['teachers'][i] != old_ds['teachers'][i]),
         changedLessons=sum(old_ds['lessons'].get(k) != ds['lessons'].get(k) for k in old_ds['lessons'].keys() | ds['lessons'].keys()))

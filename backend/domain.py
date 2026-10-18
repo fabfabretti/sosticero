@@ -156,13 +156,14 @@ def eligibility(ds, state, day, row, teacher, policies=None):
     ty = ''
     keys = []
     released = l and l['classes'] and all(class_out(state, day, c, h, row['k']) for c in l['classes'])
-    if manual or released:
+    disabled = bool(l and l.get('disabled'))
+    if (manual or released) and not disabled:
         ty, keys = 'D', ['derived:available']
     elif l and activity_codes(l):
         ty = l.get('special') if policies is None and l.get('special') else activity_codes(l)[0]
         keys = ['code:' + code for code in activity_codes(l)]
     elif l and row['c'] in l['classes'] and l['site'] and l['site'] == row['sede'] and same_room:
-        ty, keys = 'C', ['derived:support' if teacher['role'] == 'sostegno' else 'derived:itp']
+        ty, keys = 'C', ['derived:co-support' if teacher['role'] == 'sostegno' else 'derived:itp']
     elif l and l['classes'] and teacher['role'] == 'sostegno':
         ty, keys = 'TC', ['derived:support']
     elif l and l['classes'] and teacher['role'].upper() == 'ITP':
@@ -179,13 +180,15 @@ def eligibility(ds, state, day, row, teacher, policies=None):
     if policy and not all(p['visible'] for p in policy):
         return None
     # Staying in the covered class does not release a teacher from another lesson.
-    exceptional = bool(ty != 'C' and policy and not all(p['available'] for p in policy))
+    exceptional = disabled or bool(ty != 'C' and policy and not all(p['available'] for p in policy))
     loc = state['disSites'].get(day, {}).get(i) if manual else None
     loc = loc or ('centrale' if ty == 'UTC' else 'succursale' if ty == 'UTS' else l['site'] if l else None)
     why = 'Assente' if h in absences(state, day).get(i, []) else ''
     if not why and any(k != row['k'] and int(k.split('|')[1]) == h and a['v'] == i for k, a in state['asg'].get(day, {}).items()):
         why = 'Già assegnato in questa ora'
     label = ' / '.join(p['label'] for p in policy) or LABELS.get(ty, ty)
+    if disabled:
+        label += ' · Ora disabilitata'
     if ty == 'C' and teacher['role'] not in ('sostegno', 'ITP'):
         label = LABELS['C']
     return dict(id=i, name=teacher['name'], ty=ty, loc=loc, why=why, tag=why or ('Occupato · ' if exceptional else '') + label,
@@ -246,13 +249,16 @@ def rp_candidate(ds, state, day, row, teacher, permits):
                 convenient=convenient, rpHours=balance, permitId=available[0]['id'])
 
 
-def candidates(ds, state, day, row, policies=None):
+def candidates(ds, state, day, row, policies=None, selected=None):
     weekly = {}
     for k, l in ds['lessons'].items():
-        weekly.setdefault(k.split('|')[0], set()).update(l['classes'])
+        if selected is None or k.startswith(f'{selected}|'):
+            weekly.setdefault(k.split('|')[0], set()).update(l['classes'])
     result = []
     permits = recovery.ledger(state, (day, row['k']))
     for t in ds['teachers'].values():
+        if selected is not None and t['id'] != selected:
+            continue
         c = eligibility(ds, state, day, row, t, policies) or rp_candidate(ds, state, day, row, t, permits)
         if not c:
             continue
@@ -260,14 +266,17 @@ def candidates(ds, state, day, row, policies=None):
         cdc = t.get('classe_concorso', '')
         result.append(dict(c, role=t['role'], cdc=cdc, cdcName=CDC_NAMES.get(cdc, cdc),
                            clsWeek=cls, inClass=row['c'] in cls))
-    result.append(dict(id='DIR', name='Dirigente', ty='DIR', loc='centrale', why='', tag='Opzione manuale, da verificare'))
-    result.append(dict(id='UNCOVERED', name='Scoperta', ty='UNCOVERED', loc=None, why='', tag='Emergenza: nessun supplente trovato'))
-    effective = [h for h in HOURS if any(row['c'] in (lesson(ds, i, day, h) or {}).get('classes', []) for i in ds['teachers']) and not class_out(state, day, row['c'], h, row['k'])]
+    if selected in (None, 'DIR'):
+        result.append(dict(id='DIR', name='Dirigente', ty='DIR', loc='centrale', why='', tag='Opzione manuale, da verificare'))
+    if selected in (None, 'UNCOVERED'):
+        result.append(dict(id='UNCOVERED', name='Scoperta', ty='UNCOVERED', loc=None, why='', tag='Emergenza: nessun supplente trovato'))
+    effective = [h for h in HOURS if any(row['c'] in (lesson(ds, i, day, h) or {}).get('classes', []) for i in ds['teachers']) and not class_out(state, day, row['c'], h, row['k'])] if selected in (None, 'ENTRA', 'ESCE') else []
     if effective:
         info = f'La classe entra alle {effective[0]} ed esce alle {effective[-1]}'
         for cid, title, boundary in [('ENTRA', 'Entra dopo', effective[0]), ('ESCE', 'Esce prima', effective[-1])]:
-            result.append(dict(id=cid, name=title, ty='SPECIAL', loc=None, why='', tag='Da verificare',
-                               enable=row['h'] == boundary, info=info))
+            if selected in (None, cid):
+                result.append(dict(id=cid, name=title, ty='SPECIAL', loc=None, why='', tag='Da verificare',
+                                   enable=row['h'] == boundary, info=info))
     for c in result:
         c['today'] = sum(a['v'] == c['id'] for a in state['asg'].get(day, {}).values()) if c['id'] in ds['teachers'] else 0
         c['total'] = sum(a['v'] == c['id'] for assignments in state['asg'].values() for a in assignments.values()) if c['id'] in ds['teachers'] else 0
@@ -292,7 +301,7 @@ def validate_assignment(ds, state, day, key, value, policies=None, exceptional=F
         if any(k != key and int(k.split('|')[1]) == row['h'] and a['v'] == value for k, a in state['asg'].get(day, {}).items()):
             raise ValueError('Già assegnato in questa ora')
         return dict(old)
-    c = next((c for c in candidates(ds, state, day, row, policies) if c['id'] == value), None)
+    c = next((c for c in candidates(ds, state, day, row, policies, selected=value) if c['id'] == value), None)
     if not c or c['why']:
         raise ValueError(c['why'] if c else 'Candidato non disponibile.')
     if c.get('exceptional') and not exceptional:

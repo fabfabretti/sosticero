@@ -131,10 +131,17 @@ class HourTypesTest(unittest.TestCase):
         state['abs'][DAY] = {'absent': [2]}
         row = rows(ds, state, DAY)[0]
         rules = merge_types(ds, {})
+        rules['derived:support']['visible'] = False
         cs = {c['id']: c for c in candidates(ds, state, DAY, row, rules)}
         self.assertEqual(cs['support']['ty'], 'C')
+        self.assertEqual(cs['support']['typeLabel'], 'Compresenza sostegno')
         self.assertFalse(cs['support']['exceptional'])
         self.assertEqual(validate_assignment(ds, state, DAY, row['k'], 'support', rules)['t'], 'C')
+        rules['derived:co-support']['visible'] = False
+        self.assertNotIn('support', {c['id'] for c in candidates(ds, state, DAY, row, rules)})
+        rules['derived:co-support']['visible'] = True
+        ds['lessons']['support|lun|2']['classes'] = ['2A']
+        self.assertNotIn('support', {c['id'] for c in candidates(ds, state, DAY, row, rules)})
 
     def test_multi_code_and_class_out_precedence(self):
         ds = normalize_dataset(self.raw)

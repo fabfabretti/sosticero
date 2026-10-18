@@ -56,7 +56,7 @@ The **Permessi** register records a teacher’s leave date, selected periods, an
 
 ### Read the weekly timetables
 
-**Orari** shows the timetable currently in effect as one weekly grid per teacher, days as columns and periods as rows. Each cell shows the class, or the activity code (POT, UTC, …) in the colour configured under *Tipi di ora*. When several teachers share a class and period, each cell lists the co-teachers inline, so compresenza is visible at a glance. Filter by teacher name or code to focus on one person; the caption gives the effective date of the version being shown. The screen is read-only: it never changes the timetable.
+**Orari** shows one weekly grid per teacher for a selected date. Campus-coloured outlines identify class lessons; filled rectangles identify special activities, with campus-coloured C/S markers inside. Compresenza tooltips name co-teachers. Filter by name or code, then use **Modifica** to move, swap or disable special hours through dated overrides while imported timetables remain intact. See **Modifiche manuali agli orari** below.
 
 ### Understand demand and coverage
 
@@ -306,7 +306,7 @@ collegamento al permesso e il conteggio dei recuperi fino alla correzione
 esplicita; una copertura RP in conflitto non conta come copertura valida nelle
 statistiche. I fatti precedenti alla correzione sono conservati nella cronologia.
 
-Gli archivi esportati usano lo schema 4 e includono orari, evidenze, statistiche
+Gli archivi esportati usano lo schema 5 e includono orari, modifiche manuali, evidenze, statistiche
 e immagini. Gli schemi precedenti restano importabili, se compatibili, senza
 sostituire la cronologia già presente; il loro contesto eventualmente ricostruito
 non equivale a un orario storico originale. Un ripristino da backup ripristina
@@ -355,3 +355,58 @@ un ripristino conserva la chiave locale. I backup SQLite comprendono configurazi
 e cronologia Inbox: ripristinarli può riproporre comunicazioni successive al backup.
 Le esportazioni JSON delle supplenze non trasferiscono l'integrazione Inbox.
 Mantieni il servizio sull'accesso localhost previsto dalla configurazione esistente.
+
+### Modifiche manuali agli orari
+
+In **Orari**, scegli la data di visualizzazione e premi **Modifica** sul docente.
+Le lezioni mostrano classe e `C`/`S` in un rettangolo vuoto con bordo della
+sede; le attività senza classi hanno il fondo della sede. Le lezioni con classi,
+comprese le attività collegate a una classe, restano fisse.
+
+Trascina un'ora speciale su una cella vuota per spostarla oppure su un'altra ora
+speciale dello stesso docente per scambiarle. Durante il trascinamento una copia dell’ora segue il puntatore e la destinazione
+si evidenzia, indicando spostamento o scambio. Con la tastiera usa **Alt + frecce**
+sull’ora speciale. Il clic sull'ora
+speciale la disabilita o riattiva. Un'ora disabilitata resta un impegno: compare
+solo in **Solo in caso di necessità**, richiede la conferma eccezionale e non
+crea disponibilità RP. I tipi nascosti restano nascosti, anche con disponibilità
+manuale; assenza e doppia assegnazione non si possono aggirare.
+
+**Dal** stabilisce l'inizio; **Fino al** è facoltativo e comprende l'ultimo giorno.
+La modifica si ripete ogni settimana. Una modifica con inizio successivo prevale
+sull'intera settimana del docente durante il proprio intervallo; quando termina,
+riprende la precedente modifica ancora valida, oppure l'orario importato.
+Rivedere la stessa decorrenza conserva la revisione precedente come evidenza.
+Il badge **MODIFICATO · dal …** indica la decorrenza; le modifiche future sono
+segnalate come programmate e consultabili in **Modifiche salvate**.
+
+**Salva** verifica la modifica e la registra; se crea nuovi problemi in assegnazioni salvate, mostra un riepilogo compatto
+con dettagli espandibili e richiede **Conferma e salva**. Le giornate senza
+nuovi problemi non interrompono il salvataggio.
+**Annulla** scarta la bozza. Cambiare
+la decorrenza ricarica l'orario relativo e richiede di scartare la bozza.
+**Ripristina**, seguito da **Salva**, torna all'orario importato dalla data scelta senza
+cambiare il passato o far riapparire modifiche precedenti dopo una scadenza.
+
+Le modifiche sono uno strato separato: gli originali importati restano intatti.
+Un nuovo import conserva le modifiche se le ore originali coinvolte non cambiano.
+Se cambia una sorgente o destinazione, l'intero spostamento/scambio viene sospeso;
+le altre modifiche compatibili restano. L'anteprima di importazione mostra
+compatibilità e conflitti. In Orari, **Da verificare** mostra la modifica sospesa:
+ricreala sulla nuova base e salva, oppure salvala senza ricrearla per scartare la modifica sospesa.
+Non viene riattivata automaticamente da import successivi. Le supplenze salvate
+restano conservate e quelle non più valide vengono segnalate, senza cancellazioni,
+riassegnazioni automatiche o rimborsi dei recuperi.
+
+Gli archivi JSON di schema 5 includono modifiche, ripristini ed evidenze; gli
+schemi precedenti restano accettati e conservano le modifiche presenti, mostrando
+nell'anteprima di ripristino quelle incompatibili. I backup SQLite includono
+l'intero strato e possono ripristinarlo insieme agli altri dati.
+
+API: `GET /api/orari?day=YYYY-MM-DD` restituisce orario effettivo, originale,
+revisioni e `basis`. `POST /api/orari/preview` riceve `{teacher, start, end,
+cells, basis, reset}`: `end` può essere `null`, `cells` contiene tutte le celle
+`lun|1` … `ven|7` (oggetto lezione o `null`). Il ripristino usa `reset: true` ed
+`end: null`. `POST /api/orari/override` riceve lo stesso corpo con il `token`
+dell'anteprima. Una base o anteprima scaduta restituisce 409 e richiede verifica.
+`POST /api/import/preview` mostra i conflitti prima del ripristino di un archivio.

@@ -2,7 +2,8 @@
 import re
 import secrets
 
-DERIVED = {'lesson': 'Lezione', 'itp': 'Compresenza ITP', 'support': 'Sostegno', 'available': 'A disposizione'}
+DERIVED = {'lesson': 'Lezione', 'itp': 'Compresenza ITP', 'support': 'Rottura compresenza',
+           'co-support': 'Compresenza sostegno', 'available': 'A disposizione'}
 PALETTE = ('blue', 'green', 'purple', 'amber', 'rose', 'teal')
 
 
@@ -16,6 +17,8 @@ def activity_codes(l):
 
 def merge_types(ds, existing):
     result = dict(existing)
+    if result.get('derived:support', {}).get('label') == 'Sostegno':
+        result['derived:support'] = dict(result['derived:support'], label='Rottura compresenza')
     labels = {'derived:' + k: v for k, v in DERIVED.items()}
     for l in (ds or {}).get('lessons', {}).values():
         labels.update({'code:' + c: c for c in activity_codes(l)})
@@ -23,7 +26,7 @@ def merge_types(ds, existing):
         if key not in result:
             known = key in ('code:POT', 'code:UTC', 'code:UTS', 'code:DIS', 'derived:available')
             school = False if key == 'code:GM' else True if known or key.startswith('derived:') else None
-            result[key] = dict(label=label, available=known, visible=known or key in ('derived:itp', 'derived:support'), school=school, color=secrets.choice(PALETTE))
+            result[key] = dict(label=label, available=known, visible=known or key in ('derived:itp', 'derived:support', 'derived:co-support'), school=school, color=secrets.choice(PALETTE))
     return result
 
 
