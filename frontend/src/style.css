@@ -1195,6 +1195,7 @@ td.none {
 
 .orari-site.campus-centrale { background: #dcfce7; color: #14532d; border-color: #86efac; }
 .orari-site.campus-succursale { background: #fef9c3; color: #713f12; border-color: #fde047; }
+.communicated { display: inline-flex; margin: 4px 0 0; }
 
 /* Inbox uses the existing app surfaces and controls. */
 .inbox-page { width: 100%; max-width: 1100px; margin: 0 auto; padding: 24px 28px 48px; }

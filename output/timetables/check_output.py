@@ -52,12 +52,13 @@ assert by_code['MLL'] != next(t['id'] for t in data['docenti'] if t['nome_origin
 print('PASS: stable existing IDs, distinct Rossato/Rossin identities, distinct Martinelli identities')
 
 assert {t['id'] for t in data['docenti']} == {t['id'] for t in existing}
-for code, name in {'B016': 'DILEO IGNAZIO PASQUALE', 'SAV': 'Spillari Davide (Savelli)',
-                   'VAL': 'ADRIANILLI FRANCESCA', 'LAV': 'Lavorato (Lazzaro) Vinc'}.items():
+for code, name in {'B016': 'DILEO IGNAZIO PASQUALE', 'BEN': 'Gamb.tto Silvia (Benedetti)',
+                   'CLR': 'Binotto Rosaria (Cavallaro)', 'SAV': 'Spillari Davide (Savelli)',
+                   'VAL': 'ADRIANILLI FRANCESCA', 'LAV': 'Lazzaro Vinc (Lavorato)'}.items():
     teacher = next(t for t in data['docenti'] if t['sigla_untis'] == code)
     assert teacher['nome_originale'] == name
     assert teacher['id'] == next(t['id'] for t in existing if t['code'] == code)
-print('PASS: all existing teacher IDs retained, confirmed replacements and Lavorato display name')
+print('PASS: all existing teacher IDs retained, confirmed replacements and supplente display names')
 
 for code, day, hour, label in [('DAL','ven',2,'STU'),('DAL','ven',3,'STU'),
                               ('DAL','gio',2,'INC.'),('DAL','gio',3,'INC.'),('LDS','mer',3,'INC.')]:

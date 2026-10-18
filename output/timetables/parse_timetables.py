@@ -190,9 +190,10 @@ def parse(root):
 def preserve_identities(result, catalogue):
     """Reuse existing IDs by full name; codes alone cannot distinguish old ROS records."""
     confirmed = {'FAZIO FEDE': 'Fazio F. Federico', 'MARTINELLI': 'Martinelli Andrea', 'IANZANO': 'Ianzano'}
-    # User-confirmed operational replacements and the requested display name.
-    replacements = {'B016': 'DILEO IGNAZIO PASQUALE', 'SAV': 'Spillari Davide (Savelli)',
-                    'VAL': 'ADRIANILLI FRANCESCA', 'LAV': 'Lavorato (Lazzaro) Vinc'}
+    # User-confirmed operational replacements; each name reads "supplente (titolare)".
+    replacements = {'B016': 'DILEO IGNAZIO PASQUALE', 'BEN': 'Gamb.tto Silvia (Benedetti)',
+                    'CLR': 'Binotto Rosaria (Cavallaro)', 'SAV': 'Spillari Davide (Savelli)',
+                    'VAL': 'ADRIANILLI FRANCESCA', 'LAV': 'Lazzaro Vinc (Lavorato)'}
     mapping, merged = {}, {}
     for teacher in result['docenti']:
         old_id = teacher['id']

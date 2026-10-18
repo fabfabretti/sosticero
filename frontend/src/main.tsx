@@ -809,8 +809,8 @@ function Supplenze() {
       data?.rows.filter((r) => filter === "all" || r.sede === filter) || [],
     assigned = data?.state.asg[day] || {};
   const nextDay = localDate(new Date(new Date(day + "T12:00").getTime() + 864e5));
-  const reminders = Object.values(data?.state.asg[nextDay] || {})
-    .map(a => a.v === "ENTRA" || a.v === "ESCE" ? `${a.c} ${a.v === "ESCE" ? "esce prima" : "entra dopo"}` : "")
+  const reminders = Object.entries(data?.state.asg[nextDay] || {})
+    .map(([key, a]) => a.v === "ENTRA" || a.v === "ESCE" ? `${a.c} ${(entryExitLabel(a.v, Number(key.split("|")[1])) || name(a.v)).toLowerCase()}` : "")
     .filter(Boolean);
   return (
     <>
@@ -1078,10 +1078,18 @@ function Supplenze() {
                             onClick={() => void choose(r)}
                           >
                             {assigned[r.k]
-                              ? name(assigned[r.k].v)
+                              ? entryExitCellLabel(r.k, assigned) || name(assigned[r.k].v)
                               : "Scegli il supplente"}
-                            <small>{assigned[r.k]?.v === "UNCOVERED" ? "Nessun supplente trovato" : assigned[r.k]?.t}</small>
+                            <small>{assigned[r.k]?.v === "UNCOVERED" ? "Nessun supplente trovato" : (assigned[r.k]?.t === "SPECIAL" ? "" : assigned[r.k]?.t)}</small>
                           </button>
+                          {entryExitBoundary(r.k, assigned) && <span className="opt communicated">
+                            <button type="button" className={assigned[r.k].communicated ? "on" : ""}
+                              aria-pressed={assigned[r.k].communicated === true} disabled={busy}
+                              aria-label={`Comunicato ${r.c}: ${entryExitCellLabel(r.k, assigned)}`}
+                              onClick={() => void mutate("assignments", { day, key: r.k, communicated: !assigned[r.k].communicated })}>
+                              {assigned[r.k].communicated && <span aria-hidden="true">✓ </span>}Comunicato
+                            </button>
+                          </span>}
                           {assigned[r.k] && (
                             <button
                               className="clr"
@@ -1117,7 +1125,7 @@ function Supplenze() {
       {open && (
         <CandidateDrawer
           open={open}
-          cands={cands}
+          cands={cands.map(c => ({ ...c, name: entryExitLabel(c.id, open.h) || c.name }))}
           current={assigned[open.k]?.v}
           busy={busy}
           name={name}

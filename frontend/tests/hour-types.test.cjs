@@ -63,3 +63,18 @@ test('RP groups retain server ordering, badges, explanations and blocked transfe
   assert.equal(nodes.filter(n => n.type === 'h3').map(n => n.props.children).join('|'), 'Recuperi permesso · ore favorevoli|Solo in caso di necessità|Altri recuperi permesso');
   assert.ok(nodes.some(n => n.props.className === 'type-chip type-rp'));
 });
+
+test('availability chips show the campus using the POT pattern', () => {
+  const c = component('src/CandidateDrawer.tsx');
+  const candidates = [
+    ['D', 'centrale', 'A disposizione · centrale'],
+    ['D', 'succursale', 'A disposizione · succursale'],
+    ['D', null, 'A disposizione · sede ignota'],
+    ['POT', 'centrale', 'POT · centrale'],
+  ];
+  const nodes = c.render({ open: { h: 2, c: '1A', ids: [], sede: 'centrale' }, name: x => x, busy: false, onClose() {}, onAssign() {},
+    cands: candidates.map(([ty, loc], i) => ({ id: String(i), name: 'Teacher', ty, loc, typeLabel: ty === 'D' ? 'A disposizione' : 'POT', why: '', total: 0, today: 0 })) });
+  const chips = nodes.filter(n => n.props.className?.startsWith('type-chip '));
+  assert.deepEqual(chips.map(n => n.props.children.join('')), candidates.map(c => c[2]));
+  assert.ok(nodes.some(n => n.props.className === 'type-chip-wrapper cross-site'));
+});
