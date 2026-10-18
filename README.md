@@ -30,6 +30,14 @@ Dark mode, using fictional teachers and records created in an isolated demo data
 - Filter between Centrale, Succursale, or both campuses.
 - Treat several absent co-teachers in the same class and period as one cover requirement.
 
+### Print the daily substitution sheet
+
+At the bottom of **Supplenze → Stampa / PDF**, the current campus filter is preselected. Choose **Centrale**, **Separata** (Succursale), or **Entrambe**, then select **Genera PDF**. Download the file or open it to print at **A3 portrait, 100% scale**. Both campuses are included in one PDF, each starting on a new sheet.
+
+The paper form includes periods 1–7, the Aula / sede and Tipo columns, signature space, and at least eight rows per period, always including two extra blank writing rows beyond the entries, with thicker rules between periods. Busy periods expand onto additional pages; every page of a multipage PDF has a large **PAGE X/N** indicator at both top and bottom, counted across the whole file.
+
+Recorded absent classes and teachers tagged **In gita** appear as independent lists. The **Docenti a disposizione** section lists the same manual and automatic availability as the sidebar in one wrapping, comma-separated row per period, with names crossed out in periods where they have already been assigned cover. POT and other candidate types are not added unless they also appear in A disposizione. Records without clear campus information are marked **sede non indicata** in supplementary lists; main substitution rows without a campus produce a warning and need correction before distributing the PDF. Exporting never changes saved data, and JSON backup remains separate.
+
 ### Find and assign substitutes
 
 Open a cover requirement to see ranked candidates, their timetable context, teaching subject, campus, and recorded substitution workload. The ranking is currently fixed, but I hope to make it flexible in the future.
