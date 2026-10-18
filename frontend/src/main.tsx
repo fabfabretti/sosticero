@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./style.css";
-import type { Row, Candidate, Data, AbsenceKind } from "./types";
+import type { Row, Candidate, Data, AbsenceKind, Assignment } from "./types";
 import { TimetableImport } from "./TimetableImport";
 import { HourTypes } from "./HourTypes";
 import { CandidateDrawer } from "./CandidateDrawer";
@@ -11,8 +11,30 @@ import { TeacherTimetables } from "./TeacherTimetables";
 import { AbsenceInbox, SheetsSettings, InboxNotice, useInboxStatus } from "./Inbox";
 import { norm } from "./timetables";
 import { HourHelp } from "./Tooltip";
+import { SubstitutionExport } from "./SubstitutionExport";
 import { HashRouter, Link, useLocation } from "react-router";
 const hours = [1, 2, 3, 4, 5, 6, 7];
+const entryExitLabel = (id: string, hour: number) => {
+  const time = (id === "ENTRA"
+    ? ["", "08:35", "09:40", "10:35", "11:40", "12:35", "12:35", "13:25"]
+    : id === "ESCE"
+      ? ["", "", "08:35", "09:30", "10:35", "11:30", "12:35", "13:25"]
+      : [])[hour];
+  return time ? `${id === "ENTRA" ? "Entra dopo" : "Esce prima"} alle ${time}` : undefined;
+};
+const entryExitBoundary = (key: string, assignments: Record<string, Assignment>) => {
+  const a = assignments[key];
+  if (!a || !["ENTRA", "ESCE"].includes(a.v)) return false;
+  const same = Object.keys(assignments).filter(k => assignments[k].c === a.c && assignments[k].v === a.v);
+  const boundary = (a.v === "ENTRA" ? Math.max : Math.min)(...same.map(k => Number(k.split("|")[1])));
+  return Number(key.split("|")[1]) === boundary;
+};
+const entryExitCellLabel = (key: string, assignments: Record<string, Assignment>) => {
+  const a = assignments[key];
+  if (!a || !["ENTRA", "ESCE"].includes(a.v)) return undefined;
+  if (!entryExitBoundary(key, assignments)) return a.v === "ENTRA" ? "Non entrata" : "Uscita";
+  return entryExitLabel(a.v, Number(key.split("|")[1]))?.replace("Entra dopo alle ", "Entra h ") || (a.v === "ENTRA" ? "Entra dopo" : "Esce prima");
+};
 const localDate = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const italianDate = (value: string) => value.split("-").reverse().join("/");
@@ -444,6 +466,7 @@ function Supplenze() {
       focusAfterAdd.current = false;
     }
   }, [busy, chosen]);
+  const [loadedDay, setLoadedDay] = useState("");
   const request = useRef(0);
   const candidateRequest = useRef(0);
   useEffect(() => {
@@ -453,7 +476,7 @@ function Supplenze() {
     const n = ++request.current;
     try {
       const d = await api<Data>("day/" + day);
-      if (n === request.current) setData(d);
+      if (n === request.current) { setData(d); setLoadedDay(day); }
     } catch (e) {
       setError(String(e));
     }
@@ -1082,6 +1105,7 @@ function Supplenze() {
             opzioni fuori sede, altri RP. Le opzioni manuali e gli spostamenti richiedono
             verifica.
           </p>
+          <SubstitutionExport key={`${day}-${filter}`} initialChoice={filter === "centrale" || filter === "succursale" ? filter : "both"} data={data} day={day} disabled={busy || loadedDay !== day} specialLabel={key => entryExitCellLabel(key, data?.state.asg[day] || {})} />
         </main>
       </div>
       {open && (

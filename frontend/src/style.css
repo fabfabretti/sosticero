@@ -1243,3 +1243,17 @@ select.inbox-teacher { width: 220px; padding: 5px 8px; height: 32px; }
   select.inbox-teacher { flex: 1; width: 140px; }
   select.inbox-teacher, .inbox-item .inbox-actions button, .inbox-details summary { min-height: 44px; }
 }
+
+.substitution-export { margin: 16px 0; border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; }
+.substitution-export summary { cursor: pointer; font-weight: 600; min-height: 24px; }
+.export-controls { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; margin: 12px 0; }
+.export-controls label { display: grid; gap: 6px; }
+.export-controls select, .export-controls button, .export-controls a { min-height: 44px; }
+.export-controls a { display: inline-flex; align-items: center; padding: 0 12px; border: 1px solid currentColor; border-radius: 6px; }
+.export-result p { margin: 8px 0; }
+@media (max-width: 600px) { .export-controls label, .export-controls select { width: 100%; min-width: 0; } }
+.export-controls a { color: var(--acc); }
+
+.export-controls button { background: var(--acc); color: var(--on); border: 1px solid var(--acc); border-radius: 6px; padding: 10px 18px; font-weight: 600; }
+.export-controls button:hover:not(:disabled) { filter: brightness(1.12); }
+.export-controls button:disabled { opacity: .5; cursor: default; }

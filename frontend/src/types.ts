@@ -45,7 +45,7 @@ export type Data = {
   references?: { group: string; id: string; message: string }[];
   dataset: {
     teachers: Record<string, Teacher>;
-    lessons: Record<string, { classes: string[] }>;
+    lessons: Record<string, { classes: string[]; site?: string | null; room?: string | null }>;
     classes: string[];
     warnings: unknown[];
   };
