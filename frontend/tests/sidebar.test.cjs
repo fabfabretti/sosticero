@@ -98,7 +98,7 @@ function app(localStorage = { getItem: () => null, setItem() {} }, confirm = () 
       if (id === './Stats') return { Stats: 'stats' };
       if (id === './TeacherTimetables') return { TeacherTimetables: 'teacher-timetables' };
       if (id === './Tooltip') return tooltip;
-      if (id === './SubstitutionExport') return { SubstitutionExport: 'substitution-export' };
+      if (id === './SubstitutionExportPanel') return { SubstitutionExport: 'substitution-export' };
       if (id === './timetables') return timetables;
       if (id === 'react-router') return router;
       if (id.endsWith('.css')) return {};
