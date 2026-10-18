@@ -224,6 +224,7 @@ test('drawer candidates carry profile and entry/exit enable flags', async () => 
   assert.equal(d.props.cands[0].role, 'ITP');
   assert.ok(d.props.cands[0].cdcName.includes('informatiche'));
   assert.equal(ent.enable, false);
+  assert.equal(ent.name, 'Entra dopo alle 08:35');
   assert.ok(ent.info.includes('entra alle 1'));
 });
 
@@ -272,13 +273,29 @@ test('assigned availability stays visible with status for automatic and manual h
   assert.equal(a.render().find(n => n.props['aria-label'] === 'Auto T, 2ª ora').props.disabled, true);
 });
 
+test('entry and exit assignments display every supplied period time', async () => {
+  for (const [v, label, times] of [
+    ['ENTRA', 'Entra h', ['08:35', '09:40', '10:35', '11:40', '12:35', '12:35', '13:25']],
+    ['ESCE', 'Esce prima', ['', '08:35', '09:30', '10:35', '11:30', '12:35', '13:25']],
+  ]) {
+    for (let h = 1; h <= 7; h++) {
+      const a = await loaded({
+        rows: [{ ...row, h, k: `t|${h}|1A` }],
+        state: { ...data.state, asg: { [todayYmd]: { [`t|${h}|1A`]: { v, t: 'SPECIAL', c: '1A' } } } },
+      });
+      const button = a.render().find(n => n.props?.className === 'fill ');
+      assert.equal(button.props.children[0], label + (times[h - 1] ? (v === 'ENTRA' ? ' ' : ' alle ') + times[h - 1] : ''));
+    }
+  }
+});
+
 test('reminds about next-day class entry and exit changes', async () => {
   const tomorrow = new Date(now.getTime() + 864e5);
   const tomorrowYmd = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, "0")}-${String(tomorrow.getDate()).padStart(2, "0")}`;
   const a = await loaded({
     state: { abs: {}, cf: {}, dis: {}, disSites: {}, asg: {
       [tomorrowYmd]: {
-        't|1|1A': { v: 'ESCE', t: 'SPECIAL', c: '1A' },
+        't|2|1A': { v: 'ESCE', t: 'SPECIAL', c: '1A' },
         't|7|2B': { v: 'ENTRA', t: 'SPECIAL', c: '2B' },
       },
     } },
@@ -286,8 +303,8 @@ test('reminds about next-day class entry and exit changes', async () => {
   const banner = a.render().find(n => n.props?.className === 'reminder');
   assert.ok(banner);
   const text = String(banner.props.children);
-  assert.ok(text.includes('1A esce prima'));
-  assert.ok(text.includes('2B entra dopo'));
+  assert.ok(text.includes('1A esce prima alle 08:35'));
+  assert.ok(text.includes('2B entra dopo alle 13:25'));
 });
 
 test('no next-day reminder without entry or exit changes', async () => {
@@ -902,6 +919,28 @@ test('permit warning uses the timetable effective on the selected date', async (
   assert.equal(a.render().filter(n => n.props?.className === 'hour-help').length, 0);
   permitDay(a).props.onChange({target:{value:'19/10/2026'}});
   assert.ok(a.render().some(n => n.props?.className === 'hour-help' && n.props['aria-label'].includes('nessuna attività')));
+});
+
+test('entry and exit blocks show one boundary time and persist Comunicato', async () => {
+  const rows = [1, 2, 3, 5, 6, 7].map(h => ({ ...row, h, k: `t|${h}|${h < 4 ? '1A' : '2A'}`, c: h < 4 ? '1A' : '2A' }));
+  const asg = Object.fromEntries(rows.map(r => [r.k, { v: r.h < 4 ? 'ENTRA' : 'ESCE', t: 'SPECIAL', c: r.c }]));
+  const response = { ...data, rows, state: { ...data.state, asg: { [todayYmd]: asg } } };
+  const a = await loaded(response);
+  const labels = () => a.render().filter(n => n.type === 'button' && n.props.className === 'fill ').map(n => n.props.children[0]);
+  assert.deepEqual(labels(), ['Non entrata', 'Non entrata', 'Entra h 10:35', 'Esce prima alle 11:30', 'Uscita', 'Uscita']);
+  const checks = () => a.render().filter(n => n.type === 'button' && n.props['aria-label']?.startsWith('Comunicato '));
+  assert.equal(checks().length, 2);
+  assert.equal(checks()[0].props['aria-pressed'], false);
+  checks()[0].props.onClick();
+  assert.deepEqual(JSON.parse(a.requests[0].options.body), { day: todayYmd, key: 't|3|1A', communicated: true });
+  a.requests.shift().resolve({ ok: true }); await settle();
+  const updated = { ...response, state: { ...response.state, asg: { [todayYmd]: { ...asg, 't|3|1A': { ...asg['t|3|1A'], communicated: true } } } } };
+  a.requests.shift().resolve(updated); await settle();
+  assert.equal(checks()[0].props['aria-pressed'], true);
+  assert.equal(checks()[0].props.className, 'on');
+  checks()[0].props.onClick();
+  a.requests.shift().resolve({ detail: 'failure' }, false); await settle();
+  assert.equal(checks()[0].props['aria-pressed'], true, 'failed save retains the saved status');
 });
 
 

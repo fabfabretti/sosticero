@@ -50,6 +50,7 @@ class Permit(BaseModel):
 
 
 class Assignment(BaseModel):
+    communicated: StrictBool | None = None
     replace_key: str | None = None
     exceptional: StrictBool = False
     day: date
@@ -572,6 +573,13 @@ def create_app(path=None, seed=None):
             db.execute('BEGIN IMMEDIATE')
             ds, state = load(db, e.day.isoformat())
             assignments = state['asg'].setdefault(e.day.isoformat(), {})
+            if e.communicated is not None:
+                old = assignments.get(e.key)
+                if e.value is not None or e.replace_key or not old or old['v'] not in ('ENTRA', 'ESCE'):
+                    raise ValueError('Comunicato disponibile solo per entrate e uscite già registrate.')
+                old['communicated'] = e.communicated
+                save_state(db, ds, state, [e.day.isoformat()])
+                return {'ok': True}
             if e.replace_key:
                 if e.replace_key == e.key or e.replace_key not in assignments or e.key in assignments or e.value is None:
                     raise ValueError('Sostituzione del conflitto non valida o riga già assegnata.')
@@ -663,7 +671,7 @@ def create_app(path=None, seed=None):
                         elif group == 'disSites':
                             if i not in ds['teachers'] or value not in (*SITES, None, ''):
                                 raise ValueError('Sede non valida.')
-                        elif not isinstance(value, dict) or ('exceptional' in value and type(value['exceptional']) is not bool) or value.get('v') not in (*ds['teachers'], 'DIR', 'ENTRA', 'ESCE', 'UNCOVERED') or not isinstance(value.get('t'), str) or len(i.split('|')) != 3 or i.split('|')[0] not in ds['teachers'] or not i.split('|')[1].isdigit() or int(i.split('|')[1]) not in HOURS or value.get('c') != i.split('|')[2]:
+                        elif not isinstance(value, dict) or ('exceptional' in value and type(value['exceptional']) is not bool) or ('communicated' in value and (type(value['communicated']) is not bool or value.get('v') not in ('ENTRA', 'ESCE'))) or value.get('v') not in (*ds['teachers'], 'DIR', 'ENTRA', 'ESCE', 'UNCOVERED') or not isinstance(value.get('t'), str) or len(i.split('|')) != 3 or i.split('|')[0] not in ds['teachers'] or not i.split('|')[1].isdigit() or int(i.split('|')[1]) not in HOURS or value.get('c') != i.split('|')[2]:
                             raise ValueError('Assegnazione non valida.')
             if data['schema'] == 1:
                 if data.get('permitIds') or any(a.get('t') == 'RP' or 'permitId' in a for entries in state['asg'].values() for a in entries.values()):

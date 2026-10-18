@@ -128,7 +128,7 @@ export function CandidateDrawer({
                               : c.ty === "SPECIAL"
                                 ? "Entrata / uscita"
                                 : c.ty)}
-                      {c.ty === "POT" ? " · " + (c.loc || "sede ignota") : ""}
+                      {(c.ty === "POT" || c.ty === "D") ? " · " + (c.loc || "sede ignota") : ""}
                     </span>
                   </span>
                   {c.exceptional && <b className="exception-action">Usa comunque…</b>}

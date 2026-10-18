@@ -232,6 +232,26 @@ class PersistenceTest(unittest.TestCase):
         self.assertEqual(r.status_code, 200, r.text)
         return r
 
+    def test_entry_exit_communicated_persists_and_validates(self):
+        self.post('entries', day=DAY, group='abs', id='absent', hours=[2])
+        key = 'absent|2|1A'
+        for value in ('ENTRA', 'ESCE'):
+            self.post('assignments', day=DAY, key=key, value=value)
+            for communicated in (True, False):
+                self.post('assignments', day=DAY, key=key, communicated=communicated)
+                restarted = TestClient(create_app(self.path))
+                saved = restarted.get('/api/day/' + DAY).json()['state']['asg'][DAY][key]
+                self.assertIs(saved['communicated'], communicated)
+                self.assertEqual(saved['v'], value)
+                archive = restarted.get('/api/export').json()
+                self.assertEqual(restarted.post('/api/import', json=archive).status_code, 200)
+                archive['asg'][DAY][key]['communicated'] = 'true'
+                self.assertEqual(restarted.post('/api/import', json=archive).status_code, 422)
+            self.assertEqual(self.client.post('/api/assignments', json=dict(day=DAY, key=key, communicated='yes')).status_code, 422)
+        self.post('assignments', day=DAY, key=key, value='DIR')
+        self.assertEqual(self.client.post('/api/assignments', json=dict(day=DAY, key=key, communicated=True)).status_code, 422)
+        self.assertEqual(self.client.post('/api/assignments', json=dict(day=DAY, key='missing', communicated=True)).status_code, 422)
+
     def test_restart_and_reimport_preserve_ids_and_records(self):
         self.post('entries',day=DAY,group='abs',id='absent',hours=[2])
         self.post('entries',day=DAY,group='dis',id='blank',hours=[2],site='centrale')
