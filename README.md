@@ -383,10 +383,14 @@ segnalate come programmate e consultabili in **Modifiche salvate**.
 **Salva** verifica la modifica e la registra; se crea nuovi problemi in assegnazioni salvate, mostra un riepilogo compatto
 con dettagli espandibili e richiede **Conferma e salva**. Le giornate senza
 nuovi problemi non interrompono il salvataggio.
-**Annulla** scarta la bozza. Cambiare
-la decorrenza ricarica l'orario relativo e richiede di scartare la bozza.
+**Annulla** scarta la bozza. Cambiare la decorrenza ricarica l'orario relativo;
+chiede conferma solo se la bozza contiene modifiche non salvate.
 **Ripristina**, seguito da **Salva**, torna all'orario importato dalla data scelta senza
 cambiare il passato o far riapparire modifiche precedenti dopo una scadenza.
+In **Modifiche salvate**, **Elimina** rimuove la modifica scelta e tutte le sue
+revisioni con la stessa decorrenza. L'orario torna alla modifica precedente ancora
+valida, oppure all'originale importato. Prima di eliminare, l'app mostra le nuove
+assegnazioni da verificare; le supplenze salvate restano conservate.
 
 Le modifiche sono uno strato separato: gli originali importati restano intatti.
 Un nuovo import conserva le modifiche se le ore originali coinvolte non cambiano.
@@ -409,4 +413,6 @@ cells, basis, reset}`: `end` può essere `null`, `cells` contiene tutte le celle
 `lun|1` … `ven|7` (oggetto lezione o `null`). Il ripristino usa `reset: true` ed
 `end: null`. `POST /api/orari/override` riceve lo stesso corpo con il `token`
 dell'anteprima. Una base o anteprima scaduta restituisce 409 e richiede verifica.
+Per eliminare una modifica, gli stessi endpoint ricevono `{delete: true, id,
+teacher, start, basis}` e, al salvataggio, il `token` dell'anteprima.
 `POST /api/import/preview` mostra i conflitti prima del ripristino di un archivio.

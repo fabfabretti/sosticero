@@ -28,6 +28,7 @@
 - [x] 4.3 Add special-hour drag moves/swaps, click disabling and keyboard equivalents; test invalid targets, campus/status preservation and drag suppression of click toggles.
 - [x] 4.4 Add impact confirmation, import compatibility preview and explicit conflict review controls; test stale-save errors, assignment review information and dirty-editor navigation handling.
 - [x] 4.5 Update user instructions for editing, dates, emergency availability and reset; verify the described flow against the interface.
+- [x] 4.6 Add deletion of saved overrides and same-start revisions, with issue preview, stale-save protection and restored prior schedule; cover backend and UI behavior.
 
 ## 5. Integration verification
 

@@ -191,3 +191,65 @@ class OverrideApiTest(unittest.TestCase):
         preview = self.client.post('/api/orari/preview', json=revised)
         preview.raise_for_status()
         self.assertEqual([d['day'] for d in preview.json()['days']], [DAY, '2026-10-19'])
+
+    def test_delete_removes_all_revisions_and_restores_original_without_erasing_assignments(self):
+        self.entry()
+        self.client.post('/api/assignments', json=dict(day=DAY, key='absent|2|1A', value='pot')).raise_for_status()
+        first = self.draft()
+        first['cells']['lun|2']['disabled'] = True
+        self.save(first)
+        second = self.draft()
+        second['cells']['lun|2'].pop('disabled')
+        second['cells']['mar|3'] = second['cells'].pop('lun|2')
+        second['cells']['lun|2'] = None
+        self.save(second)
+        before = self.client.get('/api/export').json()
+        self.assertEqual(len(before['timetableOverrides']['records']), 2)
+        record = self.orari()['overrides'][-1]
+        request = dict(delete=True, id=record['id'], teacher='pot', start=DAY, basis=self.orari()['basis'])
+        preview = self.client.post('/api/orari/preview', json=request)
+        preview.raise_for_status()
+        self.assertEqual(self.client.post('/api/orari/override', json={**request, 'token': 'stale'}).status_code, 409)
+        self.assertEqual(before, self.client.get('/api/export').json())
+        self.client.post('/api/orari/override', json={**request, 'token': preview.json()['token']}).raise_for_status()
+        after = self.client.get('/api/export').json()
+        self.assertEqual(after['timetableOverrides'], overrides.empty())
+        self.assertEqual(after['timetables'], before['timetables'])
+        self.assertEqual(after['asg'], before['asg'])
+        self.assertEqual(self.orari()['dataset']['lessons']['pot|lun|2'], self.orari()['imported']['lessons']['pot|lun|2'])
+        self.assertFalse(self.client.get('/api/day/'+DAY).json()['issues'])
+        self.assertEqual(self.client.post('/api/orari/preview', json=request).status_code, 409)
+        self.client.post('/api/import', json=after).raise_for_status()
+
+    def test_delete_reset_reactivates_earlier_patch_and_checks_new_issues(self):
+        self.entry('2026-10-19')
+        self.client.post('/api/assignments', json=dict(day='2026-10-19', key='absent|2|1A', value='pot')).raise_for_status()
+        first = self.draft()
+        first['cells']['lun|2']['disabled'] = True
+        self.save(first)
+        reset = self.draft('2026-10-19')
+        reset.update(reset=True, end=None)
+        self.save(reset)
+        record = self.orari('2026-10-19')['overrides'][-1]
+        request = dict(delete=True, id=record['id'], teacher='pot', start='2026-10-19', basis=self.orari()['basis'])
+        preview = self.client.post('/api/orari/preview', json=request)
+        preview.raise_for_status()
+        self.assertEqual([d['day'] for d in preview.json()['days']], ['2026-10-19'])
+        self.assertEqual(len(preview.json()['days'][0]['issues']), 1)
+        self.client.post('/api/orari/override', json={**request, 'token': preview.json()['token']}).raise_for_status()
+        self.assertTrue(self.orari('2026-10-19')['dataset']['lessons']['pot|lun|2']['disabled'])
+        self.assertEqual(len(self.orari()['overrides']), 1)
+
+    def test_delete_rejects_wrong_or_superseded_revision(self):
+        data = self.draft()
+        data['cells']['lun|2']['disabled'] = True
+        self.save(data)
+        record = self.orari()['overrides'][-1]
+        request = dict(delete=True, id=record['id'], teacher='pot', start=DAY, basis=self.orari()['basis'])
+        for bad in ({**request, 'id': 'wrong'}, {**request, 'teacher': 'utc'}, {**request, 'start': '2026-10-19'}):
+            self.assertEqual(self.client.post('/api/orari/preview', json=bad).status_code, 422)
+        revised = self.draft()
+        revised['cells']['lun|2'].pop('disabled')
+        self.save(revised)
+        request['basis'] = self.orari()['basis']
+        self.assertEqual(self.client.post('/api/orari/preview', json=request).status_code, 422)

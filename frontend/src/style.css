@@ -1317,6 +1317,8 @@ select.inbox-teacher { width: 220px; padding: 5px 8px; height: 32px; }
 .orari-impact, .orari-conflicts { border-top: 1px solid var(--line); margin-top: 10px; padding: 10px 0; font-size: 12px; }
 .orari-history { margin: 5px 0; font-size: 12px; color: var(--mute); }
 .orari-history button { display: block; margin: 5px 0; }
+.orari-history-row { display: flex; align-items: center; gap: 8px; }
+.orari-history-row .orari-action { margin-left: auto; }
 :root[data-theme="dark"] .campus-centrale { --campus-mark: #8bd5a4; }
 :root[data-theme="dark"] .campus-succursale { --campus-mark: #e8ce69; }
 @media (prefers-color-scheme: dark) {
