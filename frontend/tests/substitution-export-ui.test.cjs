@@ -19,7 +19,7 @@ function component() {
   };
   const jsx = (type, props) => ({ type, props });
   const exports = {};
-  runInNewContext(ts.transpileModule(readFileSync('src/SubstitutionExport.tsx', 'utf8'), {
+  runInNewContext(ts.transpileModule(readFileSync('src/SubstitutionExportPanel.tsx', 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022 },
   }).outputText, { exports, URL: { createObjectURL: () => 'blob:test-' + ++nextUrl, revokeObjectURL: u => revoked.push(u) }, require(id) {
     if (id === 'react') return react;

@@ -11,7 +11,7 @@ import { TeacherTimetables } from "./TeacherTimetables";
 import { AbsenceInbox, SheetsSettings, InboxNotice, useInboxStatus } from "./Inbox";
 import { norm } from "./timetables";
 import { HourHelp } from "./Tooltip";
-import { SubstitutionExport } from "./SubstitutionExport";
+import { SubstitutionExport } from "./SubstitutionExportPanel";
 import { HashRouter, Link, useLocation } from "react-router";
 const hours = [1, 2, 3, 4, 5, 6, 7];
 const entryExitLabel = (id: string, hour: number) => {
