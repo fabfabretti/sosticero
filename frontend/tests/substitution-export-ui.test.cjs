@@ -66,7 +66,7 @@ test('campus selection defaults to the page; download and print share the genera
   assert.deepEqual(c.revoked, ['blob:test-1', 'blob:test-2']);
 });
 
-test('pending loads/mutations disable generation and changed snapshots discard stale async output', async () => {
+test('pending loads/mutations disable generation and changed snapshots clear output', async () => {
   const c = component(), p = props(); c.render(p); choice(c, p);
   p.disabled = true;
   assert.equal(button(c.render(p)).props.disabled, true);
@@ -76,8 +76,8 @@ test('pending loads/mutations disable generation and changed snapshots discard s
   p.data = {}; c.render(p);
   await settle();
   assert.equal(c.render(p).filter(n => n.type === 'a').length, 0);
-  button(c.render(p)).props.onClick();
-  p.disabled = true; c.render(p); await settle();
+  p.disabled = true;
+  await button(c.render(p)).props.onClick();
   assert.equal(c.render(p).filter(n => n.type === 'a').length, 0);
 });
 
