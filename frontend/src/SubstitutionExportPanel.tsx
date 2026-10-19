@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Data } from './types';
 import { projectExport, type CampusChoice } from './substitutionExport';
+import { generateSubstitutionPdf } from './substitutionPdf';
 
 type Props = { data?: Data; day: string; initialChoice: CampusChoice; disabled: boolean; specialLabel: (key: string) => string | undefined };
 export function SubstitutionExport({ data, day, initialChoice, disabled, specialLabel }: Props) {
@@ -27,7 +28,6 @@ export function SubstitutionExport({ data, day, initialChoice, disabled, special
     const snapshot = data;
     try {
       const content = projectExport(snapshot, day, choice, specialLabel);
-      const { generateSubstitutionPdf } = await import('./substitutionPdf');
       if (latest.current !== snapshot || unavailable.current) return;
       const pdf = generateSubstitutionPdf(content);
       setResult({ url: URL.createObjectURL(pdf.output('blob')), filename: `supplenze-${day}-${choice === 'both' ? 'entrambe' : choice === 'centrale' ? 'centrale' : 'separata'}.pdf`, warnings: content.warnings });
