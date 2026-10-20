@@ -164,6 +164,28 @@ class InboxTest(unittest.TestCase):
         self.assertEqual(self.state()['abs'][DAY]['absent'], [4])
         self.assertEqual(len(self.client.get('/api/inbox?history=true').json()), 1)
 
+    def test_acceptance_metadata_applies_to_range_and_is_idempotent(self):
+        self.matrix = [HEADERS, response(1)]
+        item = self.discover()[0]
+        data = dict(classification='trip', note='Bring documents', attachment=image())
+        self.action(item, **data).raise_for_status()
+        state = self.state()
+        for day in item['days']:
+            self.assertEqual(state['absenceKinds'][day]['absent'], 'trip')
+            self.assertEqual(state['absenceNotes'][day]['absent'], 'Bring documents\nimported from sheet')
+            identifier = state['absenceAttachments'][day]['absent']
+            self.client.get('/api/attachments/' + identifier).raise_for_status()
+        self.action(item, **data).raise_for_status()
+        self.assertEqual(self.state(), state)
+
+    def test_invalid_acceptance_metadata_rolls_back(self):
+        item = self.discover()[0]
+        before = self.state()
+        for data in [dict(classification='bad'), dict(note=123), dict(attachment={'mediaType': 'image/png', 'data': 'bad'})]:
+            self.assertEqual(self.action(item, **data).status_code, 422)
+            self.assertEqual(self.state(), before)
+            self.assertEqual(self.client.get('/api/inbox').json()[0]['status'], 'pending')
+
     def test_import_note_is_added_once_even_when_hours_already_exist(self):
         self.client.post('/api/entries', json=dict(day=DAY, group='abs', id='absent', hours=list(range(1, 8)))).raise_for_status()
         item = self.discover()[0]

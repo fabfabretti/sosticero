@@ -149,3 +149,20 @@ test('Only the global notifier chimes for new submissions, not initial load or a
   passive.render(); await settle();
   assert.equal(passive.listeners.has('pointerdown'), false);
 });
+
+
+test('Inbox keeps optional absence details through polling and submits them on acceptance', async () => {
+  const item = {id:'one',raw:[],status:'pending',error:'',teacher:'a',nameMatched:true};
+  const h = harness('AbsenceInbox', {'inbox/summary':{pending:1,configured:true},'inbox?history=false':[item],'inbox/one/accept':{ok:true}});
+  h.render(); await settle();
+  h.render().find(n => n.type === 'textarea').props.onChange({target:{value:'Trip notes'}});
+  const controls = h.render().filter(n => typeof n.props?.onChange === 'function' && n.type !== 'textarea');
+  controls.find(n => n.props.value === null).props.onChange('trip');
+  controls.find(n => n.props.value === undefined).props.onChange({mediaType:'image/png',data:'example'});
+  h.timers.forEach(fn => fn()); await settle();
+  button(h, 'Accetta').props.onClick(); await settle();
+  const body = h.calls.find(c => c.url === 'inbox/one/accept').body;
+  assert.equal(body.classification, 'trip');
+  assert.equal(body.note, 'Trip notes');
+  assert.equal(body.attachment.data, 'example');
+});

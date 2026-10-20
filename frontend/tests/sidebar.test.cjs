@@ -93,6 +93,13 @@ function app(localStorage = { getItem: () => null, setItem() {} }, confirm = () 
       if (id === './TimetableImport') return { TimetableImport: 'timetable-import' };
       if (id === './HourTypes') return { HourTypes: 'hour-types' };
       if (id === './CandidateDrawer') return { CandidateDrawer: 'drawer' };
+      if (id === './ClassificationChoices') {
+        const exports = {};
+        runInNewContext(ts.transpileModule(readFileSync('src/ClassificationChoices.tsx', 'utf8'), {
+          compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
+        }).outputText, { exports, require: () => ({ jsx, jsxs: jsx }) });
+        return exports;
+      }
       if (id === './Attachments') return { AttachmentField: 'attachment-field', RecordInfo: 'record-info' };
       if (id === './Inbox') return { AbsenceInbox: 'absence-inbox', SheetsSettings: 'sheets-settings', InboxNotice: () => null, useInboxStatus: () => inboxStatus };
       if (id === './Stats') return { Stats: 'stats' };
@@ -417,8 +424,8 @@ const permitData = {
   dataset: { teachers: { t: { id: 't', name: 'Contartase', role: 'curricolare' } }, lessons: Object.fromEntries([1,2,3,4,5].map(h => ['t|lun|' + h, { classes: h === 3 || h === 4 ? [] : ['1A'] }])) },
   permessi: {},
 };
-async function permitsLoaded(records = {}) {
-  const a = app();
+async function permitsLoaded(records = {}, confirm) {
+  const a = app(undefined, confirm);
   a.go('/permessi'); a.render();
   assert.equal(a.requests[0].url, '/api/permessi');
   a.requests.shift().resolve({ ...permitData, permessi: records });
@@ -453,7 +460,8 @@ test('permit form warns about unscheduled periods and saves them within limit', 
 });
 
 test('permit errors preserve form; editing supplies original identity and deletion is explicit', async () => {
-  const a = await permitsLoaded({ '2026-10-12': { t: [2,3] } });
+  let confirmDeletion = false;
+  const a = await permitsLoaded({ '2026-10-12': { t: [2,3] } }, () => confirmDeletion);
   a.render().find(n => n.props?.['aria-label'] === 'Modifica permesso di Contartase').props.onClick();
   assert.equal(permitTeacher(a).props.value, 'Contartase');
   assert.equal(permitDay(a).props.value, '12/10/2026');
@@ -463,6 +471,9 @@ test('permit errors preserve form; editing supplies original identity and deleti
   req.resolve({ detail: 'Permesso già presente: modifica la registrazione esistente.' }, false); await settle();
   assert.ok(a.render().some(n => n.props?.role === 'alert' && n.props.children.includes('già presente')));
   assert.equal(permitTeacher(a).props.value, 'Contartase');
+  a.render().find(n => n.props?.['aria-label'] === 'Rimuovi permesso di Contartase').props.onClick();
+  assert.equal(a.requests.length, 0, 'cancelling confirmation keeps the permit');
+  confirmDeletion = true;
   a.render().find(n => n.props?.['aria-label'] === 'Rimuovi permesso di Contartase').props.onClick();
   assert.deepEqual(JSON.parse(a.requests.shift().options.body), { day: '2026-10-12', id: 't', hours: null });
 });

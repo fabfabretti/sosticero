@@ -13,7 +13,7 @@ from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, Request
-from . import timetables
+from . import timetables, attachments
 from .domain import HOURS, absences
 
 HEADERS = ['Informazioni cronologiche', 'Quale caso vuoi comunicare?', 'Nome del docente',
@@ -308,6 +308,11 @@ class Inbox:
                     result = self.preview(db, item, data.get('teacher'))
                     if result['error']:
                         raise ValueError(result['error'])
+                    if 'classification' in data and data['classification'] not in (None, 'planned', 'last_minute', 'trip', 'strike'):
+                        raise ValueError('Classificazione non valida.')
+                    if 'note' in data and not isinstance(data['note'], str):
+                        raise ValueError('Note non valide.')
+                    attachment = attachments.insert(db, data.get('attachment'))
                     teacher = result['teacher']
                     ds, state = self.load(db, result['days'][0])
                     changed = []
@@ -315,13 +320,22 @@ class Inbox:
                         old = state['abs'].get(day, {}).get(teacher, [])
                         hours = sorted(set(old) | set(result['hours']))
                         note = state['absenceNotes'].get(day, {}).get(teacher, '')
+                        extra_note = data.get('note', '').strip()
+                        if extra_note and extra_note not in note.splitlines():
+                            note = '\n'.join(filter(None, [note, extra_note]))
+                        if 'classification' in data:
+                            state['absenceKinds'].get(day, {}).pop(teacher, None)
+                            if data['classification']:
+                                state['absenceKinds'].setdefault(day, {})[teacher] = data['classification']
+                        if attachment:
+                            state['absenceAttachments'].setdefault(day, {})[teacher] = attachment
                         marker = 'imported from sheet'
                         add_note = marker not in note.splitlines()
                         if hours != old:
                             state['abs'].setdefault(day, {})[teacher] = hours
-                        if add_note:
-                            state['absenceNotes'].setdefault(day, {})[teacher] = '\n'.join(filter(None, [note, marker]))
-                        if hours != old or add_note:
+                        if add_note or extra_note:
+                            state['absenceNotes'].setdefault(day, {})[teacher] = '\n'.join(filter(None, [note, marker if add_note else '']))
+                        if hours != old or add_note or extra_note or 'classification' in data or attachment:
                             changed.append(day)
                     if changed:
                         self.save_state(db, ds, state, changed)

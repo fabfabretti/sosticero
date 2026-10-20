@@ -1,3 +1,6 @@
+import { ClassificationChoices } from "./ClassificationChoices";
+import { AttachmentField, type ImageDraft } from "./Attachments";
+import type { AbsenceKind } from "./types";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 
@@ -124,6 +127,7 @@ export function AbsenceInbox({ api }: { api: Api }) {
   const [history, setHistory] = useState(false), [items, setItems] = useState<Item[]>([]);
   const [error, setError] = useState(""), [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string>();
+  const [drafts, setDrafts] = useState<Record<string, { classification?: AbsenceKind; note?: string; attachment?: ImageDraft }>>({});
   const status = useInboxStatus(api);
   const request = useRef(0);
   const overrides = useRef(new Map<string, Item>());
@@ -141,7 +145,7 @@ export function AbsenceInbox({ api }: { api: Api }) {
   const act = async (item: Item, action: string, teacher?: string) => {
     ++request.current; setBusy(item.id); setError("");
     try {
-      const result = await api<Item>(`inbox/${item.id}/${action}`, { teacher: teacher || item.teacher });
+      const result = await api<Item>(`inbox/${item.id}/${action}`, { teacher: teacher || item.teacher, ...(action === "accept" ? drafts[item.id] : {}) });
       if (action === "preview") { overrides.current.set(item.id, result); setItems(items.map(i => i.id === item.id ? result : i)); }
       else { overrides.current.delete(item.id); await refresh(); if (history) window.dispatchEvent(new Event("inbox-changed")); }
     } catch (e) { setError(String(e)); }
@@ -161,6 +165,15 @@ export function AbsenceInbox({ api }: { api: Api }) {
         {(item.case || item.raw[1] || "").includes("ALCUNE ORE") && item.hours && <><span aria-hidden="true">→</span><div className="hrs inbox-hours" role="img" aria-label={`Ore di assenza: ${item.hours.join(", ")}`}>{[1, 2, 3, 4, 5, 6, 7].map(h => <span key={h} className={item.hours!.includes(h) ? "on" : ""} aria-hidden="true">{h}</span>)}</div></>}
       </div>
       <time className="inbox-submitted" dateTime={item.submitted} title="Data e ora di invio del modulo">{item.raw[0] || timestamp(item.submitted)}</time>
+      {item.status === "pending" && <details className="inbox-metadata">
+        <summary>Tipo, note e allegato</summary>
+        <fieldset disabled={!!busy}>
+          <ClassificationChoices value={drafts[item.id]?.classification || null} onChange={classification => setDrafts(d => ({ ...d, [item.id]: { ...d[item.id], classification } }))} />
+          <label>Note (facoltative)<textarea value={drafts[item.id]?.note || ""} onChange={e => setDrafts(d => ({ ...d, [item.id]: { ...d[item.id], note: e.target.value } }))} /></label>
+          <AttachmentField value={drafts[item.id]?.attachment} onChange={attachment => setDrafts(d => ({ ...d, [item.id]: { ...d[item.id], attachment } }))} disabled={!!busy} />
+          <p className="sub">Applicati a tutti i giorni della comunicazione. Le note si aggiungono a quelle già presenti.</p>
+        </fieldset>
+      </details>}
       {item.status === "pending" ? <div className="inbox-actions"><button className="inbox-accept" disabled={!!busy || !!item.error} onClick={() => void act(item, "accept")}>{busy === item.id ? "Attendi…" : "Accetta"}</button><button disabled={!!busy} onClick={() => void act(item, "ignore")}>Ignora</button></div> : <span className="inbox-result">{item.status === "accepted" ? "Accettata" : "Ignorata"}</span>}
       <details className="inbox-details"><summary aria-label={`Dettagli comunicazione di ${item.name || item.raw[2] || "docente"}`}>⋯</summary>
         <p className="sub">Inviata: {item.raw[0] || timestamp(item.submitted)}{item.processed ? ` · Elaborata: ${timestamp(item.processed)}` : ""}</p>
