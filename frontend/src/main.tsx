@@ -1,3 +1,4 @@
+import { ClassificationChoices } from "./ClassificationChoices";
 import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./style.css";
@@ -123,12 +124,6 @@ function Stub({ label }: { label: string }) {
       <p className="sub">Pagina in preparazione.</p>
     </section>
   );
-}
-function ClassificationChoices({ value, onChange }: { value: AbsenceKind; onChange: (value: AbsenceKind) => void }) {
-  return <div className="opt classification" role="group" aria-label="Tipo di assenza">
-    {([["planned", "Programmata"], ["last_minute", "Last minute"], ["trip", "In gita"], ["strike", "In sciopero"]] as const).map(([kind, label]) =>
-      <button key={kind} type="button" aria-pressed={value === kind} className={value === kind ? "on" : ""} onClick={() => onChange(value === kind ? null : kind)}>{label}</button>)}
-  </div>;
 }
 function Permessi() {
   const [manual, setManual] = useState(false);

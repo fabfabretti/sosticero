@@ -1334,3 +1334,8 @@ select.inbox-teacher { width: 220px; padding: 5px 8px; height: 32px; }
 .orari-class-editor { display: grid; gap: 6px; padding: 8px 0; }
 .orari-class-editor label { display: grid; gap: 4px; font-size: 13px; }
 .orari-class-editor select, .orari-class-editor button { min-height: 36px; width: 100%; }
+
+.inbox-metadata { flex-basis: 100%; order: 1; }
+.inbox-metadata summary { cursor: pointer; padding: 8px 0; }
+.inbox-metadata fieldset { border: 0; padding: 8px 0; display: grid; gap: 12px; min-width: 0; }
+.inbox-metadata textarea { display: block; width: 100%; box-sizing: border-box; }
