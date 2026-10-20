@@ -3,6 +3,8 @@ export type Teacher = {
   id: string;
   name: string;
   code: string;
+  importedName?: string;
+  nameOverride?: { name: string; originalName: string };
   role: string;
   classe_concorso?: string;
   retired?: boolean;
@@ -17,6 +19,8 @@ export type Row = {
   sede: string | null;
 };
 export type Candidate = {
+  tier?: number;
+  sameCdc?: boolean;
   convenient?: boolean;
   rpHours?: number;
   exceptional?: boolean;

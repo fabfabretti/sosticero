@@ -6,7 +6,7 @@ import { Link } from "react-router";
 
 type Api = <T>(url: string, body?: unknown) => Promise<T>;
 export type InboxStatus = { pending: number; received?: number; configured: boolean; email?: string; spreadsheet?: string; worksheet?: string; lastSuccess?: string; error?: string };
-type Item = { id: string; raw: string[]; status: string; processed?: string; submitted?: string; name?: string; case?: string; start?: string; end?: string; days?: string[]; hours?: number[]; teacher?: string; teachers?: { id: string; name: string }[]; overlaps?: { day: string; hours: number[] }[]; error: string };
+type Item = { id: string; raw: string[]; status: string; processed?: string; submitted?: string; name?: string; case?: string; start?: string; end?: string; days?: string[]; hours?: number[]; teacher?: string; nameMatched?: boolean; teacherName?: string; teachers?: { id: string; name: string }[]; overlaps?: { day: string; hours: number[] }[]; error: string };
 const date = (value?: string) => value ? value.split("-").reverse().join("/") : "—";
 const timestamp = (value?: string) => value ? new Date(value).toLocaleString("it-IT") : "Mai";
 
@@ -157,8 +157,8 @@ export function AbsenceInbox({ api }: { api: Api }) {
     {status.error && <p className="error" role="status">{status.error}</p>}
     {error && <p className="error" role="alert">{error}</p>}
     {loading ? <p role="status">Caricamento…</p> : !items.length ? <section className="inbox-empty"><h2>{history ? "Nessuna comunicazione elaborata" : "Nessuna comunicazione da esaminare"}</h2><p className="sub">Le nuove risposte compariranno qui automaticamente.</p></section> : items.map(item => <article className="inbox-item" key={item.id}>
-      <div className="inbox-person"><span className="inbox-name">{item.name || item.raw[2] || "Docente da verificare"}</span>
-        {item.status === "pending" && !!item.teachers?.length && item.teachers.filter(t => t.name === (item.name || item.raw[2])).length !== 1 && <><span aria-hidden="true">→</span><select className="inbox-teacher" aria-label={`Docente associato: ${item.name || item.raw[2]}`} value={item.teacher || ""} disabled={!!busy} onChange={e => void act(item, "preview", e.target.value)}><option value="">Seleziona docente…</option>{item.teachers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></>}
+      <div className="inbox-person"><span className="inbox-name">{item.teacherName || item.name || item.raw[2] || "Docente da verificare"}</span>
+        {item.status === "pending" && !!item.teachers?.length && (item.nameMatched === undefined ? item.teachers.filter(t => t.name === (item.name || item.raw[2])).length !== 1 : !item.nameMatched) && <><span aria-hidden="true">→</span><select className="inbox-teacher" aria-label={`Docente associato: ${item.name || item.raw[2]}`} value={item.teacher || ""} disabled={!!busy} onChange={e => void act(item, "preview", e.target.value)}><option value="">Seleziona docente…</option>{item.teachers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></>}
       </div>
       <div className="inbox-absence">
         <strong>Assenza {date(item.start)}{item.end !== item.start && ` – ${date(item.end)}`}</strong>

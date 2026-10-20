@@ -64,7 +64,7 @@ class RecoveryTest(unittest.TestCase):
             if not next(c for c in self.cs(h) if c['id'] == 'bottom')['convenient']:
                 self.assertLess(ids.index('rp'), ids.index('bottom'))
             self.assertTrue(next(c for c in self.cs(h) if c['id'] == 'rp')['convenient'])
-        self.assertEqual(self.cs(7)[-1]['ty'], 'RP')
+        self.assertEqual(self.cs(7)[-1]['ty'], 'UNCOVERED')
         self.assertNotIn('rp', [c['id'] for c in self.cs(2)])
         self.client.post('/api/entries', json=dict(day=DAY, group='abs', id='rp', hours=[1]))
         self.assertEqual(next(c for c in self.cs(1) if c['id'] == 'rp')['why'], 'Assente')
@@ -113,7 +113,7 @@ class RecoveryTest(unittest.TestCase):
     def test_archive_migration_and_timetable_history(self):
         self.assign(1).raise_for_status()
         archive = self.client.get('/api/export').json()
-        self.assertEqual(archive['schema'], 5)
+        self.assertEqual(archive['schema'], 6)
         self.client.post('/api/import', json=archive).raise_for_status()
         for mutation in ('missing', 'wrongteacher', 'nonrp', 'over', 'window', 'duplicate'):
             bad = copy.deepcopy(archive); a = bad['asg'][DAY]['absent|1|1A']

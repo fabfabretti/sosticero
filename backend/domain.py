@@ -1,4 +1,6 @@
 """Scheduling rules: plain Python values, no HTTP or database dependencies."""
+from collections import Counter
+from enum import IntEnum
 from datetime import date
 import re
 from .hour_types import canonical, activity_codes
@@ -7,11 +9,19 @@ from . import recovery
 HOURS = list(range(1, 8))
 DAYS = ['lun', 'mar', 'mer', 'gio', 'ven', 'sab', 'dom']
 SITES = ('centrale', 'succursale')
-# Category + campus tier; ties use daily load, total load, name, stable ID.
-PRIORITIES = {'CP': (0, 0, 0), 'C': (0, 0, 0), 'POT': (13, 14, 15), 'D': (10, 11, 12),
-              'DIS': (10, 11, 12), 'DIR': (20, 21, 22),
-              'UTC': (30, 31, 32), 'UTS': (30, 31, 32),
-              'TC': (40, 41, 42), 'RP': (40, 41, 42), 'SPECIAL': (5, 5, 5)}
+class CandidateTier(IntEnum):
+    COMPRESENZA = 1
+    ENTRY_EXIT = 2
+    AVAILABLE = 3
+    SAME_CAMPUS = 4
+    OFFICE = 5
+    OTHER_CAMPUS = 6
+    UNKNOWN_CAMPUS = 7
+    RECOVERY = 8
+    EXCEPTIONAL = 9
+    UNCOVERED = 10
+
+
 LABELS = {'CP': 'Compresenza - POT', 'C': 'Compresenza', 'POT': 'POT', 'D': 'A disposizione', 'UTC': 'UTC',
           'UTS': 'UTS', 'DIS': 'DI.S', 'TC': 'Rottura compresenza', 'DIR': 'Dirigente', 'SPECIAL': 'Entrata / uscita'}
 # Denominazioni ufficiali classi di concorso (A/B: DPR 19/2016, AS: DM 255/2023). Codici non in tabella restano così come sono.
@@ -147,9 +157,34 @@ def rows(ds, state, day):
 
 
 def rank_candidate(candidate, row):
+    ty = candidate['ty']
+    if ty == 'UNCOVERED':
+        return CandidateTier.UNCOVERED
+    if candidate.get('exceptional'):
+        return CandidateTier.EXCEPTIONAL
+    if ty in ('C', 'CP'):
+        return CandidateTier.COMPRESENZA
+    if ty == 'SPECIAL':
+        return CandidateTier.ENTRY_EXIT
+    if ty in ('D', 'DIS'):
+        return CandidateTier.AVAILABLE
+    if ty == 'DIR':
+        return CandidateTier.OFFICE
+    if ty == 'RP':
+        return CandidateTier.RECOVERY
     loc = candidate['loc']
-    index = 0 if loc and loc == row['sede'] else 1 if loc and row['sede'] else 2
-    return PRIORITIES.get(candidate['ty'], PRIORITIES['TC'])[index]
+    if not loc or not row['sede']:
+        return CandidateTier.UNKNOWN_CAMPUS
+    if loc != row['sede']:
+        return CandidateTier.OTHER_CAMPUS
+    return CandidateTier.OFFICE if ty in ('UTC', 'UTS') else CandidateTier.SAME_CAMPUS
+
+
+def candidate_order(candidate):
+    return (candidate['tier'],
+            not candidate.get('convenient', False) if candidate['ty'] == 'RP' else False,
+            not (candidate.get('inClass') or candidate.get('sameCdc')),
+            candidate['today'], candidate['total'], candidate['name'].casefold(), candidate['id'])
 
 
 def eligibility(ds, state, day, row, teacher, policies=None):
@@ -169,7 +204,7 @@ def eligibility(ds, state, day, row, teacher, policies=None):
     elif same_pot:
         ty, keys = 'CP', ['code:POT']
     elif l and activity_codes(l):
-        ty = l.get('special') if policies is None and l.get('special') else activity_codes(l)[0]
+        ty = min(activity_codes(l), key=lambda code: (code not in ('DIS', 'UTC', 'UTS'), code))
         keys = ['code:' + code for code in activity_codes(l)]
     elif l and row['c'] in l['classes'] and l['site'] and l['site'] == row['sede'] and same_room:
         ty, keys = 'C', ['derived:co-support' if teacher['role'] == 'sostegno' else 'derived:itp']
@@ -179,8 +214,11 @@ def eligibility(ds, state, day, row, teacher, policies=None):
         shared = any(k != f"{i}|{DAYS[date.fromisoformat(day).weekday()]}|{h}" and k.endswith(f"|{DAYS[date.fromisoformat(day).weekday()]}|{h}") and set(other['classes']) & set(l['classes']) for k, other in ds['lessons'].items())
         if shared:
             if row['c'] not in l['classes'] or not l['site'] or l['site'] != row['sede'] or not same_room:
-                return None
-            ty, keys = 'C', ['derived:itp']
+                if policies is None:
+                    return None
+                ty, keys = 'TC', ['derived:itp']
+            else:
+                ty, keys = 'C', ['derived:itp']
     if not ty and policies is not None and l and l['classes']:
         ty, keys = 'LESSON', ['derived:lesson']
     if not ty:
@@ -189,9 +227,11 @@ def eligibility(ds, state, day, row, teacher, policies=None):
     if policy and not all(p['visible'] for p in policy):
         return None
     # Staying in the covered class does not release a teacher from another lesson.
-    exceptional = (disabled and ty not in ('CP', 'D')) or bool(ty not in ('C', 'CP') and policy and not all(p['available'] for p in policy))
+    exceptional = (disabled and ty not in ('CP', 'D')) or (ty == 'TC' and policies is None) or bool(ty not in ('C', 'CP') and policy and not all(p['available'] for p in policy))
+    if exceptional and policy and not all(p['school'] is True for p in policy):
+        return None
     loc = state['disSites'].get(day, {}).get(i) if manual else None
-    loc = loc or ('centrale' if ty == 'UTC' else 'succursale' if ty == 'UTS' else l['site'] if l else None)
+    loc = loc or ('centrale' if ty in ('UTC', 'DIS') else 'succursale' if ty == 'UTS' else l['site'] if l else None)
     why = 'Assente' if h in absences(state, day).get(i, []) else ''
     if not why and any(k != row['k'] and int(k.split('|')[1]) == h and a['v'] == i for k, a in state['asg'].get(day, {}).items()):
         why = 'Già assegnato in questa ora'
@@ -266,6 +306,9 @@ def candidates(ds, state, day, row, policies=None, selected=None):
         if selected is None or k.startswith(f'{selected}|'):
             weekly.setdefault(k.split('|')[0], set()).update(l['classes'])
     result = []
+    target_cdc = ds['teachers'][row['id']].get('classe_concorso', '')
+    daily_load = Counter(a['v'] for a in state['asg'].get(day, {}).values())
+    total_load = Counter(a['v'] for assignments in state['asg'].values() for a in assignments.values())
     permits = recovery.ledger(state, (day, row['k']))
     for t in ds['teachers'].values():
         if selected is not None and t['id'] != selected:
@@ -276,7 +319,7 @@ def candidates(ds, state, day, row, policies=None, selected=None):
         cls = sorted(weekly.get(t['id'], set()))
         cdc = t.get('classe_concorso', '')
         result.append(dict(c, role=t['role'], cdc=cdc, cdcName=CDC_NAMES.get(cdc, cdc),
-                           clsWeek=cls, inClass=row['c'] in cls))
+                           clsWeek=cls, inClass=row['c'] in cls, sameCdc=bool(cdc and cdc == target_cdc)))
     if selected in (None, 'DIR'):
         result.append(dict(id='DIR', name='Dirigente', ty='DIR', loc='centrale', why='', tag='Opzione manuale, da verificare'))
     if selected in (None, 'UNCOVERED'):
@@ -289,10 +332,10 @@ def candidates(ds, state, day, row, policies=None, selected=None):
                 result.append(dict(id=cid, name=title, ty='SPECIAL', loc=None, why='', tag='Da verificare',
                                    enable=row['h'] == boundary, info=info))
     for c in result:
-        c['today'] = sum(a['v'] == c['id'] for a in state['asg'].get(day, {}).values()) if c['id'] in ds['teachers'] else 0
-        c['total'] = sum(a['v'] == c['id'] for assignments in state['asg'].values() for a in assignments.values()) if c['id'] in ds['teachers'] else 0
+        c['today'] = daily_load[c['id']] if c['id'] in ds['teachers'] else 0
+        c['total'] = total_load[c['id']] if c['id'] in ds['teachers'] else 0
         c['tier'] = rank_candidate(c, row)
-    return sorted(result, key=lambda c: (bool(c.get('exceptional')), bool(c['why']), c['tier'], (0 if c.get('convenient') else 2) if c['ty'] == 'RP' else 1, c['today'], c['total'], c['name'].casefold(), c['id']))
+    return sorted(result, key=candidate_order)
 
 
 def validate_assignment(ds, state, day, key, value, policies=None, exceptional=False, saved=False):

@@ -47,7 +47,7 @@ class OverrideApiTest(unittest.TestCase):
         self.assertIn('pot|lun|2', self.orari('2026-10-19')['dataset']['lessons'])
         archive = self.client.get('/api/export').json()
         self.assertEqual(original, archive['timetables'])
-        self.assertEqual(archive['schema'], 5)
+        self.assertEqual(archive['schema'], 6)
         self.client.post('/api/import', json=archive).raise_for_status()
         self.assertIn('pot|mar|3', self.orari()['dataset']['lessons'])
         invalid = copy.deepcopy(archive)

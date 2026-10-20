@@ -97,7 +97,7 @@ export function CandidateDrawer({
             const cross = !!(c.loc && open.sede && c.loc !== open.sede);
             return (
               <div key={c.id}>
-              {c.ty === "RP" && cands[index - 1]?.ty !== "RP" && <h3 className="fallback-title">{c.convenient && !c.why ? "Recuperi permesso · ore favorevoli" : "Altri recuperi permesso"}</h3>}
+              {c.ty === "RP" && (cands[index - 1]?.ty !== "RP" || cands[index - 1]?.convenient !== c.convenient) && <h3 className="fallback-title">{c.convenient ? "Recuperi permesso · ore favorevoli" : "Altri recuperi permesso"}</h3>}
               {c.exceptional && !cands[index - 1]?.exceptional && <h3 className="fallback-title">Solo in caso di necessità</h3>}
               <button
                 disabled={!!c.why || busy || c.enable === false}
@@ -156,7 +156,8 @@ export function CandidateDrawer({
                           </span>
                         ))}
                       </span>
-                      {c.inClass && <b className="badge">Già in {open.c}</b>}
+                      {c.inClass && <b className="badge"><span aria-hidden="true">★ </span>Insegna nella classe</b>}
+                      {c.sameCdc && <b className="badge"><span aria-hidden="true">★ </span>Insegna la stessa CDC</b>}
                     </span>
                   )}
                   {c.ty === "SPECIAL" && c.info && (

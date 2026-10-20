@@ -66,10 +66,10 @@ class HourTypesTest(unittest.TestCase):
         legacy = {'lessons': {'x': {'special': 'UTC'}}}
         self.assertIn('code:UTC', merge_types(legacy, {}))
 
-    def test_all_policy_combinations_and_school_independence(self):
+    def test_all_policy_combinations_and_available_school_independence(self):
         for visible in (False, True):
             for available in (False, True):
-                self.set_type('code:PE', visible=visible, available=available)
+                self.set_type('code:PE', visible=visible, available=available, school=True)
                 cs = self.choices()
                 self.assertEqual('PE' in cs, visible)
                 if visible:
@@ -153,6 +153,9 @@ class HourTypesTest(unittest.TestCase):
         row = rows(ds, state, DAY)[0]
         self.assertNotIn('PE', [c['id'] for c in candidates(ds, state, DAY, row, rules)])
         rules['code:GM']['visible'] = True
+        self.assertNotIn('PE', {c['id'] for c in candidates(ds, state, DAY, row, rules)})
+        rules['code:GM']['school'] = True
+        rules['code:PE']['school'] = True
         cs = {c['id']: c for c in candidates(ds, state, DAY, row, rules)}
         self.assertTrue(cs['PE']['exceptional'])
         self.assertIn('GM', cs['PE']['typeLabel'])
@@ -185,3 +188,13 @@ class HourTypesTest(unittest.TestCase):
         self.set_type('code:PE', visible=False)
         self.assertEqual(self.client.post('/api/backups/restore', json=dict(filename=snap['filename'], confirm=True)).status_code, 200)
         self.assertEqual(self.client.get('/api/export').json(), archive)
+
+    def test_api_order_and_cdc_target(self):
+        self.set_type('code:PE', available=True, visible=True, school=True)
+        cs = list(self.choices().values())
+        ids = [c['id'] for c in cs]
+        self.assertEqual(ids[-1], 'UNCOVERED')
+        self.assertLess(ids.index('co'), ids.index('ENTRA'))
+        self.assertLess(ids.index('ENTRA'), ids.index('dis'))
+        self.assertEqual(self.choices()['PE']['tier'], 7)
+        self.assertFalse(self.choices()['PE']['sameCdc'])

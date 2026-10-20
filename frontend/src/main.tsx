@@ -10,7 +10,7 @@ import { AttachmentField, RecordInfo, type ImageDraft, type AttachmentMap } from
 import { Stats } from "./Stats";
 import { TeacherTimetables } from "./TeacherTimetables";
 import { AbsenceInbox, SheetsSettings, InboxNotice, useInboxStatus } from "./Inbox";
-import { norm } from "./timetables";
+import { norm, teacherSearchText } from "./timetables";
 import { HourHelp } from "./Tooltip";
 import { SubstitutionExport } from "./SubstitutionExportPanel";
 import { HashRouter, Link, useLocation } from "react-router";
@@ -160,7 +160,7 @@ function Permessi() {
   const overLimit = !!teacher && selected.length > maximum;
   const suggestions = query && !teacher
     ? Object.values((manual ? data?.dataset : permitDataset(day))?.teachers || {})
-        .filter(t => (!t.retired || t.id === original?.id) && norm(t.name + " " + (t.code || "")).includes(norm(query)))
+        .filter(t => (!t.retired || t.id === original?.id) && norm(teacherSearchText(t)).includes(norm(query)))
         .sort((a, b) => Number(!norm(a.name).startsWith(norm(query))) - Number(!norm(b.name).startsWith(norm(query))) || a.name.localeCompare(b.name))
         .slice(0, 6)
     : [];
@@ -538,7 +538,7 @@ function Supplenze() {
               (t) =>
                 !t.retired &&
                 !entries(kind)[t.id] &&
-                norm(t.name + " " + t.code).includes(norm(query)),
+                norm(teacherSearchText(t)).includes(norm(query)),
             )
             .map((t) => ({ id: t.id, label: t.name, group: kind })),
           ...(kind === "abs"
@@ -1109,10 +1109,12 @@ function Supplenze() {
           <p className="note">
             Ore libere utilizzabili come RP solo con permessi da recuperare entro scadenza.
             A disposizione ha priorità su POT anche da altra sede.
-            Priorità: RP in ore favorevoli, compresenza, disposizione, POT, UTC/UTS/DI.S
-            stessa sede, rottura compresenza, dirigente, ingresso/uscita,
-            opzioni fuori sede, altri RP. Le opzioni manuali e gli spostamenti richiedono
-            verifica.
+            Priorità: compresenze nella classe; ingresso/uscita; disponibilità e DI.S;
+            POT e altri tipi disponibili nella stessa sede; dirigente e UTC/UTS nella stessa sede;
+            tipi disponibili in altra sede; sede da verificare; recuperi permesso (prima le ore favorevoli);
+            impegni presso questa scuola utilizzabili solo in caso di necessità; scoperta.
+            A parità di priorità: insegna nella classe o la stessa CDC, meno ore oggi, meno ore totali.
+            Le opzioni manuali e gli spostamenti richiedono verifica.
           </p>
           <SubstitutionExport key={`${day}-${filter}`} initialChoice={filter === "centrale" || filter === "succursale" ? filter : "both"} data={data} day={day} disabled={busy || loadedDay !== day} specialLabel={key => entryExitCellLabel(key, data?.state.asg[day] || {})} />
         </main>

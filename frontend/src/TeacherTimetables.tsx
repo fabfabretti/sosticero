@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { buildTeacherTimetables, norm, DAYS, HOURS } from './timetables';
+import { buildTeacherTimetables, norm, teacherSearchText, DAYS, HOURS } from './timetables';
 import { HourHelp } from './Tooltip';
 
 export type Lesson = { classes?: string[]; activities?: string[]; special?: string; site?: string | null; disabled?: boolean };
 type Dataset = {
-  teachers: Record<string, { id: string; name: string; code?: string; retired?: boolean }>;
+  teachers: Record<string, { id: string; name: string; importedName?: string; nameOverride?: NameOverride; code?: string; retired?: boolean }>;
   lessons: Record<string, Lesson>;
 };
 type Group = { before: Record<string, Lesson | null>; after: Record<string, Lesson | null>; conflicts: { id: string; effective: string | null }[] };
@@ -13,6 +13,8 @@ type Orari = { effective: string | null; day: string; basis: string; version: st
 type Draft = { teacher: string; start: string; end: string; cells: Record<string, Lesson | null>; basis: string; reset: boolean };
 type Impact = { token: string; days: { day: string; assignments: string[]; issues: { key: string; message: string }[] }[] };
 type Deletion = { record: Override; basis: string; impact: Impact };
+type NameOverride = { name: string; originalName: string };
+type NameDraft = NameOverride & { teacher: string; previous: NameOverride | null };
 const DAY_LABELS: Record<string, string> = { lun: 'Lun', mar: 'Mar', mer: 'Mer', gio: 'Gio', ven: 'Ven' };
 const today = () => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Rome' }).format(new Date());
 const dateLabel = (s: string) => s.split('-').reverse().join('/');
@@ -39,6 +41,8 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
   const [draft, setDraft] = useState<Draft>();
+  const [nameDraft, setNameDraft] = useState<NameDraft>();
+  const [nameStatus, setNameStatus] = useState('');
   const [impact, setImpact] = useState<Impact>();
   const [deletion, setDeletion] = useState<Deletion>();
   const [busy, setBusy] = useState(false);
@@ -47,7 +51,7 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
   const suppressClick = useRef(false);
   const request = useRef(0);
   const baseline = useRef<Draft | undefined>(undefined);
-  const dirty = !!draft;
+  const dirty = !!draft || !!nameDraft;
   const endpoint = (day: string) => 'orari?' + new URLSearchParams({ day });
   useEffect(() => {
     let active = true;
@@ -77,13 +81,32 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
   const grids = useMemo(() => displayed ? buildTeacherTimetables(displayed) : [], [displayed]);
   const filtered = useMemo(() => {
     const q = norm(query);
-    return q ? grids.filter(g => norm(g.name + ' ' + g.code).includes(q)) : grids;
+    return q ? grids.filter(g => norm(teacherSearchText(g)).includes(q)) : grids;
   }, [grids, query]);
   const name = (id: string) => data?.dataset.teachers[id]?.name || id;
-  const discard = () => { clearTimeout(pendingClick.current); setClassEdit(undefined); request.current++; baseline.current = undefined; setDraft(undefined); setImpact(undefined); setDeletion(undefined); setDrag(undefined); setError(''); };
+  const discard = () => { clearTimeout(pendingClick.current); setClassEdit(undefined); request.current++; baseline.current = undefined; setDraft(undefined); setNameDraft(undefined); setImpact(undefined); setDeletion(undefined); setDrag(undefined); setError(''); };
+  const beginName = (teacher: string) => {
+    if (!data || busy || (dirty && !window.confirm('Scartare la bozza corrente?'))) return;
+    discard(); setNameStatus('');
+    const previous = data.dataset.teachers[teacher].nameOverride || null;
+    setNameDraft({ teacher, previous, name: previous?.name || '', originalName: previous?.originalName || '' });
+  };
+  const saveName = async (remove = false) => {
+    if (!nameDraft || busy) return;
+    setBusy(true); setError(''); setNameStatus('');
+    try {
+      await api('orari/name', { teacher: nameDraft.teacher, previous: nameDraft.previous,
+        value: remove ? null : { name: nameDraft.name, originalName: nameDraft.originalName } });
+      setData(await api<Orari>(endpoint(viewDay)));
+      setNameDraft(undefined);
+      setNameStatus(remove ? 'Nome importato ripristinato.' : 'Nome aggiornato.');
+    } catch (e) { setError(String(e)); }
+    finally { setBusy(false); }
+  };
   const begin = (teacher: string) => {
-    if (!data || busy || (draft && !window.confirm('Scartare la bozza corrente?'))) return;
+    if (!data || busy || (dirty && !window.confirm('Scartare la bozza corrente?'))) return;
     clearTimeout(pendingClick.current); setClassEdit(undefined);
+    setNameDraft(undefined); setNameStatus('');
     const current = activeOverride(data.overrides || [], teacher, viewDay);
     const next = { teacher, start: viewDay, end: current?.end || '', cells: week(data.dataset, teacher), basis: data.basis, reset: false };
     baseline.current = next;
@@ -165,7 +188,7 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
     <div className="orari-toolbar">
       <label className="orari-filter">Cerca docente<input type="search" aria-label="Cerca docente" value={query} onChange={e => setQuery(e.target.value)} /></label>
       <label>Orario al<input type="date" value={viewDay} disabled={busy} onChange={e => {
-        if (!e.target.value || (draft && !window.confirm('Scartare la bozza e cambiare data?'))) return;
+        if (!e.target.value || (dirty && !window.confirm('Scartare la bozza e cambiare data?'))) return;
         discard(); setData(undefined); setViewDay(e.target.value);
       }} /></label>
     </div>
@@ -175,6 +198,7 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
       <span className="campus-unknown"><i aria-hidden="true" />? · Sede ignota</span>
     </div>
     {error && <p role="alert">{error}</p>}
+    {nameStatus && <p role="status">{nameStatus}</p>}
     {data && !filtered.length && <p>Nessun docente trovato.</p>}
     <div className="orari-grids">{filtered.map(g => {
       const editing = draft?.teacher === g.id;
@@ -184,11 +208,25 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
       const marker = current?.groups.length ? current : upcoming;
       const review = current?.groups.some(group => group.conflicts.some(c => !c.effective || c.effective <= viewDay));
       return <div className={'orari-card' + (editing ? ' orari-editing' : '')} key={g.id}>
-        <div className="orari-card-header"><h3>{g.name} <small>{g.code}</small></h3><div className="orari-card-actions">
+        <div className="orari-card-header"><h3>{g.importedName && <><del className="orari-imported-name">{g.importedName}</del>{' '}</>}{g.name} <small>{g.code}</small></h3><div className="orari-card-actions">
           {marker && <span className="orari-modified">MODIFICATO · dal {dateLabel(marker.start)}{marker.end ? ` al ${dateLabel(marker.end)}` : ''}{marker.start > viewDay ? ' · programmato' : ''}</span>}
           {review && <span className="orari-review">Da verificare</span>}
-          {!editing && <button className="orari-action" disabled={busy} onClick={() => begin(g.id)} aria-label={`Modifica orario di ${g.name}`}>Modifica</button>}
+          {!editing && <button className="orari-action" disabled={busy} onClick={() => begin(g.id)} aria-label={`Modifica orario di ${g.name}`}>Modifica orario</button>}
+          <button className="orari-action" disabled={busy} onClick={() => beginName(g.id)} aria-label={`Modifica nome di ${g.name}`}>Modifica nome</button>
         </div></div>
+        {nameDraft?.teacher === g.id && <form className="orari-name-editor" aria-label={`Modifica nome di ${g.name}`} onSubmit={e => { e.preventDefault(); void saveName(); }}>
+          <p className="sub">Nome importato: {data?.dataset.teachers[g.id].importedName || g.name}</p>
+          <div className="orari-name-fields">
+            <label>Nome da mostrare<input autoFocus required maxLength={200} value={nameDraft.name} disabled={busy} onChange={e => setNameDraft({ ...nameDraft, name: e.target.value })} /></label>
+            <label>Docente originale<input required maxLength={200} value={nameDraft.originalName} disabled={busy} onChange={e => setNameDraft({ ...nameDraft, originalName: e.target.value })} /></label>
+          </div>
+          <p className="sub">Cambia solo il nome, anche nelle giornate passate. Permessi e recuperi restano sullo stesso conto.</p>
+          <div className="orari-name-actions">
+            <button className="permit-save" disabled={busy || !nameDraft.name.trim() || !nameDraft.originalName.trim()}>{busy ? 'Salvataggio…' : 'Salva nome'}</button>
+            {nameDraft.previous && <button type="button" className="orari-action" disabled={busy} onClick={() => void saveName(true)}>Rimuovi nome personalizzato</button>}
+            <button type="button" className="orari-action" disabled={busy} onClick={() => { setNameDraft(undefined); setError(''); }}>Annulla</button>
+          </div>
+        </form>}
         {g.cdcName && <p className="orari-cdc" title={`${g.cdc ? g.cdc + ' · ' : ''}${g.cdcName}`}>{g.cdc ? `${g.cdc} · ` : ''}{g.cdcName}</p>}
         {!!records.length && !editing && <details className="orari-history"><summary>Modifiche salvate ({records.length})</summary>{records.map(r => <div className="orari-history-row" key={r.id}><button disabled={busy} onClick={() => { if (r.start === viewDay) { begin(g.id); } else { discard(); setData(undefined); setViewDay(r.start); } }}>{r.reset ? 'Ripristino' : 'Modifica'} dal {dateLabel(r.start)}{r.end ? ` al ${dateLabel(r.end)}` : ''}</button><button className="orari-action" disabled={busy} aria-label={`Elimina modifica di ${g.name} dal ${dateLabel(r.start)}`} onClick={() => remove(r)}>Elimina</button></div>)}</details>}
         {deletion?.record.teacher === g.id && <div className="orari-impact" aria-label="Conferma eliminazione"><p>Eliminare la modifica dal {dateLabel(deletion.record.start)}? {deletion.impact.days.reduce((sum, d) => sum + d.issues.length, 0)} assegnazioni da verificare. Le assegnazioni restano conservate.</p><details><summary>Mostra dettagli</summary>{deletion.impact.days.filter(d => d.issues.length > 0).map(d => <div key={d.day}><p>{dateLabel(d.day)}</p>{d.issues.map(i => <p key={i.key}>{i.key}: {i.message}</p>)}</div>)}</details><button className="permit-save" disabled={busy} onClick={() => remove(deletion.record, deletion)}>Conferma ed elimina</button> <button className="orari-action" disabled={busy} onClick={() => setDeletion(undefined)}>Annulla</button></div>}

@@ -11,7 +11,7 @@ from .domain import normalize_dataset, rows, candidates, validate_assignment, de
 from .storage import Store, EMPTY
 from . import backup, attachments
 from .hour_types import merge_types, validate_types
-from . import statistics, recovery, timetables, overrides
+from . import statistics, recovery, timetables, overrides, teacher_names
 from zoneinfo import ZoneInfo
 from hashlib import sha256
 from copy import deepcopy
@@ -111,6 +111,12 @@ def create_app(path=None, seed=None):
         if value is not None:
             value['_overrides'] = store.read(db, 'timetableOverrides', overrides.empty())
         return value
+
+    def name_overrides(db):
+        return store.read(db, 'teacherNameOverrides', teacher_names.empty())
+
+    def presented(db, ds):
+        return teacher_names.dataset(ds, name_overrides(db))
 
     def write_history(db, value):
         store.write(db, 'timetables', {k: v for k, v in value.items() if k != '_overrides'})
@@ -243,13 +249,14 @@ def create_app(path=None, seed=None):
             rules = policies(db, ds)
             history = read_history(db)
             facts = store.read(db, 'statistics', statistics.empty())
+            display = presented(db, ds)
         d = day.isoformat()
         rs = rows(ds, state, d)
         problems = timetables.issues(ds, state, d, rules)
         for item in problems:
             item['context'] = timetables.conflict_context(history, d, item['key'], state['asg'][d][item['key']]) or timetables.context(history, state, d, item['key'], facts)
         selected = timetables.version(history, d)
-        return dict(dataset=ds, state=state, rows=rs, issues=problems, references=timetables.reference_issues(history, state, d),
+        return dict(dataset=display, state=state, rows=rs, issues=problems, references=timetables.reference_issues(history, state, d),
                     timetable=dict(id=selected['id'], effective=selected['effective']), autoDis={d: auto_availability(ds, state, d)})
 
     @app.get('/api/orari')
@@ -264,10 +271,34 @@ def create_app(path=None, seed=None):
                 ds, effective = store.read(db, 'dataset'), None
                 if ds is None:
                     raise ValueError('Carica prima un orario.')
-        teachers = {i: dict(t, cdcName=CDC_NAMES.get(t.get('classe_concorso', ''), t.get('classe_concorso', ''))) for i, t in ds['teachers'].items()}
+            labels = name_overrides(db)
+        teachers = {i: dict(t, cdcName=CDC_NAMES.get(t.get('classe_concorso', ''), t.get('classe_concorso', ''))) for i, t in teacher_names.teachers(ds['teachers'], labels).items()}
         return dict(effective=effective, day=viewed, version=selected['id'] if history else '', dataset=dict(ds, teachers=teachers),
                     basis=timetables.digest(history), imported=selected['dataset'] if history else ds,
                     overrides=history.get('_overrides', overrides.empty())['records'] if history else [])
+
+    @app.post('/api/orari/name')
+    def save_teacher_name(data: dict):
+        if set(data) != {'teacher', 'value', 'previous'} or not isinstance(data['teacher'], str):
+            raise ValueError('Modifica nome non valida.')
+        identifier, value = data['teacher'], data['value']
+        with store.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            catalog = teacher_names.catalog(read_history(db))
+            if identifier not in catalog:
+                raise ValueError('Docente non valido.')
+            document = name_overrides(db)
+            if document['teachers'].get(identifier) != data['previous']:
+                raise HTTPException(409, 'Nome modificato da un altro utente. Ricarica gli orari.')
+            if value is None:
+                document['teachers'].pop(identifier, None)
+            else:
+                if not isinstance(value, dict) or set(value) != {'name', 'originalName'} or any(not isinstance(v, str) for v in value.values()):
+                    raise ValueError('Nome personalizzato non valido.')
+                document['teachers'][identifier] = {k: v.strip() for k, v in value.items()}
+            teacher_names.validate(document, catalog)
+            store.write(db, 'teacherNameOverrides', document)
+        return {'ok': True}
 
     def override_plan(db, data):
         history = read_history(db)
@@ -355,6 +386,8 @@ def create_app(path=None, seed=None):
         with store.connect() as db:
             ds, state = load(db)
             versions = read_history(db)['versions']
+            ds = presented(db, ds)
+            versions = [dict(v, dataset=presented(db, v['dataset'])) for v in versions]
         summaries, balances = recovery.summary(state)
         manual = {p['teacher']: p for p in recovery.ledger(state).values() if p['date'] is None}
         return dict(dataset=ds, timetableVersions=[dict(effective=v['effective'], dataset=v['dataset']) for v in versions], permitAttachments=state['permitAttachments'], permessi=state['permessi'], permitRequests=state['permitRequests'], permitNotes=state['permitNotes'], permitKinds=state['permitKinds'], recoveries=summaries, balances=balances, manualPermits=manual, manualPermitNotes=state['manualPermitNotes'])
@@ -459,9 +492,9 @@ def create_app(path=None, seed=None):
         documents = db.execute('SELECT key, value FROM documents ORDER BY key').fetchall()
         images = [(i, media, sha256(content).hexdigest()) for i, media, content in db.execute('SELECT id, media_type, content FROM attachments ORDER BY id')]
         impact['token'] = timetables.digest([documents, images, ds, effective])
-        impact['teachers'] = {i: t['name'] for i, t in ds['teachers'].items()}
+        impact['teachers'] = {i: t['name'] for i, t in presented(db, ds)['teachers'].items()}
         if history:
-            impact['previousTeachers'] = {i: t['name'] for i, t in timetables.version(history, effective)['dataset']['teachers'].items()}
+            impact['previousTeachers'] = {i: t['name'] for i, t in presented(db, timetables.version(history, effective)['dataset'])['teachers'].items()}
         return proposed, reconciled, impact
 
     @app.post('/api/timetable/preview')
@@ -565,10 +598,12 @@ def create_app(path=None, seed=None):
         with store.connect() as db:
             ds, state = load(db, day.isoformat())
             rules = policies(db, ds)
+            labels = teacher_names.teachers(ds['teachers'], name_overrides(db))
         row = next((r for r in rows(ds, state, day.isoformat()) if r['k'] == key), None)
         if not row:
             raise ValueError('Supplenza non presente.')
-        return candidates(ds, state, day.isoformat(), row, rules)
+        return [dict(c, name=labels[c['id']]['name']) if c['id'] in labels else c
+                for c in candidates(ds, state, day.isoformat(), row, rules)]
 
     @app.post('/api/assignments')
     def assign(e: Assignment):
@@ -608,24 +643,26 @@ def create_app(path=None, seed=None):
             facts = store.read(db, 'statistics', statistics.empty())
             history = read_history(db)
             images = attachments.export(db, state)
-        return dict(schema=5, timetables={k: v for k, v in history.items() if k != '_overrides'}, timetableOverrides=history['_overrides'], attachments=images, datasetId='v1:'+','.join(sorted(ds['teachers'])), hourTypes=rules, statistics=facts, **state)
+            labels = name_overrides(db)
+        return dict(schema=6, teacherNameOverrides=labels, timetables={k: v for k, v in history.items() if k != '_overrides'}, timetableOverrides=history['_overrides'], attachments=images, datasetId='v1:'+','.join(sorted(ds['teachers'])), hourTypes=rules, statistics=facts, **state)
 
     @app.post('/api/import')
     def import_state(data: dict, preview: bool = False):
         with store.connect() as db:
             db.execute('BEGIN IMMEDIATE')
-            history = timetables.validate(data.get('timetables')) if data.get('schema') in (4, 5) else read_history(db)
+            history = timetables.validate(data.get('timetables')) if data.get('schema') in (4, 5, 6) else read_history(db)
             retained = store.read(db, 'timetableOverrides', overrides.empty())
-            document = overrides.validate(data.get('timetableOverrides'), history) if data.get('schema') == 5 else retained
+            document = overrides.validate(data.get('timetableOverrides'), history) if data.get('schema') in (5, 6) else retained
             document, restore_review = overrides.reconcile(document, history)
             history['_overrides'] = document
-            if data.get('schema') not in (4, 5):
+            labels = teacher_names.validate(data.get('teacherNameOverrides') if data.get('schema') == 6 else name_overrides(db), teacher_names.catalog(history))
+            if data.get('schema') not in (4, 5, 6):
                 ds, _ = load(db)
-            if data.get('schema') in (4, 5):
+            if data.get('schema') in (4, 5, 6):
                 ds = timetables.dataset(history, datetime.now(ZoneInfo('Europe/Rome')).date().isoformat())
             identifier = data.get('datasetId')
-            compatible = identifier == 'v1:'+','.join(sorted(ds['teachers'])) if data.get('schema') in (4, 5) else isinstance(identifier, str) and identifier.startswith('v1:') and set(identifier[3:].split(',')) <= set(ds['teachers'])
-            if type(data.get('schema')) is not int or data['schema'] not in (1, 2, 3, 4, 5) or not compatible:
+            compatible = identifier == 'v1:'+','.join(sorted(ds['teachers'])) if data.get('schema') in (4, 5, 6) else isinstance(identifier, str) and identifier.startswith('v1:') and set(identifier[3:].split(',')) <= set(ds['teachers'])
+            if type(data.get('schema')) is not int or data['schema'] not in (1, 2, 3, 4, 5, 6) or not compatible:
                 raise ValueError('Archivio non compatibile.')
             rules = validate_types(data['hourTypes']) if 'hourTypes' in data else None
             state = {k: data.get(k, {}) for k in EMPTY}
@@ -685,7 +722,7 @@ def create_app(path=None, seed=None):
             if preview:
                 return dict(overrides=restore_review)
             attachments.import_images(db, state, data, data['schema'])
-            if data['schema'] in (4, 5):
+            if data['schema'] in (4, 5, 6):
                 write_history(db, history)
                 store.write(db, 'dataset', history['versions'][0]['dataset'])
             if rules is not None:
@@ -693,6 +730,7 @@ def create_app(path=None, seed=None):
             store.write(db, 'state', state)
             store.write(db, 'statistics', facts)
             store.write(db, 'timetableOverrides', document)
+            store.write(db, 'teacherNameOverrides', labels)
         return {'ok': True, 'overrides': restore_review}
 
     @app.post('/api/import/preview')

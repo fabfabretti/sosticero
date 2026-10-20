@@ -38,6 +38,17 @@ function fixture() {
 }
 const project = (data, choice = 'both') => projectExport(data, day, choice, key => key === 'absent|4|1A' && data.state.asg[day][key]?.v === 'ENTRA' ? 'Entra h 10:35' : undefined);
 
+test('PDF projection uses effective names without changing teacher identities or records', () => {
+  const data = fixture();
+  data.dataset.teachers.absent.name = 'Assente nuovo (Originale)';
+  data.dataset.teachers.manual.name = 'Spillari Davide (Savelli)';
+  const before = JSON.stringify(data);
+  const result = project(data, 'centrale');
+  assert.ok(result.sheets[0].rows[0].absent.startsWith('Assente nuovo (Originale)'));
+  assert.equal(result.sheets[0].rows[0].substitute, 'Spillari Davide (Savelli)');
+  assert.equal(JSON.stringify(data), before);
+});
+
 test('projection preserves grouped rows, room, types, blank and special assignments without writes', () => {
   const data = fixture(); const before = JSON.stringify(data);
   const result = project(data);
@@ -143,6 +154,7 @@ test('availability is a wrapping comma-separated list and period borders are thi
   const all = wrapped.internal.pages.slice(1).map(p => p.join('\n')).join('\n');
   assert.ok(all.includes('(29, ) Tj') || all.includes('(29) Tj'));
 });
+
 
 test('POT compresence retains its distinct label in PDF projection', () => {
   const data = fixture();
