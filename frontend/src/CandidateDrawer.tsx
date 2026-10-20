@@ -3,7 +3,7 @@ import type { Row, Candidate } from "./types";
 const category = (c: Candidate) =>
   ({
     RP: "rp",
-    C: "comp",
+    CP: "comp", C: "comp",
     D: "dis",
     POT:
       c.loc === "centrale"
