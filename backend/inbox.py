@@ -13,7 +13,7 @@ from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, Request
-from . import timetables, attachments
+from . import timetables, teacher_names, attachments
 from .domain import HOURS, absences
 
 HEADERS = ['Informazioni cronologiche', 'Quale caso vuoi comunicare?', 'Nome del docente',
@@ -191,9 +191,12 @@ class Inbox:
         try:
             ds, state = self.load(db, result['days'][0])
             teachers = ds['teachers']
-            matches = [i for i, t in teachers.items() if t['name'] == result['name']]
+            labels = self.store.read(db, 'teacherNameOverrides', teacher_names.empty())
+            matches = teacher_names.matches(teachers, labels, result['name'])
+            display = teacher_names.teachers(teachers, labels)
             teacher = selected or item['teacher'] or (matches[0] if len(matches) == 1 else None)
-            result.update(teacher=teacher, teachers=[dict(id=i, name=t['name']) for i, t in sorted(teachers.items(), key=lambda p: p[1]['name'])])
+            result.update(teacher=teacher, nameMatched=len(matches) == 1, teacherName=display.get(teacher, {}).get('name'),
+                          teachers=[dict(id=i, name=t['name']) for i, t in sorted(display.items(), key=lambda p: p[1]['name'])])
             if teacher not in teachers:
                 raise ValueError('Seleziona il docente: nome sconosciuto o ambiguo.')
             history = self.store.read(db, 'timetables')

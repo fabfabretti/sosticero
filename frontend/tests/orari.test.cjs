@@ -199,7 +199,9 @@ test('changing the start date asks only when the draft has unsaved edits', async
   const s = await loaded(undefined, message => { prompts.push(message); return false; });
   s.nodes().find(n => n.props?.['aria-label'] === 'Modifica orario di Anna').props.onClick();
   s.nodes().find(n => n.props?.['aria-label'] === 'Disabilita Mar 2ª POT').props.onClick();
-  await s.nodes().find(n => n.type === 'input' && n.props.required).props.onChange({ target: { value: '2026-10-19' } });
+  const start = s.nodes().find(n => n.type === 'input' && n.props.required);
+  const anotherDate = start.props.value === '2026-10-19' ? '2026-10-20' : '2026-10-19';
+  await start.props.onChange({ target: { value: anotherDate } });
   assert.equal(prompts.length, 1);
   assert.match(prompts[0], /modifiche non salvate/);
   assert.equal(s.calls.length, 1);
@@ -301,6 +303,58 @@ test('deleting an override shows only new assignment problems before confirmatio
   assert.ok(s.nodes().some(n => n.props?.['aria-label'] === 'Conferma eliminazione'));
   await s.nodes().find(n => n.props?.children === 'Conferma ed elimina').props.onClick();
   assert.ok(calls.some(([url, body]) => url === 'orari/override' && body.token === 'delete-token'));
+});
+
+test('name editor saves explicit names, searches imported aliases and removes without timetable writes', async () => {
+  let current = structuredClone(orari);
+  current.dataset.teachers.a.name = 'Binotto Rosaria (Cavallaro)';
+  const writes = [];
+  const s = await loaded(async (url, body) => {
+    if (url.startsWith('orari?')) return current;
+    writes.push([url, body]);
+    assert.equal(url, 'orari/name');
+    const t = current.dataset.teachers.a;
+    if (body.value) {
+      t.importedName = 'Binotto Rosaria (Cavallaro)'; t.nameOverride = body.value;
+      t.name = `${body.value.name} (${body.value.originalName})`;
+    } else { t.name = t.importedName; delete t.importedName; delete t.nameOverride; }
+    return { ok: true };
+  });
+  s.nodes().find(n => n.props?.['aria-label'] === 'Modifica nome di Binotto Rosaria (Cavallaro)').props.onClick();
+  let inputs = s.nodes().filter(n => n.type === 'input' && n.props.maxLength === 200);
+  inputs[0].props.onChange({ target: { value: 'Binotto Steven' } });
+  inputs = s.nodes().filter(n => n.type === 'input' && n.props.maxLength === 200);
+  inputs[1].props.onChange({ target: { value: 'Cavallaro' } });
+  await s.nodes().find(n => n.type === 'form').props.onSubmit({ preventDefault() {} }); await settle();
+  assert.equal(writes[0][1].previous, null);
+  assert.equal(writes[0][1].value.name, 'Binotto Steven');
+  assert.ok(s.nodes().some(n => n.type === 'del' && n.props.children === 'Binotto Rosaria (Cavallaro)'));
+  const search = s.nodes().find(n => n.props?.type === 'search');
+  for (const value of ['Steven', 'Cavallaro', 'Rosaria']) {
+    search.props.onChange({ target: { value } });
+    assert.equal(tables(s).length, 1);
+  }
+  s.nodes().find(n => n.props?.['aria-label'] === 'Modifica nome di Binotto Steven (Cavallaro)').props.onClick();
+  await s.nodes().find(n => n.type === 'button' && n.props.children === 'Rimuovi nome personalizzato').props.onClick();
+  assert.equal(writes[1][1].value, null);
+  assert.equal(writes[1][1].previous.originalName, 'Cavallaro');
+  assert.ok(!s.nodes().some(n => n.type === 'del'));
+});
+
+test('canceling a name draft never writes and errors preserve its fields', async () => {
+  const s = await loaded(async url => {
+    if (url.startsWith('orari?')) return orari;
+    throw Error('Nome modificato da un altro utente');
+  });
+  s.nodes().find(n => n.props?.['aria-label'] === 'Modifica nome di Anna').props.onClick();
+  assert.ok(s.nodes().some(n => n.props?.className === 'sub' && n.props.children.includes('Permessi e recuperi')));
+  s.nodes().find(n => n.type === 'form').props.onSubmit({ preventDefault() {} });
+  await settle();
+  assert.ok(s.nodes().some(n => n.props?.role === 'alert'));
+  assert.ok(s.nodes().some(n => n.type === 'form'));
+  s.nodes().find(n => n.type === 'button' && n.props.children === 'Annulla').props.onClick();
+  assert.ok(!s.nodes().some(n => n.type === 'form'));
+  assert.equal(s.calls.filter(u => u === 'orari/override').length, 0);
 });
 
 test('disabled POT class editor supports double click, cancel, class save, moves and reactivation', async () => {

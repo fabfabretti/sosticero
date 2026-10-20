@@ -150,6 +150,18 @@ test('Only the global notifier chimes for new submissions, not initial load or a
   assert.equal(passive.listeners.has('pointerdown'), false);
 });
 
+test('alias matches use the server resolution and display the current name without a selector', async () => {
+  const h = harness('AbsenceInbox', { 'inbox/summary': {pending:1,configured:true}, 'inbox?history=false': [{
+    id: 'alias', raw: ['', '', 'Savelli'], status: 'pending', error: '', name: 'Savelli',
+    teacher: 'a', nameMatched: true, teacherName: 'Spillari Davide (Savelli)',
+    teachers: [{id:'a',name:'Spillari Davide (Savelli)'}], start:'2026-10-19', end:'2026-10-19', hours:[1],
+  }] });
+  h.render(); await settle();
+  assert.equal(h.render().filter(n => n.type === 'select').length, 0);
+  assert.ok(text(h.render()).includes('Spillari Davide (Savelli)'));
+  assert.equal(button(h, 'Accetta').props.disabled, false);
+});
+
 
 test('Inbox keeps optional absence details through polling and submits them on acceptance', async () => {
   const item = {id:'one',raw:[],status:'pending',error:'',teacher:'a',nameMatched:true};

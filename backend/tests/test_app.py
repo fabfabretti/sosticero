@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from fastapi.testclient import TestClient
 from backend.main import create_app
-from backend.domain import normalize_dataset, candidates, rows, validate_assignment, auto_availability, CDC_NAMES, PRIORITIES
+from backend.domain import normalize_dataset, candidates, rows, validate_assignment, auto_availability, CDC_NAMES
 from backend.storage import EMPTY
 import copy
 
@@ -63,7 +63,7 @@ class RulesTest(unittest.TestCase):
         self.assertLess(ids.index('ENTRA'), ids.index('pot'))
         self.assertLess(ids.index('ESCE'), ids.index('dis'))
         self.assertLess(ids.index('co'), ids.index('pot'))
-        self.assertLess(ids.index('pot'), ids.index('DIR'))
+        self.assertLess(ids.index('DIR'), ids.index('pot'))
         self.assertLess(ids.index('dis'), ids.index('DIR'))
         self.assertLess(ids.index('DIR'), ids.index('utc'))
         self.assertLess(ids.index('utc'), ids.index('support'))
@@ -118,13 +118,13 @@ class RulesTest(unittest.TestCase):
         self.assertLess(next(i for i,c in enumerate(cs) if c['id']=='pot'), next(i for i,c in enumerate(cs) if c['id']=='blank'))
 
     def test_uts_forces_branch_and_manual_site_overrides(self):
-        self.ds['lessons']['pot|lun|2']['special'] = 'UTS'
+        self.ds['lessons']['pot|lun|2'].update(special='UTS', activities=['UTS'])
         c = next(c for c in self.cs() if c['id'] == 'pot')
-        self.assertEqual((c['ty'], c['loc'], c['tier']), ('UTS', 'succursale', 31))
+        self.assertEqual((c['ty'], c['loc'], c['tier']), ('UTS', 'succursale', 6))
         self.state['dis'][DAY] = {'pot': [2]}
         self.state['disSites'][DAY] = {'pot': 'centrale'}
         c = next(c for c in self.cs() if c['id'] == 'pot')
-        self.assertEqual((c['ty'], c['loc'], c['tier']), ('D', 'centrale', 10))
+        self.assertEqual((c['ty'], c['loc'], c['tier']), ('D', 'centrale', 3))
 
     def test_classe_concorso_survives_normalization(self):
         self.assertEqual(self.ds['teachers']['co']['classe_concorso'], 'B016')

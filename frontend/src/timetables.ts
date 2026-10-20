@@ -1,3 +1,6 @@
+export const teacherSearchText = (t: { name: string; importedName?: string; code?: string }) =>
+  [t.name, t.importedName || '', t.code || ''].join(' ');
+
 export const DAYS = ["lun", "mar", "mer", "gio", "ven"];
 export const HOURS = [1, 2, 3, 4, 5, 6, 7];
 
@@ -9,7 +12,7 @@ export const norm = (s: string) =>
 
 type Lesson = { classes?: string[]; activities?: string[]; special?: string; site?: string | null };
 type Dataset = {
-  teachers: Record<string, { name: string; code?: string; classe_concorso?: string; cdcName?: string; retired?: boolean }>;
+  teachers: Record<string, { name: string; importedName?: string; code?: string; classe_concorso?: string; cdcName?: string; retired?: boolean }>;
   lessons: Record<string, Lesson>;
 };
 
@@ -18,6 +21,7 @@ export type TeacherTimetable = {
   id: string;
   name: string;
   code: string;
+  importedName?: string;
   cdc: string;
   cdcName: string;
   cells: (TimetableCell | null)[][];
@@ -36,6 +40,7 @@ export function buildTeacherTimetables(dataset: Dataset): TeacherTimetable[] {
     .map(([id, t]) => ({
       id,
       name: t.name,
+      importedName: t.importedName,
       code: t.code || "",
       cdc: t.classe_concorso || "",
       cdcName: t.cdcName || t.classe_concorso || "",

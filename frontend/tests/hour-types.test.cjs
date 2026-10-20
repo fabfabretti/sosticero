@@ -78,3 +78,25 @@ test('availability chips show the campus using the POT pattern', () => {
   assert.deepEqual(chips.map(n => n.props.children.join('')), candidates.map(c => c[2]));
   assert.ok(nodes.some(n => n.props.className === 'type-chip-wrapper cross-site'));
 });
+
+test('class and CDC stars are independent', () => {
+  const c = component('src/CandidateDrawer.tsx');
+  const candidates = [
+    { id: 'class', inClass: true }, { id: 'cdc', sameCdc: true },
+    { id: 'both', inClass: true, sameCdc: true }, { id: 'neither' },
+  ].map(c => ({ name: c.id, ty: 'POT', clsWeek: [], why: '', today: 0, total: 0, ...c }));
+  const nodes = c.render({ open: { h: 2, c: '1A', ids: [] }, name: x => x, busy: false, onClose() {}, onAssign() {}, cands: candidates });
+  const badges = nodes.filter(n => n.props.className === 'badge');
+  assert.deepEqual(badges.map(n => n.props.children[1]), ['Insegna nella classe', 'Insegna la stessa CDC', 'Insegna nella classe', 'Insegna la stessa CDC']);
+  assert.ok(badges.every(n => n.props.children[0].props['aria-hidden'] === 'true'));
+});
+
+test('adjacent favourable and other RP entries get separate headings', () => {
+  const c = component('src/CandidateDrawer.tsx');
+  const nodes = c.render({ open: { h: 2, c: '1A', ids: [] }, name: x => x, busy: false, onClose() {}, onAssign() {}, cands: [
+    { id: 'good', ty: 'RP', convenient: true, why: 'Assente' },
+    { id: 'other', ty: 'RP', convenient: false, why: '' },
+    { id: 'UNCOVERED', ty: 'UNCOVERED', why: '' },
+  ] });
+  assert.deepEqual(nodes.filter(n => n.type === 'h3').map(n => n.props.children), ['Recuperi permesso · ore favorevoli', 'Altri recuperi permesso']);
+});
