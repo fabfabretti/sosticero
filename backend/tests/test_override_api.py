@@ -51,7 +51,7 @@ class OverrideApiTest(unittest.TestCase):
         self.client.post('/api/import', json=archive).raise_for_status()
         self.assertIn('pot|mar|3', self.orari()['dataset']['lessons'])
         invalid = copy.deepcopy(archive)
-        invalid['timetableOverrides']['records'][0]['groups'][0]['after']['mar|3']['site'] = 'succursale'
+        invalid['timetableOverrides']['records'][0]['groups'][0]['after']['mar|3']['site'] = 'invalid'
         before = self.client.get('/api/export').json()
         self.assertEqual(self.client.post('/api/import', json=invalid).status_code, 422)
         self.assertEqual(before, self.client.get('/api/export').json())
@@ -352,3 +352,41 @@ class OverrideApiTest(unittest.TestCase):
         self.assertTrue(any(r['review'] for r in response.json()['impact']['overrides']))
         self.assertEqual(self.orari('2026-10-26')['dataset']['lessons']['pot|lun|2']['classes'], [])
         self.assertEqual(self.client.get('/api/export').json()['asg'][DAY]['absent|2|1A']['t'], 'CP')
+
+    def test_pot_campus_edit_and_future_override_deletion(self):
+        data = self.draft(start='2099-10-19')
+        data['cells']['lun|2'].update(site='succursale', disabled=True, classes=['1A'])
+        self.save(data)
+        future = self.orari('2099-10-19')
+        self.assertEqual(future['dataset']['lessons']['pot|lun|2']['site'], 'succursale')
+        self.assertEqual(self.orari()['dataset']['lessons']['pot|lun|2']['site'], 'centrale')
+        archive = self.client.get('/api/export').json()
+        self.client.post('/api/import', json=archive).raise_for_status()
+        record = future['overrides'][-1]
+        request = dict(delete=True, id=record['id'], teacher='pot', start=record['start'], basis=self.orari()['basis'])
+        preview = self.client.post('/api/orari/preview', json=request)
+        preview.raise_for_status()
+        self.client.post('/api/orari/override', json={**request, 'token': preview.json()['token']}).raise_for_status()
+        self.assertEqual(self.orari()['overrides'], [])
+        bad = self.draft(); bad['cells']['lun|2']['site'] = 'invalid'
+        self.assertEqual(self.client.post('/api/orari/preview', json=bad).status_code, 422)
+
+    def test_alf_class_campus_compresence_and_release(self):
+        raw = fixture(); raw['orario'][3]['attivita_originale'] = 'ALF'
+        import_version(self.client, raw, '2026-10-19').raise_for_status()
+        day = '2026-10-19'
+        self.client.post('/api/hour-types', json=dict(id='code:ALF', available=True, visible=True, school=True)).raise_for_status()
+        self.entry(day)
+        data = self.draft(start=day)
+        data['cells']['lun|2'].update(classes=['1A'], disabled=True, site='centrale')
+        self.save(data)
+        choices = {c['id']: c for c in self.candidates(day)}
+        self.assertEqual(choices['pot']['typeLabel'], 'Compresenza - ALF')
+        self.assertFalse(choices['pot']['exceptional'])
+        self.client.post('/api/assignments', json=dict(day=day, key='absent|2|1A', value='pot')).raise_for_status()
+        self.assertEqual(self.client.get('/api/export').json()['asg'][day]['absent|2|1A']['t'], 'CA')
+        self.client.post('/api/assignments', json=dict(day=day, key='absent|2|1A', value=None)).raise_for_status()
+        archive = self.client.get('/api/export').json()
+        self.client.post('/api/import', json=archive).raise_for_status()
+        self.client.post('/api/entries', json=dict(day=day, group='cf', id='1A', hours=[2])).raise_for_status()
+        self.assertIn('2', self.client.get('/api/day/'+day).json()['autoDis'][day]['pot'])

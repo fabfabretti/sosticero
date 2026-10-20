@@ -226,14 +226,14 @@ test('failed save preserves the edited draft and clears stale preview', async ()
 test('drag shows a floating preview without disabling and keyboard movement remains available', async () => {
   const s = await loaded();
   s.nodes().find(n => n.props?.['aria-label'] === 'Modifica orario di Anna').props.onClick();
-  const b = s.nodes().find(n => n.props?.['aria-label'] === 'Disabilita Mar 2ª POT');
+  const b = s.nodes().find(n => n.props?.['aria-label'] === 'Modifica POT Mar 2ª POT');
   b.props.onPointerDown({ button: 0, clientX: 0, clientY: 0, pointerId: 1, currentTarget: { setPointerCapture() {} } });
   b.props.onPointerMove({ clientX: 20, clientY: 20, preventDefault() {} });
   assert.ok(s.nodes().some(n => n.props?.className === 'orari-drag-preview'));
   b.props.onClick();
   assert.ok(s.nodes().some(n => n.props?.['aria-label'] === 'Disabilita Mar 2ª POT' && n.props['aria-pressed'] === false));
   b.props.onPointerUp({ clientX: 20, clientY: 20 }); await new Promise(r => setTimeout(r, 1));
-  s.nodes().find(n => n.props?.['aria-label'] === 'Disabilita Mar 2ª POT').props.onKeyDown({ altKey: true, key: 'ArrowDown', preventDefault() {} });
+  s.nodes().find(n => n.props?.['aria-label'] === 'Modifica POT Mar 2ª POT').props.onKeyDown({ altKey: true, key: 'ArrowDown', preventDefault() {} });
   assert.ok(s.nodes().some(n => n.props?.['aria-label'] === 'Disabilita Mar 3ª POT'));
 });
 
@@ -357,28 +357,90 @@ test('canceling a name draft never writes and errors preserve its fields', async
   assert.equal(s.calls.filter(u => u === 'orari/override').length, 0);
 });
 
-test('disabled POT class editor supports double click, cancel, class save, moves and reactivation', async () => {
+test('POT click and double click edit class and campus without toggling availability', async () => {
+  const s = await loaded();
+  assert.ok(!s.nodes().some(n => n.props?.onDoubleClick));
+  s.nodes().find(n => n.props?.['aria-label'] === 'Modifica orario di Anna').props.onClick();
+  s.nodes().find(n => n.props?.['aria-label'] === 'Disabilita Mar 2ª POT').props.onClick();
+  let pot = s.nodes().find(n => n.props?.['aria-label'] === 'Modifica POT Mar 2ª POT');
+  pot.props.onClick(); pot.props.onClick(); pot.props.onDoubleClick();
+  assert.ok(s.nodes().some(n => n.props?.['aria-label'] === 'Riattiva Mar 2ª POT'));
+  s.nodes().find(n => n.props?.['aria-label'] === 'Classe POT').props.onChange({ target: { value: '1A' } });
+  s.nodes().find(n => n.props?.role === 'option' && n.props.children[0] === '1A').props.onClick();
+  s.nodes().find(n => n.props?.['aria-label'] === 'Annulla modifica attività').props.onClick();
+  pot.props.onClick();
+  s.nodes().find(n => n.props?.['aria-label'] === 'Classe POT').props.onChange({ target: { value: '1A' } });
+  s.nodes().find(n => n.props?.role === 'option' && n.props.children[0] === '1A').props.onClick();
+  s.nodes().find(n => n.type === 'button' && n.props.children === 'Centrale').props.onClick();
+  s.nodes().find(n => n.props?.children === 'Applica').props.onClick();
+  pot = s.nodes().find(n => n.props?.['aria-label'] === 'Modifica POT Mar 2ª 1A · POT');
+  assert.ok(pot);
+  assert.ok(s.nodes().some(n => n.props?.title === '1A · POT · Centrale'));
+  pot.props.onKeyDown({ altKey: true, key: 'ArrowDown', preventDefault() {} });
+  assert.ok(s.nodes().some(n => n.props?.['aria-label'] === 'Modifica POT Mar 3ª 1A · POT'));
+  s.nodes().find(n => n.props?.['aria-label'] === 'Riattiva Mar 3ª 1A · POT').props.onClick();
+  assert.ok(s.nodes().some(n => n.props?.['aria-label'] === 'Disabilita Mar 3ª POT'));
+});
+
+test('future overrides are expanded and removable while editing', async () => {
+  const record = { id: 'future', teacher: 'a', start: '2099-10-19', end: null, reset: false, groups: [{}] };
+  let current = { ...orari, overrides: [record] };
+  const writes = [];
+  const s = await loaded(async (url, body) => {
+    if (url.startsWith('orari?')) return current;
+    writes.push([url, body]);
+    if (url === 'orari/preview') return { token: 'future-delete', days: [] };
+    current = { ...current, overrides: [] }; return { ok: true };
+  });
+  assert.equal(s.nodes().find(n => n.props?.className === 'orari-history').props.open, true);
+  s.nodes().find(n => n.props?.['aria-label'] === 'Modifica orario di Anna').props.onClick();
+  assert.ok(s.nodes().some(n => n.props?.className === 'orari-history'));
+  await s.nodes().find(n => n.props?.['aria-label'] === 'Elimina modifica di Anna dal 19/10/2099').props.onClick();
+  assert.equal(writes[1][1].token, 'future-delete');
+  assert.ok(!s.nodes().some(n => n.props?.className === 'orari-history'));
+});
+
+test('ALF uses the class and campus editor on click and double click in edit mode', async () => {
+  const alf = structuredClone(orari);
+  alf.dataset.lessons['a|mar|2'].activities = ['ALF'];
+  const s = await loaded(async () => alf);
+  assert.ok(!s.nodes().some(n => n.props?.onDoubleClick));
+  s.nodes().find(n => n.props?.['aria-label'] === 'Modifica orario di Anna').props.onClick();
+  s.nodes().find(n => n.props?.['aria-label'] === 'Disabilita Mar 2ª ALF').props.onClick();
+  const cell = s.nodes().find(n => n.props?.['aria-label'] === 'Modifica ALF Mar 2ª ALF');
+  cell.props.onClick(); cell.props.onClick(); cell.props.onDoubleClick();
+  assert.ok(s.nodes().some(n => n.props?.['aria-label'] === 'Riattiva Mar 2ª ALF'));
+  s.nodes().find(n => n.props?.['aria-label'] === 'Classe ALF').props.onChange({ target: { value: '1A' } });
+  s.nodes().find(n => n.props?.role === 'option' && n.props.children[0] === '1A').props.onClick();
+  s.nodes().find(n => n.type === 'button' && n.props.children === 'Centrale').props.onClick();
+  s.nodes().find(n => n.props?.children === 'Applica').props.onClick();
+  assert.ok(s.nodes().some(n => n.props?.title === '1A · ALF · Centrale'));
+  s.nodes().find(n => n.props?.['aria-label'] === 'Riattiva Mar 2ª 1A · ALF').props.onClick();
+  assert.ok(s.nodes().some(n => n.props?.['aria-label'] === 'Disabilita Mar 2ª ALF'));
+});
+
+
+test('activity editor stays outside the grid with keyboard class suggestions and three campus buttons', async () => {
   const s = await loaded();
   s.nodes().find(n => n.props?.['aria-label'] === 'Modifica orario di Anna').props.onClick();
   s.nodes().find(n => n.props?.['aria-label'] === 'Disabilita Mar 2ª POT').props.onClick();
-  let pot = s.nodes().find(n => n.props?.['aria-label'] === 'Riattiva Mar 2ª POT');
-  pot.props.onClick({ detail: 1 });
-  pot.props.onClick({ detail: 2 });
-  pot.props.onDoubleClick();
-  await new Promise(resolve => setTimeout(resolve, 400));
-  assert.ok(s.nodes().some(n => n.props?.['aria-label'] === 'Riattiva Mar 2ª POT'));
-  s.nodes().find(n => n.type === 'select').props.onChange({ target: { value: '1A' } });
-  s.nodes().find(n => n.props?.children === 'Annulla classe').props.onClick();
-  assert.ok(!s.nodes().some(n => n.props?.['aria-label'] === 'Riattiva Mar 2ª 1A · POT'));
-  s.nodes().find(n => n.props?.['aria-label'] === 'Associa classe Mar 2ª').props.onClick();
-  s.nodes().find(n => n.type === 'select').props.onChange({ target: { value: '1A' } });
-  s.nodes().find(n => n.props?.children === 'Conferma classe').props.onClick();
-  pot = s.nodes().find(n => n.props?.['aria-label'] === 'Riattiva Mar 2ª 1A · POT');
-  assert.ok(pot);
-  pot.props.onKeyDown({ altKey: true, key: 'ArrowDown', preventDefault() {} });
-  pot = s.nodes().find(n => n.props?.['aria-label'] === 'Riattiva Mar 3ª 1A · POT');
-  assert.ok(pot);
-  pot.props.onClick({ detail: 0 });
-  assert.ok(s.nodes().some(n => n.props?.['aria-label'] === 'Disabilita Mar 3ª POT'));
-  assert.ok(!s.nodes().some(n => n.props?.['aria-label'] === 'Disabilita Mar 3ª 1A · POT'));
+  s.nodes().find(n => n.props?.['aria-label'] === 'Modifica POT Mar 2ª POT').props.onClick();
+  assert.ok(s.nodes().some(n => n.type === 'dialog'));
+  function hasDialog(n) { if (!n || typeof n !== 'object') return false; if (Array.isArray(n)) return n.some(hasDialog); return n.type === 'dialog' || hasDialog(n.props?.children); }
+  assert.ok(s.nodes().filter(n => n.type === 'td').every(n => !hasDialog(n)));
+  assert.ok(!s.nodes().some(n => n.type === 'select'));
+  const campus = () => s.nodes().filter(n => n.type === 'button' && ['Centrale', 'Staccata', 'Non indicata'].includes(n.props.children));
+  assert.equal(campus().length, 3);
+  assert.equal(campus().filter(n => n.props['aria-pressed']).length, 1);
+  campus().find(n => n.props.children === 'Non indicata').props.onClick();
+  assert.equal(campus().filter(n => n.props['aria-pressed']).length, 1);
+  assert.equal(campus().find(n => n.props.children === 'Non indicata').props['aria-pressed'], true);
+  s.nodes().find(n => n.props?.['aria-label'] === 'Classe POT').props.onChange({ target: { value: '1' } });
+  assert.equal(s.nodes().find(n => n.props?.children === 'Applica').props.disabled, true);
+  s.nodes().find(n => n.props?.['aria-label'] === 'Classe POT').props.onKeyDown({ key: 'Enter', preventDefault() {} });
+  assert.equal(s.nodes().find(n => n.props?.['aria-label'] === 'Classe POT').props.value, '1A');
+  s.nodes().find(n => n.type === 'dialog').props.onCancel();
+  assert.ok(!s.nodes().some(n => n.type === 'dialog'));
+  assert.ok(s.nodes().some(n => n.props?.['aria-label'] === 'Modifica POT Mar 2ª POT'));
+  assert.equal(s.calls.length, 1);
 });

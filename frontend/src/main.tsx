@@ -1075,7 +1075,7 @@ function Supplenze() {
                             {assigned[r.k]
                               ? entryExitCellLabel(r.k, assigned) || name(assigned[r.k].v)
                               : "Scegli il supplente"}
-                            <small>{assigned[r.k]?.v === "UNCOVERED" ? "Nessun supplente trovato" : (assigned[r.k]?.t === "SPECIAL" ? "" : (assigned[r.k]?.t === "CP" ? "Compresenza - POT" : assigned[r.k]?.t))}</small>
+                            <small>{assigned[r.k]?.v === "UNCOVERED" ? "Nessun supplente trovato" : (assigned[r.k]?.t === "SPECIAL" ? "" : (assigned[r.k]?.t === "CP" ? "Compresenza - POT" : assigned[r.k]?.t === "CA" ? "Compresenza - ALF" : assigned[r.k]?.t))}</small>
                           </button>
                           {entryExitBoundary(r.k, assigned) && <span className="opt communicated">
                             <button type="button" className={assigned[r.k].communicated ? "on" : ""}
