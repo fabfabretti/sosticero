@@ -268,7 +268,7 @@ function Permessi() {
         <td>{r.recovery?.recoveries.length ? <ul className="recovery-details">{r.recovery.recoveries.map(item => <li key={item.date + item.key}>{item.date.split("-").reverse().join("/")} · {item.h}ª ora</li>)}</ul> : "—"}</td>
         <td><span className="permit-remaining">{r.recovery?.remaining ?? r.periods.length}</span>{r.recovery?.expired && <strong className="permit-expired">Scadute</strong>}</td>
         <td className="permit-actions"><button className="lk" aria-label={`Modifica permesso di ${data?.dataset.teachers[r.id]?.name || r.id}`} title="Modifica permesso" disabled={busy} onClick={() => { setAttachment(undefined); setManual(false); setEditingManual(false); setDayInput(italianDate(r.date)); setRequestedInput(italianDate(data?.permitRequests?.[r.date]?.[r.id] || "")); selectTeacher(r.id); setSelected(r.periods); setNote(data?.permitNotes?.[r.date]?.[r.id] || ""); setEditClassification(data?.permitKinds?.[r.date]?.[r.id] || null); setOriginal({ day: r.date, id: r.id }); setError(""); }}><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15Z" fill="none" stroke="currentColor" strokeWidth="1.6"/></svg></button>
-        <button className="x" aria-label={`Rimuovi permesso di ${data?.dataset.teachers[r.id]?.name || r.id}`} title="Rimuovi permesso" disabled={busy} onClick={() => void save({ day: r.date, id: r.id, hours: null })}>×</button></td>
+        <button className="x" aria-label={`Rimuovi permesso di ${data?.dataset.teachers[r.id]?.name || r.id}`} title="Rimuovi permesso" disabled={busy} onClick={() => { if (window.confirm(`Eliminare il permesso di ${data?.dataset.teachers[r.id]?.name || r.id} del ${italianDate(r.date)}?`)) void save({ day: r.date, id: r.id, hours: null }); }}>×</button></td>
       </tr>)}</tbody></table></div>
     {!!Object.keys(data?.manualPermits || {}).length && <section className="manual-permits">
       <h2>Saldi manuali</h2>
@@ -279,7 +279,7 @@ function Permessi() {
         <td>{p.recoveries.length ? <ul className="recovery-details">{p.recoveries.map(item => <li key={item.date + item.key}>{italianDate(item.date)} · {item.h}ª ora</li>)}</ul> : "—"}</td>
         <td><span className="permit-remaining">{p.remaining}</span></td>
         <td className="permit-actions"><button className="lk" disabled={busy} aria-label={`Modifica saldo manuale di ${data?.dataset.teachers[id]?.name || id}`} onClick={() => { reset(); setManual(true); selectTeacher(id); setManualHours(String(p.hours)); setNote(data?.manualPermitNotes?.[id] || ""); setEditingManual(true); setError(""); }}><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15Z" fill="none" stroke="currentColor" strokeWidth="1.6"/></svg></button>
-        <button className="x" disabled={busy} aria-label={`Rimuovi saldo manuale di ${data?.dataset.teachers[id]?.name || id}`} onClick={() => void save({ id, hours: null }, "manual-permits")}>×</button></td>
+        <button className="x" disabled={busy} aria-label={`Rimuovi saldo manuale di ${data?.dataset.teachers[id]?.name || id}`} onClick={() => { if (window.confirm(`Eliminare il saldo manuale di ${data?.dataset.teachers[id]?.name || id}?`)) void save({ id, hours: null }, "manual-permits"); }}>×</button></td>
       </tr>)}</tbody></table></div>
     </section>}
     {data && !records.length && !Object.keys(data.manualPermits || {}).length && <p className="none">Nessun permesso registrato.</p>}
