@@ -16,7 +16,7 @@ export const outcomes = { covered: "Coperte", uncovered: "Senza supplente", late
 export const weekdays = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"];
 export const campuses: Record<string, string> = { total: "Totale", centrale: "Centrale", succursale: "Succursale" };
 export const periods: Record<string, string> = { all: "Tutto", week: "Questa settimana", month: "Questo mese", custom: "Personalizzato" };
-export const typeNames: Record<string, string> = { CP: "Compresenza - POT", C: "Compresenza", TC: "Rottura compresenza", D: "A disposizione", DIS: "DI.S", DIR: "Dirigente" };
+export const typeNames: Record<string, string> = { CA: "Compresenza - ALF", CP: "Compresenza - POT", C: "Compresenza", TC: "Rottura compresenza", D: "A disposizione", DIS: "DI.S", DIR: "Dirigente" };
 export const formatNumber = (n: number | null) => n === null ? "—" : n.toLocaleString("it-IT", { maximumFractionDigits: 2 });
 
 export function reportCsv(data: StatReport): string {

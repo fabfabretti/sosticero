@@ -162,3 +162,10 @@ test('POT compresence retains its distinct label in PDF projection', () => {
   assert.equal(project(data, 'centrale').sheets[0].rows[0].type, 'Compresenza - POT');
   assert.equal(load('src/stats-report.ts').typeNames.CP, 'Compresenza - POT');
 });
+
+test('ALF compresence retains its distinct label in PDF projection and statistics', () => {
+  const data = fixture();
+  data.state.asg[day]['absent|2|1A'] = { v: 'pot', t: 'CA', c: '1A' };
+  assert.equal(project(data, 'centrale').sheets[0].rows[0].type, 'Compresenza - ALF');
+  assert.equal(load('src/stats-report.ts').typeNames.CA, 'Compresenza - ALF');
+});

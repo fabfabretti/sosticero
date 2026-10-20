@@ -3,7 +3,7 @@ from collections import Counter
 from copy import deepcopy
 from datetime import date
 from uuid import uuid4
-from .domain import DAYS as WEEKDAYS, HOURS, activity_codes, pot_class
+from .domain import DAYS as WEEKDAYS, HOURS, activity_codes, class_commitment, SITES
 
 DAYS = WEEKDAYS[:5]
 
@@ -19,14 +19,16 @@ def iso(value):
 
 
 def special(value):
-    return isinstance(value, dict) and (not value.get('classes') or pot_class(value)) and bool(activity_codes(value))
+    return isinstance(value, dict) and (not value.get('classes') or class_commitment(value)) and bool(activity_codes(value))
 
 
 def clean(value):
     if not value:
         return None
     result = {k: v for k, v in value.items() if k != 'disabled'}
-    if pot_class(value):
+    if activity_codes(value) in (['POT'], ['ALF']):
+        result.pop('site', None)
+    if class_commitment(value):
         result['classes'] = []
     return result
 
@@ -51,10 +53,12 @@ def groups(base, target, classes=None):
             raise ValueError('Le lezioni con classi non possono essere modificate.')
         if value and 'disabled' in value and type(value['disabled']) is not bool:
             raise ValueError('Stato ora non valido.')
+        if value and activity_codes(value) in (['POT'], ['ALF']) and value.get('site') not in (*SITES, None):
+            raise ValueError('Sede attività non valida.')
         if value and value.get('classes'):
             cs = value['classes']
             if not isinstance(cs, list) or len(cs) != 1 or not isinstance(cs[0], str) or (classes is not None and cs[0] not in classes):
-                raise ValueError('Classe POT non valida.')
+                raise ValueError('Classe attività non valida.')
         changed.add(key)
     if Counter(signature(v) for v in base.values() if special(v)) != Counter(signature(v) for v in target.values() if special(v)):
         raise ValueError('Le attività e le sedi devono essere conservate.')

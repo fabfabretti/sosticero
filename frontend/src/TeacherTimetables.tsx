@@ -18,8 +18,8 @@ type NameDraft = NameOverride & { teacher: string; previous: NameOverride | null
 const DAY_LABELS: Record<string, string> = { lun: 'Lun', mar: 'Mar', mer: 'Mer', gio: 'Gio', ven: 'Ven' };
 const today = () => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Rome' }).format(new Date());
 const dateLabel = (s: string) => s.split('-').reverse().join('/');
-export const isPot = (l: Lesson | null | undefined) => !!l && (l.activities?.length ? l.activities.join(',') : l.special) === 'POT';
-export const editableHour = (l: Lesson | null | undefined) => !!l && (!l.classes?.length || (isPot(l) && !!l.disabled)) && !!(l.activities?.length || l.special);
+export const isClassActivity = (l: Lesson | null | undefined) => !!l && ['POT', 'ALF'].includes((l.activities?.length ? l.activities.join(',') : l.special) || '');
+export const editableHour = (l: Lesson | null | undefined) => !!l && (!l.classes?.length || (isClassActivity(l) && !!l.disabled)) && !!(l.activities?.length || l.special);
 export function moveHour(cells: Draft['cells'], source: string, target: string) {
   if (!(source in cells) || !(target in cells) || source === target || !editableHour(cells[source]) || (cells[target] && !editableHour(cells[target]))) return cells;
   return { ...cells, [source]: cells[target], [target]: cells[source] };
@@ -36,8 +36,10 @@ export function activeOverride(records: Override[], teacher: string, day: string
 export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknown) => Promise<T> }) {
   const [data, setData] = useState<Orari>();
   const [viewDay, setViewDay] = useState(today);
-  const [classEdit, setClassEdit] = useState<{ teacher: string; slot: string; value: string }>();
-  const pendingClick = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const [classEdit, setClassEdit] = useState<{ teacher: string; slot: string; value: string; site: string; query?: string }>();
+  const activityDialog = useRef<HTMLDialogElement>(null);
+  const activityTrigger = useRef<HTMLButtonElement | null>(null);
+  const [classIndex, setClassIndex] = useState(0);
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
   const [draft, setDraft] = useState<Draft>();
@@ -57,7 +59,7 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
     let active = true;
     setError('');
     api<Orari>(endpoint(viewDay)).then(result => { if (active) setData(result); }).catch(e => { if (active) setError(String(e)); });
-    return () => { active = false; clearTimeout(pendingClick.current); };
+    return () => { active = false; };
   }, [api, viewDay]);
   useEffect(() => {
     if (!dirty) return;
@@ -70,6 +72,7 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
     document.addEventListener('click', navigate, true);
     return () => { window.removeEventListener('beforeunload', unload); document.removeEventListener('click', navigate, true); };
   }, [dirty]);
+  useEffect(() => { if (classEdit && activityDialog.current && !activityDialog.current.open) { activityDialog.current.showModal(); activityDialog.current.querySelector<HTMLInputElement>('input:not(:disabled)')?.focus(); } }, [classEdit]);
   const displayed = useMemo(() => {
     if (!data || !draft) return data?.dataset;
     const lessons = { ...data.dataset.lessons };
@@ -84,7 +87,7 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
     return q ? grids.filter(g => norm(teacherSearchText(g)).includes(q)) : grids;
   }, [grids, query]);
   const name = (id: string) => data?.dataset.teachers[id]?.name || id;
-  const discard = () => { clearTimeout(pendingClick.current); setClassEdit(undefined); request.current++; baseline.current = undefined; setDraft(undefined); setNameDraft(undefined); setImpact(undefined); setDeletion(undefined); setDrag(undefined); setError(''); };
+  const discard = () => { setClassEdit(undefined); request.current++; baseline.current = undefined; setDraft(undefined); setNameDraft(undefined); setImpact(undefined); setDeletion(undefined); setDrag(undefined); setError(''); };
   const beginName = (teacher: string) => {
     if (!data || busy || (dirty && !window.confirm('Scartare la bozza corrente?'))) return;
     discard(); setNameStatus('');
@@ -105,7 +108,7 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
   };
   const begin = (teacher: string) => {
     if (!data || busy || (dirty && !window.confirm('Scartare la bozza corrente?'))) return;
-    clearTimeout(pendingClick.current); setClassEdit(undefined);
+    setClassEdit(undefined);
     setNameDraft(undefined); setNameStatus('');
     const current = activeOverride(data.overrides || [], teacher, viewDay);
     const next = { teacher, start: viewDay, end: current?.end || '', cells: week(data.dataset, teacher), basis: data.basis, reset: false };
@@ -113,7 +116,7 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
     setDraft(next);
     setImpact(undefined); setDeletion(undefined); setDrag(undefined); setError('');
   };
-  const change = (values: Partial<Draft>) => { clearTimeout(pendingClick.current); setDraft(d => d && ({ ...d, ...values })); setImpact(undefined); setError(''); };
+  const change = (values: Partial<Draft>) => { setDraft(d => d && ({ ...d, ...values })); setImpact(undefined); setError(''); };
   const startAt = async (start: string) => {
     if (!draft || !start || start === draft.start) return;
     const changed = draft.reset !== baseline.current?.reset || draft.end !== baseline.current?.end || JSON.stringify(draft.cells) !== JSON.stringify(baseline.current?.cells);
@@ -132,7 +135,7 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
   };
   const move = (teacher: string, from: string, to: string) => {
     if (!draft || draft.teacher !== teacher || busy) return;
-    clearTimeout(pendingClick.current); setClassEdit(undefined);
+    setClassEdit(undefined);
     const next = moveHour(draft.cells, from, to);
     if (next === draft.cells) { setError('Sposta solo ore speciali verso celle vuote o altre ore speciali dello stesso docente.'); return; }
     change({ cells: next, reset: false }); setDrag(undefined);
@@ -144,7 +147,7 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
     if (editableHour(value)) {
       setClassEdit(undefined);
       const next = { ...value };
-      if (next.disabled) { delete next.disabled; if (isPot(next)) next.classes = []; } else next.disabled = true;
+      if (next.disabled) { delete next.disabled; if (isClassActivity(next)) next.classes = []; } else next.disabled = true;
       change({ cells: { ...draft.cells, [slot]: next }, reset: false });
     }
   };
@@ -166,7 +169,8 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
     finally { setBusy(false); }
   };
   const remove = async (record: Override, confirmed?: Deletion) => {
-    if (!data || busy || (!confirmed && !window.confirm(`Eliminare la modifica dal ${dateLabel(record.start)} e tutte le sue revisioni?`))) return;
+    if (!data || busy || (!confirmed && !window.confirm(`${dirty ? 'Scartare la bozza corrente ed eliminare' : 'Eliminare'} la modifica dal ${dateLabel(record.start)} e tutte le sue revisioni?`))) return;
+    if (!confirmed && dirty) discard();
     const n = ++request.current;
     const basis = confirmed?.basis || data.basis;
     const body = { delete: true, id: record.id, teacher: record.teacher, start: record.start, basis };
@@ -181,6 +185,14 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
     } catch (e) { if (n === request.current) setError(String(e)); }
     finally { setBusy(false); }
   };
+  const editedHour = classEdit && draft?.teacher === classEdit.teacher ? draft.cells[classEdit.slot] : undefined;
+  const editedActivity = editedHour?.activities?.[0] || editedHour?.special || '';
+  const classSuggestions = classEdit?.query ? [...new Set(Object.values(data?.dataset.lessons || {}).flatMap(l => l.classes || []))]
+    .filter(c => norm(c).includes(norm(classEdit.query!)))
+    .sort((a, b) => Number(!norm(a).startsWith(norm(classEdit.query!))) - Number(!norm(b).startsWith(norm(classEdit.query!))) || a.localeCompare(b))
+    .slice(0, 6) : [];
+  const chooseClass = (value: string) => { if (classEdit) setClassEdit({ ...classEdit, value, query: undefined }); setClassIndex(0); };
+  const closeActivityEditor = () => { activityDialog.current?.close(); setClassEdit(undefined); activityTrigger.current?.focus(); };
   const dragged = drag && draft?.cells[drag.slot];
   return <section className="orari" aria-labelledby="orari-title">
     <h2 id="orari-title">Orari</h2>
@@ -228,7 +240,7 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
           </div>
         </form>}
         {g.cdcName && <p className="orari-cdc" title={`${g.cdc ? g.cdc + ' · ' : ''}${g.cdcName}`}>{g.cdc ? `${g.cdc} · ` : ''}{g.cdcName}</p>}
-        {!!records.length && !editing && <details className="orari-history"><summary>Modifiche salvate ({records.length})</summary>{records.map(r => <div className="orari-history-row" key={r.id}><button disabled={busy} onClick={() => { if (r.start === viewDay) { begin(g.id); } else { discard(); setData(undefined); setViewDay(r.start); } }}>{r.reset ? 'Ripristino' : 'Modifica'} dal {dateLabel(r.start)}{r.end ? ` al ${dateLabel(r.end)}` : ''}</button><button className="orari-action" disabled={busy} aria-label={`Elimina modifica di ${g.name} dal ${dateLabel(r.start)}`} onClick={() => remove(r)}>Elimina</button></div>)}</details>}
+        {!!records.length && <details className="orari-history" open={!!upcoming || editing}><summary>Modifiche salvate ({records.length})</summary>{records.map(r => <div className="orari-history-row" key={r.id}><button disabled={busy || editing} onClick={() => { if (r.start === viewDay) { begin(g.id); } else { discard(); setData(undefined); setViewDay(r.start); } }}>{r.reset ? 'Ripristino' : 'Modifica'} dal {dateLabel(r.start)}{r.end ? ` al ${dateLabel(r.end)}` : ''}</button><button className="orari-action" disabled={busy} aria-label={`Elimina modifica di ${g.name} dal ${dateLabel(r.start)}`} onClick={() => remove(r)}>Elimina</button></div>)}</details>}
         {deletion?.record.teacher === g.id && <div className="orari-impact" aria-label="Conferma eliminazione"><p>Eliminare la modifica dal {dateLabel(deletion.record.start)}? {deletion.impact.days.reduce((sum, d) => sum + d.issues.length, 0)} assegnazioni da verificare. Le assegnazioni restano conservate.</p><details><summary>Mostra dettagli</summary>{deletion.impact.days.filter(d => d.issues.length > 0).map(d => <div key={d.day}><p>{dateLabel(d.day)}</p>{d.issues.map(i => <p key={i.key}>{i.key}: {i.message}</p>)}</div>)}</details><button className="permit-save" disabled={busy} onClick={() => remove(deletion.record, deletion)}>Conferma ed elimina</button> <button className="orari-action" disabled={busy} onClick={() => setDeletion(undefined)}>Annulla</button></div>}
         {editing && draft && <>
           <div className="orari-edit-toolbar" role="group" aria-label={`Modifica orario di ${g.name}`}>
@@ -238,7 +250,7 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
             <button className="orari-action" disabled={busy} onClick={() => { if (data) change({ reset: true, end: '', cells: week(data.imported, g.id) }); }}>Ripristina</button>
             <button className="orari-action" disabled={busy} onClick={discard}>Annulla</button>
           </div>
-          <p className="orari-edit-hint">Trascina per spostare o scambiare · Clicca per disabilitare</p>
+          <p className="orari-edit-hint">Trascina per spostare o scambiare · Clicca su POT o ALF per modificare classe e sede</p>
           <span className="sr-only">Per spostare con la tastiera: Alt e frecce su un’ora speciale.</span>
           {review && <details className="orari-conflicts"><summary>Modifiche sospese dopo l’importazione</summary><p>Ricrea le modifiche sulla nuova base oppure salva per scartarle.</p>{current?.groups.filter(group => group.conflicts.some(c => !c.effective || c.effective <= viewDay)).map((group, i) => <p key={i}>{Object.entries(group.after).map(([slot, l]) => `${DAY_LABELS[slot.split('|')[0]]} ${slot.split('|')[1]}ª: ${l ? (l.activities || [l.special]).join('/') : 'vuota'}`).join(' · ')}</p>)}</details>}
           {draft.reset && <p className="orari-edit-hint" role="status">Ripristino dell’orario originale dal {dateLabel(draft.start)} · Salva per confermare</p>}
@@ -246,13 +258,14 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
         </>}
         <table className="orari-grid" aria-label={`Orario di ${g.name}`}><thead><tr><th scope="col">Ora</th>{DAYS.map(d => <th key={d} scope="col">{DAY_LABELS[d]}</th>)}</tr></thead><tbody>{HOURS.map((h, hi) => <tr key={h}><th scope="row">{h}ª</th>{DAYS.map((d, di) => {
           const cell = g.cells[di][hi], slot = `${d}|${h}`, value = editing ? draft?.cells[slot] : displayed?.lessons[`${g.id}|${slot}`];
+          const activity = value?.activities?.[0] || value?.special || '';
           const special = editableHour(value), disabled = !!value?.disabled;
           const label = cell ? [...cell.classes, ...cell.codes].join(' · ') : '';
           const site = cell?.site === 'centrale' ? 'C' : cell?.site === 'succursale' ? 'S' : '?';
           const content = cell && <><span title={`${label} · ${site === 'C' ? 'Centrale' : site === 'S' ? 'Succursale' : 'Sede ignota'}`} className={`orari-session campus-${cell.site || 'unknown'}${special ? ' orari-special' : ''}${disabled ? ' orari-disabled' : ''}`}><span className="orari-session-label">{label}</span><span className="orari-session-meta">{cell.partners.length > 0 && <span className="orari-partners">Comp.</span>}<span className="orari-site" title={site === 'C' ? 'Centrale' : site === 'S' ? 'Succursale' : 'Sede ignota'}>{site}</span></span></span>{disabled && <span className="sr-only">Ora disabilitata: solo in caso di necessità</span>}</>;
           const destination = editing && drag?.target === slot;
           return <td key={d} data-timetable-slot={slot} data-teacher={g.id} className={(cell?.partners.length ? 'orari-shared ' : '') + (destination ? 'orari-destination' : '')}>
-            {editing && special ? <><button type="button" className={'orari-cell-button' + (drag?.slot === slot ? ' orari-drag-source' : '')} disabled={busy} aria-pressed={disabled} aria-label={`${disabled ? 'Riattiva' : 'Disabilita'} ${DAY_LABELS[d]} ${h}ª ${label}`}
+            {editing && special ? <><button type="button" className={'orari-cell-button' + (drag?.slot === slot ? ' orari-drag-source' : '')} disabled={busy} aria-pressed={isClassActivity(value) ? undefined : disabled} aria-label={`${isClassActivity(value) ? 'Modifica ' + activity : disabled ? 'Riattiva' : 'Disabilita'} ${DAY_LABELS[d]} ${h}ª ${label}`}
               onKeyDown={e => {
                 if (!e.altKey || !['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return;
                 e.preventDefault();
@@ -282,24 +295,39 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
                 setDrag(undefined); setTimeout(() => { suppressClick.current = false; }, 0);
               }}
               onPointerCancel={() => { pointer.current = undefined; setDrag(undefined); suppressClick.current = false; }}
-              onDoubleClick={() => { if (isPot(value) && disabled) { clearTimeout(pendingClick.current); setClassEdit({ teacher: g.id, slot, value: value?.classes?.[0] || '' }); } }}
+              onDoubleClick={e => { if (e?.currentTarget) activityTrigger.current = e.currentTarget; if (isClassActivity(value)) setClassEdit({ teacher: g.id, slot, value: value?.classes?.[0] || '', site: value?.site || '' }); }}
               onClick={e => {
-                if (isPot(value) && disabled && e?.detail > 0 && !suppressClick.current) {
-                  clearTimeout(pendingClick.current);
-                  pendingClick.current = setTimeout(() => toggle(g.id, slot), 350);
-                } else toggle(g.id, slot);
+                if (e?.currentTarget) activityTrigger.current = e.currentTarget;
+                if (suppressClick.current) { suppressClick.current = false; return; }
+                if (isClassActivity(value)) setClassEdit({ teacher: g.id, slot, value: value?.classes?.[0] || '', site: value?.site || '' });
+                else toggle(g.id, slot);
               }}>{content}</button>
-              {isPot(value) && disabled && <button type="button" className="orari-action" disabled={busy} aria-label={`Associa classe ${DAY_LABELS[d]} ${h}ª`} onClick={() => { clearTimeout(pendingClick.current); setClassEdit({ teacher: g.id, slot, value: value?.classes?.[0] || '' }); }}>Associa classe</button>}
-              {classEdit?.teacher === g.id && classEdit.slot === slot && <div className="orari-class-editor">
-                <label>Classe POT<select aria-label="Classe POT" autoFocus value={classEdit.value} disabled={busy} onChange={e => setClassEdit({ ...classEdit, value: e.target.value })}><option value="">Nessuna classe</option>{[...new Set(Object.values(data?.dataset.lessons || {}).flatMap(l => l.classes || []))].sort().map(c => <option key={c} value={c}>{c}</option>)}</select></label>
-                <button type="button" disabled={busy} onClick={() => { change({ cells: { ...draft!.cells, [slot]: { ...value, classes: classEdit.value ? [classEdit.value] : [] } }, reset: false }); setClassEdit(undefined); }}>Conferma classe</button>
-                <button type="button" disabled={busy} onClick={() => setClassEdit(undefined)}>Annulla classe</button>
-              </div>}</>
+              {isClassActivity(value) && <button type="button" className="orari-action" disabled={busy} aria-pressed={disabled} aria-label={`${disabled ? 'Riattiva' : 'Disabilita'} ${DAY_LABELS[d]} ${h}ª ${label}`} onClick={() => toggle(g.id, slot)}>{disabled ? 'Riattiva' : 'Disabilita'}</button>}
+              </>
               : cell?.partners.length ? <HourHelp text={'Compresenza: ' + cell.partners.map(name).join(', ')}>{content}</HourHelp> : content}
           </td>;
         })}</tr>)}</tbody></table>
       </div>;
     })}</div>
+    {classEdit && editedHour && <dialog ref={activityDialog} className="orari-activity-editor" aria-labelledby="activity-editor-title" onCancel={closeActivityEditor}>
+      <div className="orari-activity-header"><div><h3 id="activity-editor-title">Modifica {editedActivity}</h3><p className="sub">{name(classEdit.teacher)} · {DAY_LABELS[classEdit.slot.split('|')[0]]} {classEdit.slot.split('|')[1]}ª ora</p></div><button type="button" className="x" aria-label="Chiudi editor attività" onClick={closeActivityEditor}>×</button></div>
+      <label className="orari-class-label" htmlFor="activity-class">Classe</label>
+      <div className="sw">
+        <input id="activity-class" role="combobox" aria-label={`Classe ${editedActivity}`} aria-autocomplete="list" aria-expanded={classSuggestions.length > 0} aria-controls="activity-class-suggestions" aria-activedescendant={classSuggestions.length ? `activity-class-${Math.min(classIndex, classSuggestions.length - 1)}` : undefined}
+          autoFocus={!!editedHour.disabled} disabled={busy || !editedHour.disabled} autoComplete="off" placeholder="Scrivi la classe, es. 3a" value={classEdit.query ?? classEdit.value}
+          onChange={e => { setClassEdit({ ...classEdit, value: '', query: e.target.value }); setClassIndex(0); }}
+          onKeyDown={e => {
+            if (e.nativeEvent?.isComposing) return;
+            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); setClassIndex((classIndex + (e.key === 'ArrowDown' ? 1 : classSuggestions.length - 1)) % Math.max(1, classSuggestions.length)); }
+            if (e.key === 'Enter') { e.preventDefault(); const c = classSuggestions[classIndex]; if (c) chooseClass(c); }
+          }} />
+        {!!classSuggestions.length && <div className="sug" role="listbox" id="activity-class-suggestions" aria-label="Classi suggerite">{classSuggestions.map((c, i) => <button type="button" role="option" id={`activity-class-${i}`} key={c} aria-selected={classIndex === i} className={classIndex === i ? 'on' : ''} onClick={() => chooseClass(c)}>{c}<small>classe</small></button>)}</div>}
+      </div>
+      {!!classEdit.query && !classSuggestions.length && <p className="sub" role="status">Nessuna classe trovata.</p>}
+      {editedHour.disabled ? <button type="button" className="lk orari-clear-class" disabled={busy || (!classEdit.value && !classEdit.query)} onClick={() => chooseClass('')}>Nessuna classe</button> : <p className="sub">Disabilita {editedActivity} per associare una classe.</p>}
+      <fieldset className="orari-campus-choice" disabled={busy}><legend>Sede</legend><div className="opt" aria-label={`Sede ${editedActivity}`}>{[['centrale', 'Centrale'], ['succursale', 'Staccata'], ['', 'Non indicata']].map(([site, label]) => <button type="button" key={site} className={classEdit.site === site ? 'on' : ''} aria-pressed={classEdit.site === site} onClick={() => setClassEdit({ ...classEdit, site })}>{label}</button>)}</div></fieldset>
+      <div className="orari-activity-actions"><button type="button" className="orari-action" disabled={busy} aria-label="Annulla modifica attività" onClick={closeActivityEditor}>Annulla</button><button type="button" className="permit-save" disabled={busy || !!classEdit.query} onClick={() => { change({ cells: { ...draft!.cells, [classEdit.slot]: { ...editedHour, classes: editedHour.disabled && classEdit.value ? [classEdit.value] : [], site: classEdit.site || null } }, reset: false }); closeActivityEditor(); }}>Applica</button></div>
+    </dialog>}
     {drag && dragged && <div className="orari-drag-preview" aria-hidden="true" style={{ left: drag.x + 14, top: drag.y + 14 }}>
       <span className={`orari-session orari-special campus-${dragged.site || 'unknown'}${dragged.disabled ? ' orari-disabled' : ''}`}><span>{(dragged.activities || [dragged.special]).join(' · ')}</span><span className="orari-site">{dragged.site === 'centrale' ? 'C' : dragged.site === 'succursale' ? 'S' : '?'}</span></span>
       <small>{drag.target ? `${draft?.cells[drag.target] ? 'Scambia' : 'Sposta'} · ${DAY_LABELS[drag.target.split('|')[0]]} ${drag.target.split('|')[1]}ª` : 'Posizione non disponibile'}</small>

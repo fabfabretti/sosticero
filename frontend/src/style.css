@@ -1338,11 +1338,24 @@ select.inbox-teacher { width: 220px; padding: 5px 8px; height: 32px; }
 .orari-name-fields input { width: 100%; min-width: 0; }
 .orari-name-actions { margin-top: 10px; align-items: center; }
 
-.orari-class-editor { display: grid; gap: 6px; padding: 8px 0; }
-.orari-class-editor label { display: grid; gap: 4px; font-size: 13px; }
-.orari-class-editor select, .orari-class-editor button { min-height: 36px; width: 100%; }
 
 .inbox-metadata { flex-basis: 100%; order: 1; }
 .inbox-metadata summary { cursor: pointer; padding: 8px 0; }
 .inbox-metadata fieldset { border: 0; padding: 8px 0; display: grid; gap: 12px; min-width: 0; }
 .inbox-metadata textarea { display: block; width: 100%; box-sizing: border-box; }
+
+.orari-activity-editor { width: min(380px, calc(100vw - 32px)); box-sizing: border-box; padding: 20px; border: 1px solid var(--line); border-radius: 10px; background: var(--pan); color: var(--ink); box-shadow: 0 16px 50px #0004; max-height: calc(100dvh - 32px); overflow: visible; }
+.orari-activity-editor::backdrop { background: #0006; }
+.orari-activity-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+.orari-activity-header h3 { margin: 0 0 4px; font-size: 17px; }
+.orari-activity-header .sub { margin: 0; }
+.orari-class-label { display: block; font-size: 13px; margin-bottom: 6px; }
+.orari-activity-editor input { width: 100%; box-sizing: border-box; min-height: 40px; }
+.orari-activity-editor .sug { max-height: 220px; overflow-y: auto; }
+.orari-clear-class { margin: 7px 0 0; font-size: 12px; }
+.orari-campus-choice { border: 0; padding: 0; margin: 20px 0; min-width: 0; }
+.orari-campus-choice legend { font-size: 13px; margin-bottom: 7px; }
+.orari-campus-choice .opt { display: flex; flex-wrap: nowrap; gap: 6px; }
+.orari-campus-choice button { flex: 1; min-height: 40px; padding: 6px; }
+.orari-activity-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 14px; border-top: 1px solid var(--line); }
+.orari-activity-actions button { min-height: 40px; }
