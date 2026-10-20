@@ -143,3 +143,10 @@ test('availability is a wrapping comma-separated list and period borders are thi
   const all = wrapped.internal.pages.slice(1).map(p => p.join('\n')).join('\n');
   assert.ok(all.includes('(29, ) Tj') || all.includes('(29) Tj'));
 });
+
+test('POT compresence retains its distinct label in PDF projection', () => {
+  const data = fixture();
+  data.state.asg[day]['absent|2|1A'] = { v: 'pot', t: 'CP', c: '1A' };
+  assert.equal(project(data, 'centrale').sheets[0].rows[0].type, 'Compresenza - POT');
+  assert.equal(load('src/stats-report.ts').typeNames.CP, 'Compresenza - POT');
+});

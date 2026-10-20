@@ -8,11 +8,11 @@ HOURS = list(range(1, 8))
 DAYS = ['lun', 'mar', 'mer', 'gio', 'ven', 'sab', 'dom']
 SITES = ('centrale', 'succursale')
 # Category + campus tier; ties use daily load, total load, name, stable ID.
-PRIORITIES = {'C': (0, 0, 0), 'POT': (13, 14, 15), 'D': (10, 11, 12),
+PRIORITIES = {'CP': (0, 0, 0), 'C': (0, 0, 0), 'POT': (13, 14, 15), 'D': (10, 11, 12),
               'DIS': (10, 11, 12), 'DIR': (20, 21, 22),
               'UTC': (30, 31, 32), 'UTS': (30, 31, 32),
               'TC': (40, 41, 42), 'RP': (40, 41, 42), 'SPECIAL': (5, 5, 5)}
-LABELS = {'C': 'Compresenza', 'POT': 'POT', 'D': 'A disposizione', 'UTC': 'UTC',
+LABELS = {'CP': 'Compresenza - POT', 'C': 'Compresenza', 'POT': 'POT', 'D': 'A disposizione', 'UTC': 'UTC',
           'UTS': 'UTS', 'DIS': 'DI.S', 'TC': 'Rottura compresenza', 'DIR': 'Dirigente', 'SPECIAL': 'Entrata / uscita'}
 # Denominazioni ufficiali classi di concorso (A/B: DPR 19/2016, AS: DM 255/2023). Codici non in tabella restano così come sono.
 CDC_NAMES = {
@@ -121,12 +121,18 @@ def validate_permit(ds, teacher, hours):
         raise ValueError('Docente o ore di permesso non validi.')
 
 
+def pot_class(l):
+    return bool(l and l.get('disabled') and l.get('classes') and activity_codes(l) == ['POT'])
+
+
 def rows(ds, state, day):
     groups = {}
     for i, hours in absences(state, day).items():
         for h in hours:
             l = lesson(ds, i, day, h)
             for c in l['classes'] if l else []:
+                if pot_class(l) and any(other != i and not t.get('retired') and h not in absences(state, day).get(other, []) and c in (lesson(ds, other, day, h) or {}).get('classes', []) for other, t in ds['teachers'].items()):
+                    continue
                 k = f'{i}|{h}|{c}'
                 if not class_out(state, day, c, h, k):
                     groups.setdefault((h, c), []).append((i, l))
@@ -157,8 +163,11 @@ def eligibility(ds, state, day, row, teacher, policies=None):
     keys = []
     released = l and l['classes'] and all(class_out(state, day, c, h, row['k']) for c in l['classes'])
     disabled = bool(l and l.get('disabled'))
-    if (manual or released) and not disabled:
+    same_pot = pot_class(l) and row['c'] in l['classes'] and l['site'] and l['site'] == row['sede'] and same_room
+    if (manual or released) and (not disabled or released and pot_class(l)):
         ty, keys = 'D', ['derived:available']
+    elif same_pot:
+        ty, keys = 'CP', ['code:POT']
     elif l and activity_codes(l):
         ty = l.get('special') if policies is None and l.get('special') else activity_codes(l)[0]
         keys = ['code:' + code for code in activity_codes(l)]
@@ -180,14 +189,16 @@ def eligibility(ds, state, day, row, teacher, policies=None):
     if policy and not all(p['visible'] for p in policy):
         return None
     # Staying in the covered class does not release a teacher from another lesson.
-    exceptional = disabled or bool(ty != 'C' and policy and not all(p['available'] for p in policy))
+    exceptional = (disabled and ty not in ('CP', 'D')) or bool(ty not in ('C', 'CP') and policy and not all(p['available'] for p in policy))
     loc = state['disSites'].get(day, {}).get(i) if manual else None
     loc = loc or ('centrale' if ty == 'UTC' else 'succursale' if ty == 'UTS' else l['site'] if l else None)
     why = 'Assente' if h in absences(state, day).get(i, []) else ''
     if not why and any(k != row['k'] and int(k.split('|')[1]) == h and a['v'] == i for k, a in state['asg'].get(day, {}).items()):
         why = 'Già assegnato in questa ora'
     label = ' / '.join(p['label'] for p in policy) or LABELS.get(ty, ty)
-    if disabled:
+    if ty == 'CP':
+        label = LABELS['CP']
+    if disabled and ty not in ('CP', 'D'):
         label += ' · Ora disabilitata'
     if ty == 'C' and teacher['role'] not in ('sostegno', 'ITP'):
         label = LABELS['C']

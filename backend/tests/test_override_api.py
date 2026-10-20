@@ -253,3 +253,102 @@ class OverrideApiTest(unittest.TestCase):
         self.save(revised)
         request['basis'] = self.orari()['basis']
         self.assertEqual(self.client.post('/api/orari/preview', json=request).status_code, 422)
+
+    def test_pot_class_validation_dates_moves_and_portability(self):
+        for classes, disabled in [(['missing'], True), (['1A', '2A'], True), (['1A'], False)]:
+            data = self.draft()
+            data['cells']['lun|2'].update(classes=classes, disabled=disabled)
+            self.assertEqual(self.client.post('/api/orari/preview', json=data).status_code, 422)
+        data = self.draft(end='2026-10-16')
+        data['cells']['lun|2'].update(classes=['1A'], disabled=True)
+        self.save(data)
+        self.assertEqual(self.orari()['dataset']['lessons']['pot|lun|2']['classes'], ['1A'])
+        self.assertEqual(self.orari('2026-10-19')['dataset']['lessons']['pot|lun|2']['classes'], [])
+        restarted = TestClient(create_app(self.path))
+        self.assertEqual(restarted.get('/api/orari', params={'day': DAY}).json()['dataset']['lessons']['pot|lun|2']['classes'], ['1A'])
+        archive = self.client.get('/api/export').json()
+        self.client.post('/api/import', json=archive).raise_for_status()
+        snapshot = self.client.post('/api/backups').json()
+        moved = self.draft()
+        moved['cells']['mar|3'], moved['cells']['lun|2'] = moved['cells']['lun|2'], None
+        self.save(moved)
+        self.assertEqual(self.orari()['dataset']['lessons']['pot|mar|3']['classes'], ['1A'])
+        self.client.post('/api/backups/restore', json=dict(filename=snapshot['filename'], confirm=True)).raise_for_status()
+        self.assertEqual(self.orari()['dataset']['lessons']['pot|lun|2']['classes'], ['1A'])
+
+    def test_pot_compresence_and_class_out(self):
+        self.entry()
+        data = self.draft()
+        data['cells']['lun|2'].update(classes=['1A'], disabled=True)
+        self.save(data)
+        choice = next(c for c in self.candidates() if c['id'] == 'pot')
+        self.assertEqual(choice['ty'], 'CP')
+        self.assertEqual(choice['typeLabel'], 'Compresenza - POT')
+        self.assertFalse(choice['exceptional'])
+        self.client.post('/api/assignments', json=dict(day=DAY, key='absent|2|1A', value='pot')).raise_for_status()
+        self.assertEqual(self.client.get('/api/export').json()['asg'][DAY]['absent|2|1A']['t'], 'CP')
+        report = self.client.get('/api/stats', params=dict(period='custom', start=DAY, end=DAY)).json()
+        self.assertEqual(report['types']['CP'], 1)
+        self.assertNotIn('POT', report['types'])
+        self.client.post('/api/assignments', json=dict(day=DAY, key='absent|2|1A', value=None)).raise_for_status()
+        self.client.post('/api/entries', json=dict(day=DAY, group='cf', id='1A', hours=[2])).raise_for_status()
+        from backend.domain import auto_availability, eligibility
+        from backend.hour_types import merge_types
+        from backend.storage import EMPTY
+        ds = self.orari()['dataset']
+        state = copy.deepcopy(EMPTY)
+        state['cf'][DAY] = {'1A': [2]}
+        self.assertIn(2, auto_availability(ds, state, DAY)['pot'])
+        row = dict(k='support|2|2A', ids=['support'], h=2, c='2A', sede='centrale', aula=None)
+        c = eligibility(ds, state, DAY, row, ds['teachers']['pot'], merge_types(ds, {}))
+        self.assertEqual(c['ty'], 'D')
+        self.assertFalse(c['exceptional'])
+
+    def test_pot_absence_rows_and_hard_restrictions(self):
+        from backend.domain import rows, eligibility
+        from backend.hour_types import merge_types
+        from backend.storage import EMPTY
+        ds = self.orari()['dataset']
+        ds['lessons']['pot|lun|2'].update(classes=['1A'], disabled=True)
+        state = copy.deepcopy(EMPTY)
+        state['abs'][DAY] = {'pot': [2]}
+        self.assertEqual(rows(ds, state, DAY), [])
+        state['abs'][DAY].update(absent=[2], co=[2], wrongcampus=[2])
+        row = rows(ds, state, DAY)[0]
+        self.assertEqual(set(row['ids']), {'pot', 'absent', 'co', 'wrongcampus'})
+        for teacher in ('absent', 'co', 'wrongcampus'):
+            ds['lessons'].pop(f'{teacher}|lun|2')
+        self.assertEqual(rows(ds, state, DAY)[0]['ids'], ['pot'])
+        state['abs'][DAY] = {'absent': [2]}
+        row = dict(k='absent|2|1A', ids=['absent'], h=2, c='1A', sede='centrale', aula=None)
+        policies = merge_types(ds, {})
+        state['abs'][DAY]['pot'] = [2]
+        self.assertEqual(eligibility(ds, state, DAY, row, ds['teachers']['pot'], policies)['why'], 'Assente')
+        state['abs'][DAY].pop('pot')
+        state['asg'][DAY] = {'support|2|2A': dict(v='pot', t='CP', c='2A')}
+        self.assertIn('Già assegnato', eligibility(ds, state, DAY, row, ds['teachers']['pot'], policies)['why'])
+        row['c'] = '2A'
+        self.assertTrue(eligibility(ds, state, DAY, row, ds['teachers']['pot'], policies)['exceptional'])
+
+    def test_pot_association_reset_reimport_and_assignment_review(self):
+        self.entry()
+        data = self.draft()
+        data['cells']['lun|2'].update(classes=['1A'], disabled=True)
+        self.save(data)
+        self.client.post('/api/assignments', json=dict(day=DAY, key='absent|2|1A', value='pot')).raise_for_status()
+        reset = self.draft(); reset['reset'] = True
+        self.save(reset)
+        self.assertEqual(self.orari()['dataset']['lessons']['pot|lun|2']['classes'], [])
+        self.assertEqual(self.client.get('/api/export').json()['asg'][DAY]['absent|2|1A']['t'], 'CP')
+        data = self.draft()
+        data['cells']['lun|2'].update(classes=['1A'], disabled=True)
+        self.save(data)
+        raw = fixture()
+        import_version(self.client, raw, '2026-10-19').raise_for_status()
+        self.assertEqual(self.orari('2026-10-19')['dataset']['lessons']['pot|lun|2']['classes'], ['1A'])
+        raw['orario'][3]['sede'] = 'succursale'
+        response = import_version(self.client, raw, '2026-10-26')
+        response.raise_for_status()
+        self.assertTrue(any(r['review'] for r in response.json()['impact']['overrides']))
+        self.assertEqual(self.orari('2026-10-26')['dataset']['lessons']['pot|lun|2']['classes'], [])
+        self.assertEqual(self.client.get('/api/export').json()['asg'][DAY]['absent|2|1A']['t'], 'CP')

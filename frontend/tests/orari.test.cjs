@@ -8,7 +8,7 @@ function load(file, require, confirm = () => true) {
   const exports = {};
   runInNewContext(ts.transpileModule(readFileSync(file, 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
-  }).outputText, { exports, require, URLSearchParams, setTimeout, window: { confirm }, document: { elementFromPoint: () => null } });
+  }).outputText, { exports, require, URLSearchParams, setTimeout, clearTimeout, window: { confirm }, document: { elementFromPoint: () => null } });
   return exports;
 }
 const timetables = load('src/timetables.ts');
@@ -301,4 +301,30 @@ test('deleting an override shows only new assignment problems before confirmatio
   assert.ok(s.nodes().some(n => n.props?.['aria-label'] === 'Conferma eliminazione'));
   await s.nodes().find(n => n.props?.children === 'Conferma ed elimina').props.onClick();
   assert.ok(calls.some(([url, body]) => url === 'orari/override' && body.token === 'delete-token'));
+});
+
+test('disabled POT class editor supports double click, cancel, class save, moves and reactivation', async () => {
+  const s = await loaded();
+  s.nodes().find(n => n.props?.['aria-label'] === 'Modifica orario di Anna').props.onClick();
+  s.nodes().find(n => n.props?.['aria-label'] === 'Disabilita Mar 2ª POT').props.onClick();
+  let pot = s.nodes().find(n => n.props?.['aria-label'] === 'Riattiva Mar 2ª POT');
+  pot.props.onClick({ detail: 1 });
+  pot.props.onClick({ detail: 2 });
+  pot.props.onDoubleClick();
+  await new Promise(resolve => setTimeout(resolve, 400));
+  assert.ok(s.nodes().some(n => n.props?.['aria-label'] === 'Riattiva Mar 2ª POT'));
+  s.nodes().find(n => n.type === 'select').props.onChange({ target: { value: '1A' } });
+  s.nodes().find(n => n.props?.children === 'Annulla classe').props.onClick();
+  assert.ok(!s.nodes().some(n => n.props?.['aria-label'] === 'Riattiva Mar 2ª 1A · POT'));
+  s.nodes().find(n => n.props?.['aria-label'] === 'Associa classe Mar 2ª').props.onClick();
+  s.nodes().find(n => n.type === 'select').props.onChange({ target: { value: '1A' } });
+  s.nodes().find(n => n.props?.children === 'Conferma classe').props.onClick();
+  pot = s.nodes().find(n => n.props?.['aria-label'] === 'Riattiva Mar 2ª 1A · POT');
+  assert.ok(pot);
+  pot.props.onKeyDown({ altKey: true, key: 'ArrowDown', preventDefault() {} });
+  pot = s.nodes().find(n => n.props?.['aria-label'] === 'Riattiva Mar 3ª 1A · POT');
+  assert.ok(pot);
+  pot.props.onClick({ detail: 0 });
+  assert.ok(s.nodes().some(n => n.props?.['aria-label'] === 'Disabilita Mar 3ª POT'));
+  assert.ok(!s.nodes().some(n => n.props?.['aria-label'] === 'Disabilita Mar 3ª 1A · POT'));
 });

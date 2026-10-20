@@ -3,7 +3,7 @@ from collections import Counter
 from copy import deepcopy
 from datetime import date
 from uuid import uuid4
-from .domain import DAYS as WEEKDAYS, HOURS, activity_codes
+from .domain import DAYS as WEEKDAYS, HOURS, activity_codes, pot_class
 
 DAYS = WEEKDAYS[:5]
 
@@ -19,11 +19,16 @@ def iso(value):
 
 
 def special(value):
-    return isinstance(value, dict) and not value.get('classes') and bool(activity_codes(value))
+    return isinstance(value, dict) and (not value.get('classes') or pot_class(value)) and bool(activity_codes(value))
 
 
 def clean(value):
-    return {k: v for k, v in value.items() if k != 'disabled'} if value else None
+    if not value:
+        return None
+    result = {k: v for k, v in value.items() if k != 'disabled'}
+    if pot_class(value):
+        result['classes'] = []
+    return result
 
 
 def signature(value):
@@ -35,7 +40,7 @@ def cells(ds, teacher):
     return {f'{d}|{h}': deepcopy(ds['lessons'].get(f'{teacher}|{d}|{h}')) for d in DAYS for h in HOURS}
 
 
-def groups(base, target):
+def groups(base, target, classes=None):
     if not isinstance(target, dict) or set(target) != set(base):
         raise ValueError('Invia tutte le celle del docente.')
     changed = set()
@@ -46,6 +51,10 @@ def groups(base, target):
             raise ValueError('Le lezioni con classi non possono essere modificate.')
         if value and 'disabled' in value and type(value['disabled']) is not bool:
             raise ValueError('Stato ora non valido.')
+        if value and value.get('classes'):
+            cs = value['classes']
+            if not isinstance(cs, list) or len(cs) != 1 or not isinstance(cs[0], str) or (classes is not None and cs[0] not in classes):
+                raise ValueError('Classe POT non valida.')
         changed.add(key)
     if Counter(signature(v) for v in base.values() if special(v)) != Counter(signature(v) for v in target.values() if special(v)):
         raise ValueError('Le attività e le sedi devono essere conservate.')
@@ -127,7 +136,7 @@ def propose(document, history, data):
     reset = data.get('reset', False)
     if type(reset) is not bool or (reset and end is not None):
         raise ValueError('Ripristino non valido.')
-    edits = [] if reset else groups(cells(imported, teacher), data.get('cells'))
+    edits = [] if reset else groups(cells(imported, teacher), data.get('cells'), imported['classes'])
     result = deepcopy(document)
     result['records'].append(dict(id=uuid4().hex, teacher=teacher, start=start, end=end, reset=reset, groups=edits))
     return reconcile(result, history)
@@ -168,7 +177,7 @@ def validate(document, history):
                 used |= set(g['before'])
                 if any(v is not None and not special(v) for v in g['before'].values()):
                     raise ValueError()
-                rebuilt = groups(g['before'], g['after'])
+                rebuilt = groups(g['before'], g['after'], {c for v in history['versions'] for c in v['dataset']['classes']})
                 if not rebuilt or any(c != dict(id=c['id'], effective=versions[c['id']]['effective']) for c in g['conflicts']):
                     raise ValueError()
                 # A legacy restore can replace the imported basis; validate detached originals too.

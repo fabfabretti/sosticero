@@ -1330,3 +1330,7 @@ select.inbox-teacher { width: 220px; padding: 5px 8px; height: 32px; }
   .orari-session { font-size: 11px; padding: 4px 2px; gap: 3px; }
   .orari-grid th:first-child { width: 28px; }
 }
+
+.orari-class-editor { display: grid; gap: 6px; padding: 8px 0; }
+.orari-class-editor label { display: grid; gap: 4px; font-size: 13px; }
+.orari-class-editor select, .orari-class-editor button { min-height: 36px; width: 100%; }
