@@ -11,7 +11,7 @@ export type StatReport = {
   classes: { name: string; demand: number }[]; worst: (Counts & { date: string })[];
   unknown: { teacherHours: number; demand: number }; provenance: Record<string, number>; issues: number;
 };
-export const metricNames: Record<Metric, string> = { demand: "Ore di classe scoperta", teacherHours: "Ore docenti assenti", teachers: "Docenti assenti" };
+export const metricNames: Record<Metric, string> = { demand: "Ore da coprire", teacherHours: "Ore docenti assenti", teachers: "Docenti assenti" };
 export const outcomes = { covered: "Coperte", uncovered: "Senza supplente", late: "Entrata posticipata", early: "Uscita anticipata", pending: "In attesa" };
 export const weekdays = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"];
 export const campuses: Record<string, string> = { total: "Totale", centrale: "Centrale", succursale: "Succursale" };

@@ -4,14 +4,14 @@ from datetime import date, timedelta, datetime
 from pathlib import Path
 from typing import Literal
 from uuid import uuid4
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, StrictInt, StrictBool, StrictStr
 from .domain import normalize_dataset, rows, candidates, validate_assignment, default_availability, auto_availability, HOURS, SITES, lesson, validate_permit, CDC_NAMES
 from .storage import Store, EMPTY
 from . import backup, attachments
 from .hour_types import merge_types, validate_types
-from . import statistics, recovery, timetables, overrides, teacher_names
+from . import statistics, recovery, timetables, overrides, teacher_names, availability
 from zoneinfo import ZoneInfo
 from hashlib import sha256
 from copy import deepcopy
@@ -241,6 +241,18 @@ def create_app(path=None, seed=None):
         with store.connect() as db:
             facts = store.read(db, 'statistics', statistics.empty())
         return statistics.report(facts, campus, period, start, end)
+
+    @app.get('/api/stats/availability')
+    def get_availability(day: date | None = Query(default=None, alias='date'), campus: str = 'total'):
+        selected = day or datetime.now(ZoneInfo("Europe/Rome")).date()
+        with store.connect() as db:
+            db.execute('BEGIN')
+            history = read_history(db)
+            if history:
+                history = dict(history, versions=[dict(v, dataset=presented(db, v['dataset'])) for v in history['versions']])
+            state = store.read(db, 'state', EMPTY)
+            rules = store.read(db, 'hourTypes', {})
+            return availability.report(history, state, rules, selected, campus)
 
     @app.get('/api/day/{day}')
     def get_day(day: date):

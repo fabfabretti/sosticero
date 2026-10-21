@@ -62,7 +62,7 @@ The **Permessi** register records a teacher’s leave date, selected periods, an
 
 **Stats** offers totals, daily averages, trends, weekday and period comparisons, and an interactive day-by-period heatmap. Filter by campus and by all recorded dates, this week, this month, or a custom range. Export CSV or open a printable report.
 
-Statistics distinguish absent teachers, absent teacher-periods, and class-periods needing cover. They also distinguish substitute cover, explicit uncovered outcomes, late entry, early exit, and pending decisions. Averages use **days with recorded absences or permits**, not every school day. “Ore di classe scoperta” measures cover demand, including periods subsequently covered;
+Statistics distinguish absent teachers, absent teacher-periods, and class-periods needing cover. They also distinguish substitute cover, explicit uncovered outcomes, late entry, early exit, and pending decisions. Averages use **days with recorded absences or permits**, not every school day. “Ore da coprire” measures cover demand, including periods subsequently covered. The summary omits covered hours and coverage percentages because another campus may record its substitutions in a separate instance; the remaining outcome breakdown describes only local records.
 
 ### Configure and protect your records
 
@@ -416,3 +416,34 @@ dell'anteprima. Una base o anteprima scaduta restituisce 409 e richiede verifica
 Per eliminare una modifica, gli stessi endpoint ricevono `{delete: true, id,
 teacher, start, basis}` e, al salvataggio, il `token` dell'anteprima.
 `POST /api/import/preview` mostra i conflitti prima del ripristino di un archivio.
+
+### Disponibilità sulla carta nelle statistiche
+
+Sotto Giorno × ora, **A disposizione** usa la sede selezionata nelle statistiche
+(Centrale, Succursale o entrambe) e una settimana indipendente, anche futura.
+Disponibili conta le attività abilitate nell’orario effettivo e nelle modifiche
+di Orari; Reperibili aggiunge le ore favorevoli per recuperare permessi con debito
+ancora utilizzabile alla data. Le assenze, le supplenze assegnate e le disponibilità
+inserite per la singola giornata non modificano questa capacità teorica.
+Le opportunità RP sono alternative: lo stesso debito può comparire in più celle.
+
+La percentuale POT confronta le ore abilitate **POT + ALF + PE** con il loro totale
+settimanale, comprese le ore disabilitate. DI.S e RP sono esclusi dalla percentuale.
+Il 40% è un riferimento atteso, non un vincolo. Per entrambe le sedi si dividono
+i conteggi complessivi, senza fare la media delle percentuali delle due sedi.
+Le ore senza sede sono incluse solo nel totale e segnalate separatamente.
+
+L’endpoint di sola lettura è
+`GET /api/stats/availability?date=2026-10-20&campus=total`;
+`campus` accetta `centrale`, `succursale` e `total`, mentre la data omessa
+usa il giorno corrente a Roma. La risposta contiene date, versioni dell’orario,
+docenti per cella, conteggi POT e ore senza sede. Non salva statistiche derivate.
+Il CSV storico conserva il proprio schema; la stampa include entrambe le griglie
+con le date e la sede della disponibilità.
+
+
+Stats weekday grids keep equal weekday widths on narrow screens. The day-by-period
+selector offers demand and absent teachers; teacher-hours remain in the summary
+and daily trend. Availability hover panels pass pointer input through to nearby
+cells, with compact name/activity/C-S entries grouped as Disponibili and
+Reperibili (RP). Click or Enter pins a long list for scrolling; Escape closes it.
