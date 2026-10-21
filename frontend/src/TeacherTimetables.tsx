@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { buildTeacherTimetables, norm, teacherSearchText, DAYS, HOURS } from './timetables';
 import { HourHelp } from './Tooltip';
+import type { Reception } from './Receptions';
 
 export type Lesson = { classes?: string[]; activities?: string[]; special?: string; site?: string | null; disabled?: boolean };
 type Dataset = {
   teachers: Record<string, { id: string; name: string; importedName?: string; nameOverride?: NameOverride; code?: string; retired?: boolean }>;
   lessons: Record<string, Lesson>;
+  receptions?: Reception[];
 };
 type Group = { before: Record<string, Lesson | null>; after: Record<string, Lesson | null>; conflicts: { id: string; effective: string | null }[] };
 type Override = { id: string; teacher: string; start: string; end: string | null; reset: boolean; groups: Group[] };
@@ -265,6 +267,7 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
           const content = cell && <><span title={`${label} · ${site === 'C' ? 'Centrale' : site === 'S' ? 'Succursale' : 'Sede ignota'}`} className={`orari-session campus-${cell.site || 'unknown'}${special ? ' orari-special' : ''}${disabled ? ' orari-disabled' : ''}`}><span className="orari-session-label">{label}</span><span className="orari-session-meta">{cell.partners.length > 0 && <span className="orari-partners">Comp.</span>}<span className="orari-site" title={site === 'C' ? 'Centrale' : site === 'S' ? 'Succursale' : 'Sede ignota'}>{site}</span></span></span>{disabled && <span className="sr-only">Ora disabilitata: solo in caso di necessità</span>}</>;
           const destination = editing && drag?.target === slot;
           return <td key={d} data-timetable-slot={slot} data-teacher={g.id} className={(cell?.partners.length ? 'orari-shared ' : '') + (destination ? 'orari-destination' : '')}>
+            {data?.dataset.receptions?.filter(reception => reception.teacher === g.id && reception.day === d && reception.hour === h).map(reception => <HourHelp key={`${d}|${h}`} text={`Ricevimento · ${DAY_LABELS[d]} ${h}ª · ${reception.time || 'Orario non specificato'} · ${reception.site || 'Sede da verificare'}${reception.location ? ' · ' + reception.location : ''}${cell ? ' · Sovrapposizione con attività in orario' : ''}`}><span className="orari-reception">R{cell ? ' · Sovrapposizione' : ''}</span></HourHelp>)}
             {editing && special ? <><button type="button" className={'orari-cell-button' + (drag?.slot === slot ? ' orari-drag-source' : '')} disabled={busy} aria-pressed={isClassActivity(value) ? undefined : disabled} aria-label={`${isClassActivity(value) ? 'Modifica ' + activity : disabled ? 'Riattiva' : 'Disabilita'} ${DAY_LABELS[d]} ${h}ª ${label}`}
               onKeyDown={e => {
                 if (!e.altKey || !['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return;

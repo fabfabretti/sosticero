@@ -5,7 +5,7 @@ from hashlib import sha256
 import json
 
 from .domain import normalize_dataset, lesson, rows, validate_assignment, HOURS, SITES
-from . import statistics, overrides
+from . import statistics, overrides, receptions
 
 
 def digest(value):
@@ -34,6 +34,7 @@ def dataset(history, day):
         if i not in selected['teachers']:
             selected['teachers'][i] = dict(teacher, retired=True)
     selected['classes'] = sorted(classes)
+    selected['receptions'] = receptions.on_day(history.get('_receptions', receptions.empty()), day)
     return selected
 
 

@@ -97,7 +97,7 @@ class TeacherNamesTest(unittest.TestCase):
     def test_archive_import_restart_and_backup(self):
         self.save(self.value).raise_for_status()
         archive = self.client.get('/api/export').json()
-        self.assertEqual(archive['schema'], 6)
+        self.assertEqual(archive['schema'], 7)
         self.save(None, self.value).raise_for_status()
         self.client.post('/api/import', json=archive).raise_for_status()
         legacy = dict(archive, schema=5)

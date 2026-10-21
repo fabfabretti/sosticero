@@ -1,7 +1,7 @@
 """On-paper timetable capacity; daily scheduling state only supplies the RP ledger."""
 from datetime import timedelta
 
-from . import recovery, timetables
+from . import recovery, timetables, receptions
 from .domain import HOURS, SITES, lesson, rp_context
 from .hour_types import activity_codes, merge_types
 
@@ -55,7 +55,7 @@ def report(history, state, policies, selected, campus='total'):
                         enabled += int(available)
                     if available:
                         ordinary.append(dict(id=i, name=teacher['name'], activities=codes, sites=[site] if site else []))
-                elif i in debt:
+                elif i in debt and not receptions.at(ds, i, d, h):
                     sites = [s for s in SITES if (campus == 'total' or campus == s) and
                              rp_context(ds, neutral, d, dict(h=h, sede=s, k=''), i)[0]]
                     if sites:
