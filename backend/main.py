@@ -11,7 +11,7 @@ from .domain import normalize_dataset, rows, candidates, validate_assignment, de
 from .storage import Store, EMPTY
 from . import backup, attachments
 from .hour_types import merge_types, validate_types
-from . import statistics, recovery, timetables, overrides, teacher_names, availability
+from . import statistics, recovery, timetables, overrides, teacher_names, availability, receptions
 from zoneinfo import ZoneInfo
 from hashlib import sha256
 from copy import deepcopy
@@ -110,6 +110,7 @@ def create_app(path=None, seed=None):
         value = store.read(db, 'timetables')
         if value is not None:
             value['_overrides'] = store.read(db, 'timetableOverrides', overrides.empty())
+            value['_receptions'] = store.read(db, 'receptions', receptions.empty())
         return value
 
     def name_overrides(db):
@@ -119,7 +120,7 @@ def create_app(path=None, seed=None):
         return teacher_names.dataset(ds, name_overrides(db))
 
     def write_history(db, value):
-        store.write(db, 'timetables', {k: v for k, v in value.items() if k != '_overrides'})
+        store.write(db, 'timetables', {k: v for k, v in value.items() if not k.startswith('_')})
         store.write(db, 'timetableOverrides', value.get('_overrides', overrides.empty()))
 
     def initialize_statistics():
@@ -284,10 +285,70 @@ def create_app(path=None, seed=None):
                 if ds is None:
                     raise ValueError('Carica prima un orario.')
             labels = name_overrides(db)
+            ds = dict(ds, receptions=receptions.on_day(store.read(db, 'receptions', receptions.empty()), viewed))
         teachers = {i: dict(t, cdcName=CDC_NAMES.get(t.get('classe_concorso', ''), t.get('classe_concorso', ''))) for i, t in teacher_names.teachers(ds['teachers'], labels).items()}
         return dict(effective=effective, day=viewed, version=selected['id'] if history else '', dataset=dict(ds, teachers=teachers),
                     basis=timetables.digest(history), imported=selected['dataset'] if history else ds,
                     overrides=history.get('_overrides', overrides.empty())['records'] if history else [])
+
+    @app.get('/api/receptions')
+    def get_receptions():
+        with store.connect() as db:
+            return store.read(db, 'receptions', receptions.empty())
+
+    def reception_plan(db, data):
+        if not isinstance(data.get('effective'), str):
+            raise ValueError('Seleziona una decorrenza.')
+        effective = data['effective']
+        if date.fromisoformat(effective).isoformat() != effective:
+            raise ValueError('Decorrenza non valida.')
+        ds, state = load(db, effective)
+        reviewed, entries, ready = receptions.review(receptions.parse(data.get('file')), ds['teachers'], name_overrides(db), data.get('choices', {}))
+        history = read_history(db)
+        proposed = receptions.replace(history['_receptions'], effective, entries)
+        receptions.validate(proposed, teacher_names.catalog(history))
+        after = dict(history, _receptions=proposed)
+        facts = store.read(db, 'statistics', statistics.empty())
+        next_date = next((v['effective'] for v in proposed['versions'] if v['effective'] > effective), None)
+        days = []
+        rules = store.read(db, 'hourTypes', {})
+        for day in timetables.dates(state, facts):
+            if day < effective or next_date and day >= next_date:
+                continue
+            before_issues = timetables.issues(timetables.dataset(history, day), state, day, merge_types(timetables.dataset(history, day), rules))
+            changed = timetables.dataset(after, day)
+            issues = timetables.issues(changed, state, day, merge_types(changed, rules))
+            days.append(dict(day=day, issues=[item for item in issues if item not in before_issues]))
+        documents = db.execute('SELECT key, value FROM documents ORDER BY key').fetchall()
+        token = timetables.digest([documents, {k: v for k, v in data.items() if k not in ('token', 'confirm')}])
+        teachers = {i: t['name'] for i, t in presented(db, ds)['teachers'].items() if not t.get('retired')}
+        return proposed, after, state, facts, dict(rows=reviewed, ready=ready, teachers=teachers, token=token, days=days, effective=effective, end=next_date)
+
+    @app.post('/api/receptions/preview')
+    def preview_receptions(data: dict):
+        with store.connect() as db:
+            db.execute('BEGIN')
+            *_, impact = reception_plan(db, data)
+        return impact
+
+    @app.post('/api/receptions')
+    def import_receptions(data: dict):
+        with store.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            document, history, state, facts, impact = reception_plan(db, data)
+            if data.get('confirm') is not True or not data.get('token') or data['token'] != impact['token']:
+                raise HTTPException(409, 'Conferma richiesta o anteprima scaduta: genera una nuova anteprima.')
+            if not impact['ready']:
+                raise ValueError('Abbina o salta tutte le righe prima di importare.')
+            try:
+                snapshot = backup.backup_database(str(database), str(backup_dir))
+            except Exception as exc:
+                raise ValueError('Backup prima dell’importazione fallito. Nessun dato modificato.') from exc
+            affected = [item['day'] for item in impact['days']]
+            updated = timetables.sync(history, state, facts, affected, revalidate=True)
+            store.write(db, 'receptions', document)
+            store.write(db, 'statistics', updated)
+        return dict(ok=True, backup=snapshot)
 
     @app.post('/api/orari/name')
     def save_teacher_name(data: dict):
@@ -656,25 +717,27 @@ def create_app(path=None, seed=None):
             history = read_history(db)
             images = attachments.export(db, state)
             labels = name_overrides(db)
-        return dict(schema=6, teacherNameOverrides=labels, timetables={k: v for k, v in history.items() if k != '_overrides'}, timetableOverrides=history['_overrides'], attachments=images, datasetId='v1:'+','.join(sorted(ds['teachers'])), hourTypes=rules, statistics=facts, **state)
+        return dict(schema=7, receptions=history['_receptions'], teacherNameOverrides=labels, timetables={k: v for k, v in history.items() if not k.startswith('_')}, timetableOverrides=history['_overrides'], attachments=images, datasetId='v1:'+','.join(sorted(ds['teachers'])), hourTypes=rules, statistics=facts, **state)
 
     @app.post('/api/import')
     def import_state(data: dict, preview: bool = False):
         with store.connect() as db:
             db.execute('BEGIN IMMEDIATE')
-            history = timetables.validate(data.get('timetables')) if data.get('schema') in (4, 5, 6) else read_history(db)
+            history = timetables.validate(data.get('timetables')) if data.get('schema') in (4, 5, 6, 7) else read_history(db)
             retained = store.read(db, 'timetableOverrides', overrides.empty())
-            document = overrides.validate(data.get('timetableOverrides'), history) if data.get('schema') in (5, 6) else retained
+            document = overrides.validate(data.get('timetableOverrides'), history) if data.get('schema') in (5, 6, 7) else retained
             document, restore_review = overrides.reconcile(document, history)
             history['_overrides'] = document
-            labels = teacher_names.validate(data.get('teacherNameOverrides') if data.get('schema') == 6 else name_overrides(db), teacher_names.catalog(history))
-            if data.get('schema') not in (4, 5, 6):
+            reception_document = receptions.validate(data.get('receptions', receptions.empty()) if data.get('schema') == 7 else receptions.empty(), teacher_names.catalog(history))
+            history['_receptions'] = reception_document
+            labels = teacher_names.validate(data.get('teacherNameOverrides') if data.get('schema') in (6, 7) else name_overrides(db), teacher_names.catalog(history))
+            if data.get('schema') not in (4, 5, 6, 7):
                 ds, _ = load(db)
-            if data.get('schema') in (4, 5, 6):
+            if data.get('schema') in (4, 5, 6, 7):
                 ds = timetables.dataset(history, datetime.now(ZoneInfo('Europe/Rome')).date().isoformat())
             identifier = data.get('datasetId')
-            compatible = identifier == 'v1:'+','.join(sorted(ds['teachers'])) if data.get('schema') in (4, 5, 6) else isinstance(identifier, str) and identifier.startswith('v1:') and set(identifier[3:].split(',')) <= set(ds['teachers'])
-            if type(data.get('schema')) is not int or data['schema'] not in (1, 2, 3, 4, 5, 6) or not compatible:
+            compatible = identifier == 'v1:'+','.join(sorted(ds['teachers'])) if data.get('schema') in (4, 5, 6, 7) else isinstance(identifier, str) and identifier.startswith('v1:') and set(identifier[3:].split(',')) <= set(ds['teachers'])
+            if type(data.get('schema')) is not int or data['schema'] not in (1, 2, 3, 4, 5, 6, 7) or not compatible:
                 raise ValueError('Archivio non compatibile.')
             rules = validate_types(data['hourTypes']) if 'hourTypes' in data else None
             state = {k: data.get(k, {}) for k in EMPTY}
@@ -734,7 +797,7 @@ def create_app(path=None, seed=None):
             if preview:
                 return dict(overrides=restore_review)
             attachments.import_images(db, state, data, data['schema'])
-            if data['schema'] in (4, 5, 6):
+            if data['schema'] in (4, 5, 6, 7):
                 write_history(db, history)
                 store.write(db, 'dataset', history['versions'][0]['dataset'])
             if rules is not None:
@@ -743,6 +806,7 @@ def create_app(path=None, seed=None):
             store.write(db, 'statistics', facts)
             store.write(db, 'timetableOverrides', document)
             store.write(db, 'teacherNameOverrides', labels)
+            store.write(db, 'receptions', reception_document)
         return {'ok': True, 'overrides': restore_review}
 
     @app.post('/api/import/preview')

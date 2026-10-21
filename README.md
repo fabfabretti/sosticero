@@ -19,6 +19,16 @@ Dark mode, using fictional teachers and records created in an isolated demo data
 
 ## What you can do
 
+### Import teacher receptions
+
+In **Settings → Ricevimenti**, choose an XLSX file and its effective date, then generate a preview. Required columns are `docente`, `giorno` (Lun–Ven), and `ora` (1–7); optional `orario` and `luogo` retain the original details. Booking counts and class lists are ignored. Files are limited to 6 MB and 2000 rows.
+
+Unique full-name matches are selected automatically, including configured teacher names. Search and select a teacher for uncertain matches, or explicitly skip a row. Locations are optional: blank and `a distanza` remain **Da verificare**. You can confirm Centrale or Succursale manually. Generate a fresh preview after changing selections, review assignment conflicts, then confirm. Each import replaces the whole reception schedule from its effective date until the next reception version; earlier dates stay unchanged. Skipping every row creates an empty schedule for that interval.
+
+**Orari** displays receptions as **R**, with time/location details and warnings for overlaps with lessons. Teaching timetable edits do not change receptions. A reception blocks its entire numbered period from RP even if its clock-time range is shorter. Adjacent free periods are favorable only when campus transfers are feasible; unknown reception locations display **Potenzialmente favorevole · sede da verificare** outside the confirmed favorable group. Existing RP assignments remain stored and linked to their permit if an import makes them require review.
+
+Reception versions and teacher mappings are included in database backups and portable JSON archives (schema 7). Restoring an older archive restores an empty reception schedule. Reception imports never change teaching-hour totals or daily permit limits.
+
 ### Plan the school day
 
 - Browse dates in a calendar and search for teachers or classes.

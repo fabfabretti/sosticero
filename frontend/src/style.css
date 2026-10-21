@@ -1381,3 +1381,13 @@ select.inbox-teacher { width: 220px; padding: 5px 8px; height: 32px; }
 .availability-tooltip li { padding: 1px 0; overflow-wrap: anywhere; }
 .availability-tooltip small { display: block; margin-top: 7px; color: var(--mute); font-size: 10px; }
 @media (max-width: 480px) { .stats-cards { grid-template-columns: 1fr; } .stats-card { border-left: 0; padding: 6px 0; } }
+.reception-import { margin-block: 1.5rem; }
+.reception-controls { display: flex; flex-wrap: wrap; gap: 1rem; align-items: end; }
+.reception-controls label { display: grid; gap: .35rem; }
+.reception-table { overflow-x: auto; margin-block: 1rem; max-height: 32rem; }
+.reception-table table { width: 100%; border-collapse: collapse; }
+.reception-table th, .reception-table td { padding: .65rem; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+.reception-table th { position: sticky; top: 0; background: var(--bg); }
+.reception-table input[type="search"] { min-width: 16rem; }
+.reception-table small { display: block; margin-top: .35rem; }
+.orari-reception { display: block; padding: .3rem .45rem; border: 1px solid currentColor; border-radius: .35rem; font-weight: 700; margin-block: .2rem; }

@@ -91,6 +91,7 @@ function app(localStorage = { getItem: () => null, setItem() {} }, confirm = () 
         createRoot: () => ({ render: element => { App = element.type; } }),
       };
       if (id === './TimetableImport') return { TimetableImport: 'timetable-import' };
+      if (id === './Receptions') return { ReceptionImport: 'reception-import' };
       if (id === './HourTypes') return { HourTypes: 'hour-types' };
       if (id === './CandidateDrawer') return { CandidateDrawer: 'drawer' };
       if (id === './ClassificationChoices') {

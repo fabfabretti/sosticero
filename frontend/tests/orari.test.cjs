@@ -69,6 +69,20 @@ async function loaded(handler, confirm) {
 }
 const tables = s => s.nodes().filter(n => n.type === 'table');
 
+test('receptions overlay lessons with details and survive teaching edit mode', async () => {
+  const data = { ...orari, dataset: { ...orari.dataset, receptions: [
+    { teacher: 'a', day: 'lun', hour: 1, time: '08:00 - 08:35', site: null, location: 'a distanza' },
+    { teacher: 'a', day: 'mer', hour: 4, time: '', site: 'centrale', location: '' },
+  ] } };
+  const s = await loaded(async url => url.startsWith('orari?') ? data : types);
+  const tips = () => s.nodes().filter(n => n.type === tooltip.HourHelp && n.props.text.startsWith('Ricevimento'));
+  assert.equal(tips().length, 2);
+  assert.match(tips()[0].props.text, /Sede da verificare.*a distanza.*Sovrapposizione/);
+  assert.ok(s.nodes().some(n => n.props?.className === 'orari-session-label' && n.props.children === '1A'));
+  s.nodes().find(n => n.props?.['aria-label'] === 'Modifica orario di Anna').props.onClick();
+  assert.equal(tips().length, 2);
+});
+
 test('renders one grid per teacher from the current version only', async () => {
   const s = await loaded();
   assert.equal(s.calls.length, 1); assert.ok(s.calls[0].startsWith('orari?day='));
@@ -123,7 +137,7 @@ test('compresenza tooltip wraps all session content in the cell', async () => {
   const cells = s.nodes().filter(n => n.type === 'td' && n.props.className?.includes('orari-shared'));
   assert.equal(cells.length, 2);
   for (const cell of cells) {
-    const help = cell.props.children;
+    const help = Array.isArray(cell.props.children) ? cell.props.children.at(-1) : cell.props.children;
     assert.equal(help.type, tooltip.HourHelp);
     const content = help.props.children.props.children;
     assert.ok(content[0].props.className.startsWith('orari-session'));

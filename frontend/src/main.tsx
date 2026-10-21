@@ -10,6 +10,7 @@ import { AttachmentField, RecordInfo, type ImageDraft, type AttachmentMap } from
 import { Stats } from "./Stats";
 import { TeacherTimetables } from "./TeacherTimetables";
 import { AbsenceInbox, SheetsSettings, InboxNotice, useInboxStatus } from "./Inbox";
+import { ReceptionImport } from './Receptions';
 import { norm, teacherSearchText } from "./timetables";
 import { HourHelp } from "./Tooltip";
 import { SubstitutionExport } from "./SubstitutionExportPanel";
@@ -376,6 +377,7 @@ function Settings() {
         <div className="db-status">Dati salvati nel database SQLite.</div>
       </section>
       <HourTypes key={JSON.stringify(data?.dataset)} api={api} />
+      <ReceptionImport api={api} />
       <SheetsSettings api={api} />
       <BackupSection />
     </section>
