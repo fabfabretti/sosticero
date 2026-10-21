@@ -25,7 +25,7 @@ test('CSV preserves totals, filters, denominators and safely quotes spreadsheet 
   const csv = reporting.reportCsv(fixture);
   assert.ok(csv.startsWith('\uFEFF'));
   assert.ok(csv.includes('"Sede";"Centrale"'));
-  assert.ok(csv.includes('"Ore di classe scoperta";"1";"1"'));
+  assert.ok(csv.includes('"Ore da coprire";"1";"1"'));
   assert.ok(csv.includes('"2026-10-12";"1";"2";"2";"0";"1";"0";"0";"0"'));
   assert.ok(csv.includes('"\'=1+1;""A";"1"'));
   assert.ok(csv.includes('Solo giorni con assenze registrate'));
@@ -46,7 +46,7 @@ function screen() {
     },
   };
   const jsx = (type, props) => ({ type, props });
-  const { Stats } = load('src/Stats.tsx', { react, 'react/jsx-runtime': { jsx, jsxs: jsx }, './stats-report': reporting, './StatsCalendar': calendar, './HeatCell': { HeatCell: 'heat-cell' }, recharts: new Proxy({}, { get: (_, name) => name }) }, {
+  const { Stats } = load('src/Stats.tsx', { react, 'react/jsx-runtime': { jsx, jsxs: jsx }, './stats-report': reporting, './StatsAvailability': { StatsAvailability: 'stats-availability', absenceExplanation: 'Le ore dei docenti assenti includono anche attività senza una classe da sostituire.' }, './StatsCalendar': calendar, './HeatCell': { HeatCell: 'heat-cell' }, recharts: new Proxy({}, { get: (_, name) => name }) }, {
     fetch(url) { return new Promise(resolve => requests.push({ url, resolve: body => resolve({ ok: true, json: async () => body }) })); },
   });
   return {
@@ -160,4 +160,32 @@ test('heatmap detail opens on hover and focus, includes zeroes and closes on Esc
   assert.ok(!render().some(n => n.props.role === 'tooltip'));
   render()[0].props.onFocus({ currentTarget: { getBoundingClientRect: () => ({ left: 20, bottom: 40 }) } });
   assert.ok(render('teachers').filter(n => n.type === 'li')[0].props.children.join('').includes('1 docente'));
+});
+
+test('empty historical report keeps availability and its shared campus scope; availability enables printing', async () => {
+  const s = screen(); s.render();
+  s.requests[0].resolve({ ...fixture, days: 0 }); await settle();
+  let nodes = s.render();
+  let section = nodes.find(n => n.type === 'stats-availability');
+  assert.equal(section.props.campus, 'total');
+  section.props.onReady(true);
+  nodes = s.render();
+  assert.equal(nodes.find(n => n.type === 'button' && n.props.children === 'Stampa report').props.disabled, false);
+  nodes.find(n => n.type === 'button' && n.props.children === 'Succursale').props.onClick();
+  nodes = s.render();
+  assert.equal(nodes.find(n => n.type === 'stats-availability').props.campus, 'succursale');
+});
+
+test('summary omits incomplete coverage and heatmap keeps only demand and absent teachers', async () => {
+  const s = screen(); s.render(); s.requests[0].resolve({ ...fixture, coverage: 75 }); await settle();
+  const nodes = s.render();
+  const cards = nodes.filter(n => n.props.className === 'stats-card');
+  assert.equal(cards.length, 3);
+  assert.ok(!cards.some(n => JSON.stringify(n).includes('Ore coperte')));
+  assert.ok(!JSON.stringify(cards).includes('della domanda'));
+  const selector = nodes.find(n => n.props['aria-label'] === 'Indicatore della mappa');
+  assert.deepEqual(flatten(selector).filter(n => n.type === 'button').map(n => n.props.children), ['Ore da coprire', 'Docenti assenti']);
+  const css = readFileSync('src/style.css', 'utf8');
+  assert.match(css, /\.stats-heatmap\s*\{[^}]*table-layout: fixed/s);
+  assert.match(css, /\.stats-scroll \.stats-heatmap thead th:last-child\s*\{[^}]*display: table-cell/s);
 });

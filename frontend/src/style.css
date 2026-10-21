@@ -1359,3 +1359,25 @@ select.inbox-teacher { width: 220px; padding: 5px 8px; height: 32px; }
 .orari-campus-choice button { flex: 1; min-height: 40px; padding: 6px; }
 .orari-activity-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 14px; border-top: 1px solid var(--line); }
 .orari-activity-actions button { min-height: 40px; }
+
+.availability-date { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 13px; }
+.availability-date input { min-height: 44px; padding: 6px 10px; color: var(--ink); background: var(--pan); border: 1px solid var(--line); border-radius: 5px; }
+.availability-switch { margin: 12px 0; }
+.availability-switch button { min-height: 44px; }
+.availability-ratio { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px 24px; margin: 20px 0 8px; }
+.availability-ratio span { color: var(--mute); font-size: 13px; }
+.stats-print-preview .availability-date, .stats-print-preview .availability-switch { display: none; }
+@media print { .availability-date, .availability-switch { display: none !important; } }
+
+/* Share the available width across every weekday, including the final column. */
+.stats-heatmap { table-layout: fixed; }
+.stats-scroll .stats-heatmap th, .stats-scroll .stats-heatmap td { width: auto; padding: 8px 4px; white-space: normal; overflow-wrap: anywhere; text-align: center; }
+.stats-scroll .stats-heatmap th:first-child { width: 52px; text-align: left; }
+.stats-scroll .stats-heatmap thead th:last-child { display: table-cell; }
+.stats-cards { grid-template-columns: 1.4fr repeat(2, minmax(0, 1fr)); }
+.availability-tooltip { pointer-events: none; padding: 8px 10px; font-size: 12px; line-height: 1.35; }
+.availability-tooltip.is-pinned { pointer-events: auto; }
+.availability-tooltip h3 { margin: 7px 0 2px; font-size: 12px; font-weight: 600; }
+.availability-tooltip li { padding: 1px 0; overflow-wrap: anywhere; }
+.availability-tooltip small { display: block; margin-top: 7px; color: var(--mute); font-size: 10px; }
+@media (max-width: 480px) { .stats-cards { grid-template-columns: 1fr; } .stats-card { border-left: 0; padding: 6px 0; } }

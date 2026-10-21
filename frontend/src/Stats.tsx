@@ -3,9 +3,11 @@ import { CartesianGrid, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, Line
 import { campuses, periods, metricNames, outcomes, weekdays, typeNames, formatNumber as fmt, reportCsv } from "./stats-report";
 import { StatsCalendar, presetRange, todayInRome } from "./StatsCalendar";
 import { HeatCell } from "./HeatCell";
+import { StatsAvailability, absenceExplanation } from "./StatsAvailability";
 import type { Metric, StatReport } from "./stats-report";
 
 const metrics: Metric[] = ["demand", "teacherHours", "teachers"];
+const heatMetrics: Metric[] = ["demand", "teachers"];
 const strokes = ["var(--acc)", "var(--stats-absence)", "var(--stats-teachers)"];
 const dashes = [undefined, "7 3", "2 3"];
 type ChartPoint = { label: string; demand: number | null; teacherHours: number | null; teachers: number | null };
@@ -50,6 +52,7 @@ export function Stats() {
   const [loading, setLoading] = useState(false);
   const [retry, setRetry] = useState(0);
   const [preview, setPreview] = useState(false);
+  const [availabilityReady, setAvailabilityReady] = useState(false);
   const range = period === "custom" ? { start, end } : presetRange(period, today, first);
 
   useEffect(() => {
@@ -108,7 +111,7 @@ export function Stats() {
     </aside>
     <main className={"stats-page" + (preview ? " stats-print-preview" : "")}>
       {preview && <div className="stats-preview-actions"><strong>Anteprima report</strong><button onClick={() => window.print()}>Stampa</button><button onClick={() => setPreview(false)}>Torna alle statistiche</button></div>}
-      <div className="stats-heading"><h1>Statistiche</h1><div className="stats-actions"><button onClick={download} disabled={!data?.days}>Esporta CSV</button><button onClick={() => setPreview(true)} disabled={!data?.days}>Stampa report</button></div></div>
+      <div className="stats-heading"><h1>Statistiche</h1><div className="stats-actions"><button onClick={download} disabled={!data?.days}>Esporta CSV</button><button onClick={() => setPreview(true)} disabled={!data?.days && !availabilityReady}>Stampa report</button></div></div>
       {loading && <p role="status">Caricamento statistiche…</p>}
       {error && <div role="alert" className="stats-warning">{error} <button onClick={() => setRetry(retry + 1)}>Riprova</button></div>}
       {data && <>
@@ -116,9 +119,9 @@ export function Stats() {
         {!data.days ? <section className="stats-panel"><h2>Nessun giorno con assenze registrate</h2><p>Seleziona un altro periodo. Le date future sono escluse dalle statistiche.</p></section> : <>
           <div className="stats-cards" aria-label="Medie giornaliere">
             {metrics.map(k => <section className="stats-card" key={k}><h2>{metricNames[k]}</h2><div><strong>{fmt(data.averages[k])}</strong><span> / giorno</span></div><p>{fmt(data.totals[k])} {k === "teachers" ? "giorni-docente" : "ore"} nel periodo</p></section>)}
-            <section className="stats-card"><h2>Ore coperte</h2><div><strong>{fmt(data.averages.covered)}</strong><span> / giorno</span></div><p>{fmt(data.totals.covered)} ore · {fmt(data.coverage)}% della domanda</p></section>
           </div>
-          <p className="stats-method">Ore di classe scoperta: ore generate dalle assenze, comprese quelle poi coperte da un supplente. Ogni classe e ora conta una volta.</p>
+          <p className="stats-method">{absenceExplanation}</p>
+          <p className="stats-method">Ore da coprire: ore di classe che richiedono una sostituzione, anche se già assegnata. Ogni classe e ora conta una volta. Gli esiti registrati in questa istanza possono essere incompleti.</p>
           <div className="stats-outcomes" aria-label="Esito delle ore da coprire">{Object.entries(outcomes).map(([k, title]) => <div key={k} className={"outcome-" + k}><span>{title}</span><strong>{fmt(data.totals[k as keyof typeof outcomes])}</strong></div>)}</div>
         </>}
         <details className="stats-notes" open={preview}>
@@ -138,17 +141,20 @@ export function Stats() {
           ].map(chart => <section className="stats-panel" key={chart.label}><h2>{chart.title}</h2><Trend series={chart.series} bars />
             <details className="stats-values" open={preview}><summary>Valori delle medie</summary><Values caption={chart.title} headings={[chart.label, metricNames.demand]} rows={chart.series.map(d => [d.label, d.demand])} /></details>
           </section>)}</div>
-          <section className="stats-panel"><div className="stats-panel-heading"><h2>Giorno × ora</h2><div className="site-filter" role="group" aria-label="Indicatore della mappa">{metrics.map(k => <button key={k} className={metric === k ? "active" : ""} aria-pressed={metric === k} onClick={() => setMetric(k)}>{metricNames[k]}</button>)}</div></div>
+          <section className="stats-panel"><div className="stats-panel-heading"><h2>Giorno × ora</h2><div className="site-filter" role="group" aria-label="Indicatore della mappa">{heatMetrics.map(k => <button key={k} className={metric === k ? "active" : ""} aria-pressed={metric === k} onClick={() => setMetric(k)}>{metricNames[k]}</button>)}</div></div>
             <p className="stats-method">Media per ciascuna occorrenza registrata del giorno. — = nessuna data registrata.</p>
             <div className="stats-scroll" tabIndex={0} role="region" aria-label="Mappa giorno per ora"><table className="stats-heatmap"><caption>{metricNames[metric]} · medie per giorno e ora</caption><thead><tr><th scope="col">Ora</th>{weekData.map(w => <th scope="col" key={w.weekday}>{w.name} ({w.days})</th>)}</tr></thead><tbody>{[1, 2, 3, 4, 5, 6, 7].map(h => <tr key={h}><th scope="row">{h}ª ora</th>{weekData.map(w => {
               const cell = data.heatmap.find(c => c.weekday === w.weekday && c.hour === h);
               return cell ? <HeatCell key={w.weekday} cell={cell} metric={metric} max={maxHeat} /> : <td key={w.weekday}>—</td>;
             })}</tr>)}</tbody></table></div>
           </section>
+        </>}
+      </>}
+      <StatsAvailability campus={campus} preview={preview} onReady={setAvailabilityReady} />
+      {!!data?.days && <>
           <div className="stats-grid"><section className="stats-panel"><h2>Come abbiamo coperto</h2><Values caption="Coperture per tipo" headings={["Tipo", "Ore"]} rows={Object.entries(data.types).map(([t, n]) => [typeNames[t] || t, n])} /><p>{fmt(data.exceptional)} coperture eccezionali, già incluse nei tipi sopra.</p></section>
             <section className="stats-panel"><h2>Giorni con maggiore domanda</h2><Values caption="Dieci giorni con più ore da coprire" headings={["Data", metricNames.demand, outcomes.uncovered, "Entrata / uscita"]} rows={data.worst.map(d => [d.date, d.demand, d.uncovered, d.late + d.early])} /></section></div>
           <section className="stats-panel"><h2>Classi interessate</h2><Values caption="Domanda per classe" headings={["Classe", metricNames.demand]} rows={data.classes.map(c => [c.name, c.demand])} /></section>
-        </>}
       </>}
     </main>
   </div>;
