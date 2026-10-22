@@ -43,7 +43,7 @@ function app(localStorage = { getItem: () => null, setItem() {} }, confirm = () 
       const e = envelope();
       const i = e.count++;
       if (!(i in e.slots)) e.slots[i] = { value: typeof initial === 'function' ? initial() : initial };
-      return [e.slots[i].value, value => { e.slots[i] = { value }; }];
+      return [e.slots[i].value, value => { e.slots[i] = { value: typeof value === "function" ? value(e.slots[i].value) : value }; }];
     },
     useRef(initial) {
       const e = envelope();
@@ -54,7 +54,7 @@ function app(localStorage = { getItem: () => null, setItem() {} }, confirm = () 
     useEffect(fn, deps) {
       const e = envelope();
       const i = e.count++;
-      if (!(i in e.slots) || deps.some((d, j) => d !== e.slots[i].value[j]))
+      if (!(i in e.slots) || (!deps || deps.some((d, j) => d !== e.slots[i].value?.[j])))
         effects.push(fn);
       e.slots[i] = { value: deps };
     },
@@ -81,10 +81,19 @@ function app(localStorage = { getItem: () => null, setItem() {} }, confirm = () 
       if (url === '/api/environment') return Promise.resolve({ ok: true, json: async () => ({ testing: false }) });
       return new Promise(resolve => requests.push({
         url, options,
-        resolve: (data, ok = true) => resolve({ ok, json: async () => data }),
+        resolve: (data, ok = true, status = ok ? 200 : 422) => resolve({ ok, status, json: async () => data && typeof data === "object" && !Array.isArray(data) ? { concurrency: { records: {}, dates: {} }, ...data } : data }),
       }));
     },
     require(id) {
+      if (id === './concurrency' || id === './useQuietRefresh') {
+        const exports = {};
+        runInNewContext(ts.transpileModule(readFileSync('src/' + id.slice(2) + '.ts', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, {
+          exports, require: () => ({ ...react, useLayoutEffect: react.useEffect }),
+          document: { visibilityState: 'visible', querySelectorAll: () => [], addEventListener() {}, removeEventListener() {} },
+          setInterval: () => 1, clearInterval() {},
+        });
+        return exports;
+      }
       if (id === 'react') return { ...react, default: { Fragment: 'fragment' } };
       if (id === 'react/jsx-runtime') return { jsx, jsxs: jsx };
       if (id === 'react-dom/client') return {
@@ -455,7 +464,7 @@ test('permit form warns about unscheduled periods and saves them within limit', 
   assert.ok(a.render().some(n => n.props?.tabIndex === 0 && n.props['aria-label']?.includes('nessuna attività')));
   permitForm(a).props.onSubmit({ preventDefault() {} });
   const req = a.requests.shift();
-  assert.deepEqual(JSON.parse(req.options.body), { day: '2026-10-12', id: 't', requested_on: todayYmd, note: '', classification: null, hours: [6,7] });
+  assert.deepEqual(JSON.parse(req.options.body), { expected: { 'permessi|2026-10-12|t': 'absent' }, day: '2026-10-12', id: 't', requested_on: todayYmd, note: '', classification: null, hours: [6,7] });
   req.resolve({ ok: true }); await settle();
   a.requests.shift().resolve({ ...permitData, permessi: { '2026-10-12': { t: [6,7] } } }); await settle();
   assert.equal(a.render().filter(n => n.props?.className === 'permit-period').length, 2);
@@ -478,7 +487,7 @@ test('permit errors preserve form; editing supplies original identity and deleti
   assert.equal(a.requests.length, 0, 'cancelling confirmation keeps the permit');
   confirmDeletion = true;
   a.render().find(n => n.props?.['aria-label'] === 'Rimuovi permesso di Contartase').props.onClick();
-  assert.deepEqual(JSON.parse(a.requests.shift().options.body), { day: '2026-10-12', id: 't', hours: null });
+  assert.deepEqual(JSON.parse(a.requests.shift().options.body), { expected: { 'permessi|2026-10-12|t': 'absent' }, day: '2026-10-12', id: 't', hours: null });
 });
 
 test('permit absences lock and keep manual control payloads separate', async () => {
@@ -611,7 +620,7 @@ test('daily selection, explicit submit and Enter retain options for consecutive 
   submitEntry(a); assert.equal(a.requests.length, 0);
   for (const h of [2,3]) a.render().find(n => n.props?.['aria-label'] === `Aggiungi ${h}ª ora`).props.onClick();
   clickText(a, 'Programmata'); submitEntry(a);
-  assert.deepEqual(JSON.parse(a.requests[0].options.body), { day: todayYmd, group: 'abs', id: 'a', hours: [2,3], site: 'centrale', defaults: false, classification: 'planned', note: '' });
+  assert.deepEqual(JSON.parse(a.requests[0].options.body), { expected: { ['abs|' + todayYmd + '|a']: 'absent' }, day: todayYmd, group: 'abs', id: 'a', hours: [2,3], site: 'centrale', defaults: false, classification: 'planned', note: '' });
   submitEntry(a); assert.equal(a.requests.length, 1);
   await resolveEntry(a); assert.equal(search(a).props.value, '');
   assert.equal(a.render().find(n => n.props?.['aria-label'] === 'Aggiungi 2ª ora').props['aria-pressed'], true);
@@ -640,7 +649,7 @@ test('availability and class entries omit classification while defaults and camp
   assert.ok(!a.render().some(n => n.props?.children === 'Last minute'));
   a.render().find(n => n.props?.className === 'dis-location').props.children[1].props.onChange({ target: { value: 'succursale' } });
   search(a).props.onChange({ target: { value: 'anna' } }); submitEntry(a);
-  assert.deepEqual(JSON.parse(a.requests[0].options.body), { day: todayYmd, group: 'dis', id: 'a', hours: [1,2,3,4,5,6,7], site: 'succursale', defaults: true });
+  assert.deepEqual(JSON.parse(a.requests[0].options.body), { expected: { ['dis|' + todayYmd + '|a']: 'absent' }, day: todayYmd, group: 'dis', id: 'a', hours: [1,2,3,4,5,6,7], site: 'succursale', defaults: true });
   await resolveEntry(a); search(a).props.onChange({ target: { value: 'bar' } }); submitEntry(a);
   assert.equal(JSON.parse(a.requests[0].options.body).site, 'succursale'); await resolveEntry(a);
   clickText(a, 'A disposizione'); search(a).props.onChange({ target: { value: '1A' } });
@@ -662,7 +671,7 @@ test('sidebar combines hours once, resolves mixed classifications and allows man
   assert.equal(a.render().find(n => n.props?.['aria-label'] === 'Anna, 3ª ora').props.disabled, true);
   a.render().find(n => n.props?.['aria-label'] === 'Modifica assenza di Anna').props.onClick();
   a.render().filter(n => n.props?.className === 'opt classification').at(-1).props.children[0].props.onClick();
-  assert.deepEqual(JSON.parse(a.requests[0].options.body), { day: todayYmd, group: 'abs', id: 'a', hours: [2], classification: 'planned' });
+  assert.deepEqual(JSON.parse(a.requests[0].options.body), { expected: { ['abs|' + todayYmd + '|a']: 'absent' }, day: todayYmd, group: 'abs', id: 'a', hours: [2], classification: 'planned' });
   const changed = { ...state, absenceKinds: { [todayYmd]: { a: 'planned', b: 'planned' } } };
   await resolveEntry(a, { ...response, state: changed }); assert.equal(groupFor(a, 'Anna'), 'Assenze programmate');
   const headings = a.render().filter(n => n.type === 'h2').map(n => n.props.children);
@@ -732,7 +741,7 @@ test('manual permits save an undated number of hours without absence fields', as
   permitForm(a).props.onSubmit({ preventDefault() {} });
   const req = a.requests.shift();
   assert.equal(req.url, '/api/manual-permits');
-  assert.deepEqual(JSON.parse(req.options.body), { id: 't', hours: 8, note: '', editing: false });
+  assert.deepEqual(JSON.parse(req.options.body), { expected: { 'manualPermits||t': 'absent' }, id: 't', hours: 8, note: '', editing: false });
   req.resolve({ ok: true }); await settle();
   a.requests.shift().resolve({ ...permitData, manualPermits: { t: { id: 'm', hours: 8, recovered: 2, remaining: 6, recoveries: [] } } }); await settle();
   assert.ok(a.render().some(n => n.props?.className === 'permit-remaining' && n.props.children === 6));
@@ -741,7 +750,7 @@ test('manual permits save an undated number of hours without absence fields', as
   assert.equal(permitTeacher(a).props.disabled, true);
   total().props.onChange({ target: { value: '10' } });
   permitForm(a).props.onSubmit({ preventDefault() {} });
-  assert.deepEqual(JSON.parse(a.requests.shift().options.body), { id: 't', hours: 10, note: '', editing: true });
+  assert.deepEqual(JSON.parse(a.requests.shift().options.body), { expected: { 'manualPermits||t': 'absent' }, id: 't', hours: 10, note: '', editing: true });
 });
 
 const noteField = (a, label) => a.render().find(n => n.type === 'textarea' && n.props['aria-label'] === label);
@@ -754,7 +763,7 @@ test('manual note editor saves explicitly, preserves failed drafts and resets on
   noteField(a, 'Note assenza di Anna').props.onChange({ target: { value: 'draft' } });
   assert.equal(a.requests.length, 0);
   clickText(a, 'Salva nota e allegato');
-  assert.deepEqual(JSON.parse(a.requests[0].options.body), { day: todayYmd, group: 'abs', id: 'a', hours: [2], note: 'draft' });
+  assert.deepEqual(JSON.parse(a.requests[0].options.body), { expected: { ['abs|' + todayYmd + '|a']: 'absent' }, day: todayYmd, group: 'abs', id: 'a', hours: [2], note: 'draft' });
   a.requests.shift().resolve({ detail: 'failure' }, false); await settle();
   assert.equal(noteField(a, 'Note assenza di Anna').props.value, 'draft');
   clickText(a, 'Salva nota e allegato');
@@ -946,7 +955,7 @@ test('entry and exit blocks show one boundary time and persist Comunicato', asyn
   assert.equal(checks().length, 2);
   assert.equal(checks()[0].props['aria-pressed'], false);
   checks()[0].props.onClick();
-  assert.deepEqual(JSON.parse(a.requests[0].options.body), { day: todayYmd, key: 't|3|1A', communicated: true });
+  assert.deepEqual(JSON.parse(a.requests[0].options.body), { expected: { ['asg|' + todayYmd + '|t|3|1A']: 'absent' }, day: todayYmd, key: 't|3|1A', communicated: true });
   a.requests.shift().resolve({ ok: true }); await settle();
   const updated = { ...response, state: { ...response.state, asg: { [todayYmd]: { ...asg, 't|3|1A': { ...asg['t|3|1A'], communicated: true } } } } };
   a.requests.shift().resolve(updated); await settle();
@@ -1030,4 +1039,23 @@ test('assignment styling is per hour and information retains the attachment outs
   a.requests.shift().resolve({ ...fixture, state: { ...fixture.state, dis: {}, asg: {} } }); await settle();
   assert.equal(nameButton(2).props.children.props.className, undefined);
   assert.equal(a.render().find(n => n.props['aria-label'] === 'Anna, 2ª ora').props.disabled, true);
+});
+
+
+test('stale metadata save keeps text and baseline until explicit reload', async () => {
+  const a = await loaded({ dataset: { teachers: { a: { name: 'Anna' } }, classes: [], warnings: [] }, state: { ...data.state, abs: { [todayYmd]: { a: [2] } }, absenceNotes: { [todayYmd]: { a: 'saved' } } }, concurrency: { records: { ['abs|' + todayYmd + '|a']: 'old-token' }, dates: {} } });
+  a.render().find(n => n.props?.['aria-label'] === 'Modifica assenza di Anna').props.onClick();
+  const note = () => a.render().find(n => n.props?.['aria-label'] === 'Note assenza di Anna');
+  note().props.onChange({ target: { value: 'my text' } });
+  a.render().find(n => n.type === 'button' && n.props.children === 'Salva nota e allegato').props.onClick();
+  const req = a.requests.shift();
+  assert.equal(JSON.parse(req.options.body).expected['abs|' + todayYmd + '|a'], 'old-token');
+  req.resolve({ detail: { code: 'record_changed', message: 'Changed elsewhere' } }, false, 409); await settle();
+  assert.equal(a.requests[0].url.startsWith('/api/day/'), true);
+  a.requests.shift().resolve({ ...data, state: { ...data.state, abs: { [todayYmd]: { a: [2, 3] } }, absenceNotes: { [todayYmd]: { a: 'remote text' } } } }); await settle();
+  assert.ok(a.render().some(n => n.props?.role === 'status' && String(n.props.children).includes('remote text')));
+  assert.equal(note().props.value, 'my text');
+  assert.ok(a.render().some(n => n.type === 'button' && n.props.children === 'Ricarica valori salvati'));
+  a.render().find(n => n.type === 'button' && n.props.children === 'Salva nota e allegato').props.onClick();
+  assert.equal(a.requests.length, 0, 'no silent retry with a fresh baseline');
 });

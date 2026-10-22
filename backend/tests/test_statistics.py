@@ -4,7 +4,7 @@ from datetime import date
 from pathlib import Path
 import tempfile
 import unittest
-from fastapi.testclient import TestClient
+from backend.tests.client import TestClient
 
 from backend import statistics, backup
 from backend.domain import normalize_dataset

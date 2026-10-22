@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from fastapi.testclient import TestClient
+from backend.tests.client import TestClient
 from backend.main import create_app
 from backend.storage import Store
 from backend.domain import normalize_dataset, HOURS

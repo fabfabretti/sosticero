@@ -457,3 +457,28 @@ selector offers demand and absent teachers; teacher-hours remain in the summary
 and daily trend. Availability hover panels pass pointer input through to nearby
 cells, with compact name/activity/C-S entries grouped as Disponibili and
 Reperibili (RP). Click or Enter pins a long list for scrolling; Escape closes it.
+
+### Modifiche simultanee
+
+Supplenze e Permessi controllano gli aggiornamenti ogni 15 secondi e quando si
+ritorna alla scheda del browser. Gli aggiornamenti mantengono scorrimento,
+filtri e focus; durante un inserimento o un pannello aperto vengono rinviati
+fino alla fine dell'interazione. Il salvataggio verifica comunque i dati attuali.
+Le comunicazioni Inbox mantengono il controllo ogni 30 secondi.
+
+Le modifiche operative inviano `expected`, una mappa dei token restituiti in
+`concurrency` dalla lettura precedente. Un token mancante produce HTTP 428;
+un record modificato produce HTTP 409 (`record_changed`) senza modifiche
+parziali. La creazione controlla anche che il record non esista già. I token
+riguardano i singoli record, non l'intero database. I client devono conservare
+il riferimento visualizzato, senza rileggerlo automaticamente prima di scrivere.
+
+In caso di conflitto, i pulsanti immediati mostrano lo stato salvato; i moduli
+mantengono i valori inseriti e richiedono «Ricarica valori salvati» prima di
+riprovare. Non viene ripetuta automaticamente una modifica rifiutata. Se una
+comunicazione Inbox è già stata elaborata, viene indicato che le scelte del
+secondo operatore non sono state applicate.
+
+Importazioni globali e ripristini del database vanno eseguiti fuori dalle
+sessioni di modifica degli operatori: il coordinamento di queste operazioni
+con modifiche contemporanee non è incluso nella protezione dei singoli record.

@@ -7,7 +7,7 @@ from datetime import date
 from pathlib import Path
 from unittest.mock import patch
 
-from fastapi.testclient import TestClient
+from backend.tests.client import TestClient
 from backend import availability, timetables, overrides
 from backend.domain import normalize_dataset
 from backend.hour_types import merge_types

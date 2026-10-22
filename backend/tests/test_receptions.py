@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from fastapi.testclient import TestClient
+from backend.tests.client import TestClient
 from openpyxl import Workbook
 
 from backend import receptions, teacher_names, timetables

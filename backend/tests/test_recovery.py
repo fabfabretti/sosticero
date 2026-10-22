@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from fastapi.testclient import TestClient
+from backend.tests.client import TestClient
 from backend.main import create_app
 from backend.storage import Store, EMPTY
 from backend.domain import normalize_dataset, candidates, rows

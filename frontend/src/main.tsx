@@ -1,3 +1,5 @@
+import { preconditions, ApiError, type Baseline } from "./concurrency";
+import { useQuietRefresh } from "./useQuietRefresh";
 import { ClassificationChoices } from "./ClassificationChoices";
 import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -58,12 +60,7 @@ async function api<T>(url: string, body?: unknown): Promise<T> {
         },
   );
   const data = await r.json();
-  if (!r.ok)
-    throw Error(
-      typeof data.detail === "string"
-        ? data.detail
-        : JSON.stringify(data.detail),
-    );
+  if (!r.ok) throw new ApiError(r.status, data.detail);
   return data;
 }
 const TABS = [
@@ -131,7 +128,7 @@ function Permessi() {
   const [manualHours, setManualHours] = useState("");
   const [editingManual, setEditingManual] = useState(false);
   const [sort, setSort] = useState<{ field: "date" | "requested"; ascending: boolean }>({ field: "date", ascending: false });
-  const [data, setData] = useState<{ timetableVersions?: { effective: string | null; dataset: Data["dataset"] }[]; dataset: Data["dataset"]; permitAttachments?: AttachmentMap; permessi: Record<string, Record<string, number[]>>; permitRequests?: Record<string, Record<string, string>>; permitNotes?: Record<string, Record<string, string>>; manualPermitNotes?: Record<string, string>; permitKinds?: Record<string, Record<string, AbsenceKind>>; recoveries?: Record<string, Record<string, import("./types").PermitRecovery>>; balances?: Record<string, { remaining: number; expired: number; eligible: number }>; manualPermits?: Record<string, { id: string; hours: number; recovered: number; remaining: number; recoveries: { date: string; h: number; key: string }[] }> }>();
+  const [data, setData] = useState<{ concurrency: Baseline; timetableVersions?: { effective: string | null; dataset: Data["dataset"] }[]; dataset: Data["dataset"]; permitAttachments?: AttachmentMap; permessi: Record<string, Record<string, number[]>>; permitRequests?: Record<string, Record<string, string>>; permitNotes?: Record<string, Record<string, string>>; manualPermitNotes?: Record<string, string>; permitKinds?: Record<string, Record<string, AbsenceKind>>; recoveries?: Record<string, Record<string, import("./types").PermitRecovery>>; balances?: Record<string, { remaining: number; expired: number; eligible: number }>; manualPermits?: Record<string, { id: string; hours: number; recovered: number; remaining: number; recoveries: { date: string; h: number; key: string }[] }> }>();
   const [dayInput, setDayInput] = useState(italianDate(localDate(new Date())));
   const [requestedInput, setRequestedInput] = useState(italianDate(localDate(new Date())));
   const day = parseItalianDate(dayInput);
@@ -149,8 +146,15 @@ function Permessi() {
   const [original, setOriginal] = useState<{ day: string; id: string }>();
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const refresh = async () => setData(await api("permessi"));
+  const editBaseline = useRef<Baseline | undefined>(undefined);
+  const [conflict, setConflict] = useState(false);
+  const { refresh, invalidate } = useQuietRefresh(
+    () => api<NonNullable<typeof data>>("permessi"),
+    next => setData(old => JSON.stringify(old) === JSON.stringify(next) ? old : next),
+    busy || !!query || !!teacher || !!note || !!attachment || !!manualHours || !!original || selected.length > 0 || dayInput !== italianDate(localDate(new Date())) || requestedInput !== italianDate(localDate(new Date())), "permessi",
+  );
   useEffect(() => { void refresh().catch(e => setError(String(e))); }, []);
+  useEffect(() => { editBaseline.current = data?.concurrency; }, [original, editingManual]);
   const permitDataset = (date: string) => data?.timetableVersions?.filter(v => !v.effective || v.effective <= date).at(-1)?.dataset || data?.dataset;
   const scheduled = (id: string, date: string, h: number) => {
     const weekday = ["dom", "lun", "mar", "mer", "gio", "ven", "sab"][new Date(date + "T12:00").getDay()];
@@ -181,15 +185,21 @@ function Permessi() {
     setQuery("");
     setSelected([]);
   };
-  const save = async (body: unknown, endpoint = "permessi") => {
+  const save = async (body: Parameters<typeof preconditions>[2], endpoint = "permessi") => {
+    if (conflict) return;
+    invalidate();
     setBusy(true);
     setError("");
     try {
-      await api(endpoint, body);
+      await api(endpoint, { ...body, expected: preconditions((original || editingManual) ? editBaseline.current : data?.concurrency, endpoint, body) });
       await refresh();
       reset();
     } catch (e) {
       setError(String(e));
+      if (e instanceof ApiError && e.status === 409) {
+        setConflict(true);
+        try { await refresh(); } catch { /* Keep entered values and the conflict until explicit reload. */ }
+      }
     } finally {
       setBusy(false);
     }
@@ -205,6 +215,7 @@ function Permessi() {
   </HourHelp>;
   return <div className="app permessi">
     <aside>
+    {conflict && <div role="alert"><p>Il record è cambiato. I valori inseriti sono rimasti nel modulo.</p><button className="ui-button" onClick={async () => { try { await refresh(); reset(); setConflict(false); setError(""); } catch (e) { setError(String(e)); } }}>Ricarica valori salvati</button></div>}
     <form className="permit-form" onSubmit={e => { e.preventDefault(); if (manual) { if (teacher && Number.isInteger(Number(manualHours)) && Number(manualHours) > 0) void save({ id: teacher, hours: Number(manualHours), note, editing: editingManual }, "manual-permits"); return; } if (invalidDates || !teacher || !selected.length) return; void save({ day, id: teacher, requested_on: requestedOn || null, note, attachment, classification: original ? editClassification : newClassification, hours: selected, ...(original ? { original_day: original.day, original_id: original.id } : {}) }); }}>
       <h2>{manual ? (editingManual ? "Modifica saldo manuale" : "Aggiungi saldo manuale") : original ? "Modifica permesso" : "Aggiungi permesso"}</h2>
       <label className="manual-permit-toggle"><input type="checkbox" checked={manual} disabled={busy} onChange={e => { reset(); setManual(e.target.checked); setError(""); }} />Saldo manuale senza data</label>
@@ -244,7 +255,7 @@ function Permessi() {
 
         <p className="sub">Massimo giornaliero: {maximum} ore · Selezionate: {selected.length}. Sono comprese tutte le attività in orario, inclusi POT e DIS.</p>
         </>}
-        <button className="permit-save" type="submit" disabled={!teacher || (manual ? !Number.isInteger(Number(manualHours)) || Number(manualHours) < 1 : invalidDates || !selected.length)}>{busy ? "Salvataggio…" : manual ? "Salva saldo manuale" : "Salva permesso"}</button>
+        <button className="permit-save" type="submit" disabled={conflict || !teacher || (manual ? !Number.isInteger(Number(manualHours)) || Number(manualHours) < 1 : invalidDates || !selected.length)}>{busy ? "Salvataggio…" : manual ? "Salva saldo manuale" : "Salva permesso"}</button>
         {(original || editingManual) && <button type="button" onClick={reset}>Annulla modifica</button>}
       </fieldset>
       <div className="permit-feedback" aria-live="polite">{!manual && invalidDates && <p role="alert">Inserisci date valide nel formato gg/mm/aaaa.</p>}{(error || (!manual && overLimit)) && <p role="alert">{error || `Superato il massimo giornaliero di ${maximum} ore di permesso.`}</p>}</div>
@@ -478,24 +489,28 @@ function Supplenze() {
     }
   }, [busy, chosen]);
   const [loadedDay, setLoadedDay] = useState("");
-  const request = useRef(0);
   const candidateRequest = useRef(0);
+  const candidateBaseline = useRef<Baseline | undefined>(undefined);
+  const [loadingCandidates, setLoadingCandidates] = useState(false);
   useEffect(() => {
     try { localStorage.setItem("supplenze-campus", filter); } catch { /* Browser storage may be unavailable. */ }
   }, [filter]);
-  const refresh = async () => {
-    const n = ++request.current;
-    try {
-      const d = await api<Data>("day/" + day);
-      if (n === request.current) { setData(d); setLoadedDay(day); }
-    } catch (e) {
-      setError(String(e));
-    }
-  };
+  const editBaseline = useRef<Baseline | undefined>(undefined);
+  useEffect(() => { editBaseline.current = data?.concurrency; }, [editingKind, editingDis]);
+  const [conflict, setConflict] = useState(false);
+  const [conflictSummary, setConflictSummary] = useState("");
+  const { refresh, invalidate } = useQuietRefresh(
+    () => api<Data>("day/" + day),
+    next => { setData(old => JSON.stringify(old) === JSON.stringify(next) ? old : next); setLoadedDay(day); },
+    busy || loadingCandidates || !!open || !!editingKind || !!editingDis || !!disTeacher || !!query || !!chosen || !!entryNote || !!entryAttachment,
+    day,
+  );
   useEffect(() => {
     ++candidateRequest.current;
     setOpen(undefined);
-    void refresh();
+    void refresh().catch(e => setError(String(e)));
+    setConflict(false);
+    setLoadingCandidates(false);
     setEditingKind(undefined);
     setEditingDis(undefined);
     setDisTeacher(undefined);
@@ -504,17 +519,43 @@ function Supplenze() {
     setAbsenceNote("");
     setEntryNote("");
   }, [day]);
-  const mutate = async (url: string, body: unknown) => {
+  const mutate = async (url: string, body: Parameters<typeof preconditions>[2]) => {
+    if (conflict) return false;
+    invalidate();
     ++candidateRequest.current;
+    setLoadingCandidates(false);
     setOpen(undefined);
     setBusy(true);
     setError("");
     try {
-      await api(url, body);
+      const editing = url === "entries" && (body.id === editingKind || body.id === editingDis);
+      const saved = await api<{ concurrency: Baseline }>(url, { ...body, expected: preconditions(editing ? editBaseline.current : data?.concurrency, url, body) });
+      if (editing) editBaseline.current = saved.concurrency;
       await refresh();
       return true;
     } catch (e) {
       setError(String(e));
+      if (e instanceof ApiError && e.status === 409) {
+        if (editingKind || editingDis || query || chosen) {
+          setConflict(true);
+          setConflictSummary("");
+          try {
+            const latest = await api<Data>("day/" + day);
+            const group = body.group;
+            if (group === "abs" || group === "cf" || group === "dis") {
+              const id = body.id!, d = body.day!;
+              const hours = latest.state[group][d]?.[id];
+              const note = group === "abs" ? latest.state.absenceNotes?.[d]?.[id] : undefined;
+              const kind = group === "abs" ? latest.state.absenceKinds?.[d]?.[id] : undefined;
+              const label = kind && { planned: "Programmata", last_minute: "Last minute", trip: "In gita", strike: "In sciopero" }[kind];
+              const site = group === "dis" ? latest.state.disSites[d]?.[id] : undefined;
+              const attachment = group === "abs" ? latest.state.absenceAttachments?.[d]?.[id] : latest.state.disAttachments?.[d]?.[id];
+              setConflictSummary(hours ? [`Ore salvate: ${hours.join(", ") || "nessuna"}`, note && `Nota: ${note}`, label, site && `Sede: ${site}`, attachment && "Allegato presente"].filter(Boolean).join(" · ") : "Registrazione non più presente.");
+            }
+          } catch { /* Explicit reload remains available when the server cannot be reached. */ }
+        }
+        else { try { await refresh(); } catch { /* Keep the original conflict visible. */ } }
+      }
       return false;
     } finally {
       setBusy(false);
@@ -523,6 +564,9 @@ function Supplenze() {
   const choose = async (r: Row) => {
     if (busy) return;
     const n = ++candidateRequest.current;
+    invalidate();
+    candidateBaseline.current = data?.concurrency;
+    setLoadingCandidates(true);
     setError("");
     try {
       const c = await api<Candidate[]>(
@@ -534,7 +578,7 @@ function Supplenze() {
       }
     } catch (e) {
       if (n === candidateRequest.current) setError(String(e));
-    }
+    } finally { if (n === candidateRequest.current) setLoadingCandidates(false); }
   };
   const name = (id: string) =>
     data?.dataset.teachers[id]?.name ||
@@ -1005,6 +1049,8 @@ function Supplenze() {
               {error}
             </p>
           )}
+          {conflict && conflictSummary && <p className="ui-notice" role="status">{conflictSummary}</p>}
+          {conflict && <button className="ui-button" onClick={async () => { try { await refresh(); setEditingKind(undefined); setEditingDis(undefined); setDisTeacher(undefined); setEditAttachment(undefined); setQuery(""); setChosen(undefined); setEntryNote(""); setEntryAttachment(undefined); setConflict(false); setError(""); } catch (e) { setError(String(e)); } }}>Ricarica valori salvati</button>}
           {!!reminders.length && (
             <p className="reminder" role="status">
               <svg className="warning-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 22 21H2Z" fill="none" stroke="currentColor" strokeWidth="2"/><path d="M12 9v5m0 3v1" stroke="currentColor" strokeWidth="2"/></svg>
@@ -1158,18 +1204,23 @@ function Supplenze() {
           name={name}
           onClose={() => {
             ++candidateRequest.current;
+            setLoadingCandidates(false);
             setOpen(undefined);
           }}
           onAssign={async (value, exceptional) => {
             const selectedRow = open;
-            ++candidateRequest.current; setOpen(undefined);
+            invalidate();
+            ++candidateRequest.current; setLoadingCandidates(false); setOpen(undefined);
             setBusy(true); setError("");
             try {
-              await api("assignments", { day, key: selectedRow.k, value, exceptional });
-              ++candidateRequest.current; setOpen(undefined); await refresh();
+              await api("assignments", { day, key: selectedRow.k, value, exceptional, expected: preconditions(candidateBaseline.current, "assignments", { day, key: selectedRow.k }) });
+              ++candidateRequest.current; setLoadingCandidates(false); setOpen(undefined); await refresh();
             } catch (e) {
               setError(String(e));
-              try { setCands(await api<Candidate[]>("candidates?" + new URLSearchParams({ day, key: selectedRow.k }))); setOpen(selectedRow); }
+              try {
+                const latest = await refresh();
+                candidateBaseline.current = latest?.concurrency;
+                setCands(await api<Candidate[]>("candidates?" + new URLSearchParams({ day, key: selectedRow.k }))); setOpen(selectedRow); }
               catch { setOpen(undefined); }
             } finally { setBusy(false); }
           }}

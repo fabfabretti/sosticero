@@ -5,7 +5,7 @@ import sqlite3
 import tempfile
 import unittest
 
-from fastapi.testclient import TestClient
+from backend.tests.client import TestClient
 from backend.main import create_app
 from backend.storage import Store
 from backend import backup, recovery, teacher_names

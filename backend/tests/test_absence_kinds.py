@@ -2,7 +2,7 @@ import copy
 import tempfile
 import unittest
 from pathlib import Path
-from fastapi.testclient import TestClient
+from backend.tests.client import TestClient
 from backend.main import create_app
 from backend.tests.test_app import fixture, DAY
 

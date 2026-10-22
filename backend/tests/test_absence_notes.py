@@ -2,7 +2,7 @@ from backend.tests.timetable_helpers import import_version
 import copy
 import unittest
 from pathlib import Path
-from fastapi.testclient import TestClient
+from backend.tests.client import TestClient
 from backend.main import create_app
 from backend import backup
 from backend.tests import test_absence_kinds, test_recovery

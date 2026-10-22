@@ -145,10 +145,10 @@ export function AbsenceInbox({ api }: { api: Api }) {
   const act = async (item: Item, action: string, teacher?: string) => {
     ++request.current; setBusy(item.id); setError("");
     try {
-      const result = await api<Item>(`inbox/${item.id}/${action}`, { teacher: teacher || item.teacher, ...(action === "accept" ? drafts[item.id] : {}) });
+      const result = await api<Item & { alreadyProcessed?: boolean }>(`inbox/${item.id}/${action}`, { teacher: teacher || item.teacher, ...(action === "accept" ? drafts[item.id] : {}) });
       if (action === "preview") { overrides.current.set(item.id, result); setItems(items.map(i => i.id === item.id ? result : i)); }
-      else { overrides.current.delete(item.id); await refresh(); if (history) window.dispatchEvent(new Event("inbox-changed")); }
-    } catch (e) { setError(String(e)); }
+      else { overrides.current.delete(item.id); await refresh(); if (result.alreadyProcessed) setError(`Comunicazione già ${result.status === "accepted" ? "accettata" : "ignorata"}. Le tue scelte non sono state applicate.`); if (history) window.dispatchEvent(new Event("inbox-changed")); }
+    } catch (e) { await refresh(); setError(String(e)); }
     finally { setBusy(undefined); }
   };
   return <main className="inbox-page">
