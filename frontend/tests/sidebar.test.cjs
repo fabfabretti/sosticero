@@ -70,7 +70,7 @@ function app(localStorage = { getItem: () => null, setItem() {} }, confirm = () 
     useLocation: () => ({ pathname }),
   };
   const code = ts.transpileModule(readFileSync('src/main.tsx', 'utf8'), {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
   }).outputText;
   runInNewContext(code, {
     exports: {}, URLSearchParams, Date, localStorage, setTimeout, clearTimeout,
@@ -246,6 +246,7 @@ test('auto availability hours lock while other hours toggle manual', async () =>
     autoDis: { [todayYmd]: { auto: { 2: ['1A entra dopo'], 3: ['1A esce prima'] } } },
   };
   const a = await loaded(base);
+  a.render().find(n => n.props['aria-label'] === 'Modifica disposizione di Auto T, 2ª ora').props.onClick();
   const hour = label => a.render().find(n => n.props['aria-label'] === label);
   const locked = hour('Auto T, 2ª ora');
   assert.equal(locked.props.disabled, true);
@@ -274,10 +275,11 @@ test('assigned availability stays visible with status for automatic and manual h
     autoDis: { [todayYmd]: { auto: { 2: ['3A classe fuori'] } } },
   });
   for (const name of ['Auto T', 'Manual T']) {
-    const hour = a.render().find(n => n.props['aria-label'] === `${name}, 2ª ora`);
-    assert.ok(hour.props.className.includes('assigned'));
-    assert.ok(hour.props['aria-description'].includes('Assegnato:'));
+    const button = a.render().find(n => n.props['aria-label'] === `Modifica disposizione di ${name}, 2ª ora`);
+    assert.equal(button.props.children.props.className, 'assigned-name');
+    assert.ok(button.props['aria-description'].includes('Assegnato:'));
   }
+  a.render().find(n => n.props['aria-label'] === 'Modifica disposizione di Auto T, 2ª ora').props.onClick();
   assert.equal(a.render().find(n => n.props['aria-label'] === 'Auto T, 2ª ora').props.disabled, true);
 });
 
@@ -967,4 +969,65 @@ test('Inbox status changes preserve the active absence draft and current route',
   assert.equal(search(a).props.value, 'Anna');
   assert.equal(currentTab(a).props.href, '#/');
   assert.ok(a.render().some(n => n.props?.className === 'inbox-count' && n.props.children === 3));
+});
+
+const disTable = a => a.render().find(n => n.props?.className === 'dis-table');
+const tableRows = a => disTable(a).props.children[1].props.children;
+const tableHeaders = a => disTable(a).props.children[0].props.children.props.children[1].map(n => n.props.children);
+const cellNames = cell => cell.props.children === '—' ? [] : cell.props.children.map(fragment => fragment.props.children[1].props.children[0].props.children.props.children);
+const disFixture = () => {
+  const weekday = ['dom','lun','mar','mer','gio','ven','sab'][new Date(todayYmd + 'T12:00').getDay()];
+  return {
+    ...data,
+    dataset: { teachers: { a: { name: 'Anna' }, z: { name: 'Zeta' } }, classes: [], warnings: [], lessons: {
+      [`a|${weekday}|2`]: { site: 'centrale' }, [`a|${weekday}|3`]: { site: 'succursale' },
+      [`z|${weekday}|2`]: { site: 'centrale' },
+    } },
+    state: { ...data.state, dis: { [todayYmd]: { a: [2,4], z: [2] } } },
+    autoDis: { [todayYmd]: { a: { 2: ['1A fuori'], 3: ['2A fuori'] } } },
+  };
+};
+test('availability table groups, deduplicates and sorts teacher-hours with conditional unknown campus', async () => {
+  const fixture = disFixture(), a = await loaded(fixture);
+  assert.equal(tableRows(a).length, 7);
+  assert.deepEqual(Array.from(tableHeaders(a)), ['Centrale', 'Succursale', 'Sconosciuto']);
+  const cells = h => tableRows(a)[h-1].props.children[1];
+  assert.deepEqual(Array.from(cellNames(cells(2)[0])), ['Anna','Zeta']);
+  assert.deepEqual(Array.from(cellNames(cells(3)[1])), ['Anna']);
+  assert.deepEqual(Array.from(cellNames(cells(4)[2])), ['Anna']);
+  assert.ok(cells(1).every(cell => cell.props.children === '—'));
+  // Main campus filtering must not remove unknown availability.
+  a.render().find(n => n.type === 'button' && n.props.children === 'Centrale').props.onClick();
+  assert.equal(tableHeaders(a).length, 3);
+  a.render().find(n => n.props['aria-label'] === 'Modifica disposizione di Anna, 4ª ora').props.onClick();
+  a.render().find(n => n.props['data-dis-site'] === 'a').props.onChange({ target: { value: 'centrale' } });
+  assert.equal(JSON.parse(a.requests[0].options.body).site, 'centrale');
+  a.requests.shift().resolve({}); await settle();
+  a.requests.shift().resolve({ ...fixture, state: { ...fixture.state, disSites: { [todayYmd]: { a: 'centrale' } } } }); await settle();
+  assert.equal(tableHeaders(a).length, 2);
+  // The override applies to manual hours; automatic-only hour 3 stays in succursale.
+  assert.deepEqual(Array.from(cellNames(cells(3)[1])), ['Anna']);
+  a.render().find(n => n.props.className === 'd').props.onClick(); a.render();
+  a.requests.shift().resolve(data); await settle();
+  assert.equal(tableHeaders(a).length, 2);
+  assert.ok(!a.render().some(n => n.props['data-dis-site'] === 'a'));
+});
+test('assignment styling is per hour and information retains the attachment outside the struck name', async () => {
+  const fixture = disFixture();
+  fixture.state.asg = { [todayYmd]: { 'x|2|1A': { v: 'a', c: '1A', t: 'D' } } };
+  fixture.state.disAttachments = { [todayYmd]: { a: 'image-id' } };
+  const a = await loaded(fixture);
+  const nameButton = h => a.render().find(n => n.props['aria-label'] === `Modifica disposizione di Anna, ${h}ª ora`);
+  assert.equal(nameButton(2).props.children.props.className, 'assigned-name');
+  assert.equal(nameButton(3).props.children.props.className, undefined);
+  const info = a.render().find(n => n.type === 'record-info' && n.props.text.includes('Assegnato: 1A'));
+  assert.ok(info.props.text.includes('1A fuori'));
+  assert.equal(info.props.links[0].id, 'image-id');
+  assert.ok(!a.render().some(n => n.props['data-dis-site'] === 'a'));
+  nameButton(2).props.onClick();
+  a.render().find(n => n.props['aria-label'] === 'Rimuovi Anna').props.onClick();
+  a.requests.shift().resolve({}); await settle();
+  a.requests.shift().resolve({ ...fixture, state: { ...fixture.state, dis: {}, asg: {} } }); await settle();
+  assert.equal(nameButton(2).props.children.props.className, undefined);
+  assert.equal(a.render().find(n => n.props['aria-label'] === 'Anna, 2ª ora').props.disabled, true);
 });

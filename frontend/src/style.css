@@ -1391,3 +1391,13 @@ select.inbox-teacher { width: 220px; padding: 5px 8px; height: 32px; }
 .reception-table input[type="search"] { min-width: 16rem; }
 .reception-table small { display: block; margin-top: .35rem; }
 .orari-reception { display: block; padding: .3rem .45rem; border: 1px solid currentColor; border-radius: .35rem; font-weight: 700; margin-block: .2rem; }
+
+.dis-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: .85rem; }
+.dis-table th, .dis-table td { padding: .45rem .3rem; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.dis-table th:first-child { width: 2.2rem; }
+.dis-table th { font-size: .75rem; }
+.dis-table .dis-name { display: inline; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.dis-table .dis-name:hover { text-decoration: underline; }
+.dis-table .assigned-name { text-decoration: line-through; }
+.dis-table .record-info { margin-left: .15rem; }
+.dis-table thead th:last-child { display: table-cell; }

@@ -461,6 +461,14 @@ function Supplenze() {
   const [entryAttachment, setEntryAttachment] = useState<ImageDraft>();
   const [editAttachment, setEditAttachment] = useState<ImageDraft>();
   const [editingDis, setEditingDis] = useState<string>();
+  const [disTeacher, setDisTeacher] = useState<string>();
+  useEffect(() => {
+    if (disTeacher && data && !Object.hasOwn(data.state.dis[day] || {}, disTeacher) && !Object.hasOwn(data.autoDis?.[day] || {}, disTeacher)) {
+      setDisTeacher(undefined);
+      setEditingDis(undefined);
+      setEditAttachment(undefined);
+    }
+  }, [data, day, disTeacher]);
   const adding = useRef(false);
   const focusAfterAdd = useRef(false);
   useEffect(() => {
@@ -490,6 +498,7 @@ function Supplenze() {
     void refresh();
     setEditingKind(undefined);
     setEditingDis(undefined);
+    setDisTeacher(undefined);
     setEditAttachment(undefined);
     setEntryAttachment(undefined);
     setAbsenceNote("");
@@ -694,12 +703,30 @@ function Supplenze() {
   const renderDis = () => {
     const manual = entries("dis");
     const auto = data?.autoDis?.[day] || {};
-    return [
-      ...Object.keys(manual),
-      ...Object.keys(auto),
-    ]
-      .filter((v, i, a) => a.indexOf(v) === i)
-      .map((id) => {
+    const ids = [...new Set([...Object.keys(manual), ...Object.keys(auto)])]
+      .sort((a, b) => name(a).localeCompare(name(b), "it"));
+    const weekday = ["dom", "lun", "mar", "mer", "gio", "ven", "sab"][new Date(day + "T12:00").getDay()];
+    const rows = hours.map(h => ({ h, teachers: ids.filter(id => manual[id]?.includes(h) || auto[id]?.[h] !== undefined).map(id => {
+      const site = (manual[id]?.includes(h) && data?.state.disSites[day]?.[id]) || data?.dataset.lessons?.[`${id}|${weekday}|${h}`]?.site;
+      const assignments = Object.entries(data?.state.asg[day] || {}).filter(([key, a]) => a.v === id && Number(key.split("|")[1]) === h);
+      const help = [auto[id]?.[h] ? "Automatico: " + auto[id][h].join(", ") : "", assignments.length ? "Assegnato: " + assignments.map(([, a]) => a.c).join(", ") : ""].filter(Boolean).join(" · ");
+      return { id, site: site === "centrale" || site === "succursale" ? site : "sconosciuto", assigned: assignments.length > 0, help };
+    }) }));
+    const sites = ["centrale", "succursale", ...(rows.some(row => row.teachers.some(t => t.site === "sconosciuto")) ? ["sconosciuto"] : [])];
+    return <>
+      <table className="dis-table" aria-label="A disposizione per ora e sede">
+        <thead><tr><th scope="col">Ora</th>{sites.map(site => <th scope="col" key={site}>{site === "centrale" ? "Centrale" : site === "succursale" ? "Succursale" : "Sconosciuto"}</th>)}</tr></thead>
+        <tbody>{rows.map(({ h, teachers }) => <tr key={h}><th scope="row">{h}</th>{sites.map(site => {
+          const cell = teachers.filter(t => t.site === site);
+          return <td key={site}>{cell.length ? cell.map((t, index) => <React.Fragment key={t.id}>
+            {index > 0 && ", "}<span className="dis-person"><button type="button" className="dis-name" aria-label={`Modifica disposizione di ${name(t.id)}, ${h}ª ora`} aria-expanded={disTeacher === t.id}
+              aria-description={t.help || undefined} onClick={() => { setDisTeacher(disTeacher === t.id ? undefined : t.id); setEditingKind(undefined); setEditingDis(undefined); setEditAttachment(undefined); }}>
+              <span className={t.assigned ? "assigned-name" : undefined}>{name(t.id)}</span>
+            </button><RecordInfo text={t.help} links={[{ label: "Apri allegato disposizione", id: data?.state.disAttachments?.[day]?.[t.id] }]} /></span>
+          </React.Fragment>) : "—"}</td>;
+        })}</tr>)}</tbody>
+      </table>
+      {ids.filter(id => id === disTeacher).map((id) => {
       const hs = manual[id] || [];
       const reasons = auto[id] || {};
       const hasManual = hs.length > 0;
@@ -798,7 +825,8 @@ function Supplenze() {
           <button onClick={() => { setEditingDis(undefined); setEditAttachment(undefined); }}>Annulla</button>
         </div>}</div>
       );
-    });
+    })}
+    </>;
   };
   const offset = (month.getDay() + 6) % 7,
     n = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
