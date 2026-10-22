@@ -8,7 +8,7 @@ import unittest
 from unittest.mock import patch
 
 from PIL import Image
-from fastapi.testclient import TestClient
+from backend.tests.client import TestClient
 from backend import attachments, backup
 from backend.main import create_app
 from backend.storage import Store

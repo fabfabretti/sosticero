@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, StrictInt, StrictBool, StrictStr
 from .domain import normalize_dataset, rows, candidates, validate_assignment, default_availability, auto_availability, HOURS, SITES, lesson, validate_permit, CDC_NAMES
 from .storage import Store, EMPTY
-from . import backup, attachments
+from . import backup, attachments, concurrency
 from .hour_types import merge_types, validate_types
 from . import statistics, recovery, timetables, overrides, teacher_names, availability, receptions
 from zoneinfo import ZoneInfo
@@ -23,7 +23,11 @@ class Attachment(BaseModel):
     data: StrictStr
 
 
-class Edit(BaseModel):
+class ConditionalWrite(BaseModel):
+    expected: dict[str, str] | None = None
+
+
+class Edit(ConditionalWrite):
     attachment: Attachment | None = None
     note: StrictStr | None = None
     classification: Literal['planned', 'last_minute', 'trip', 'strike'] | None = None
@@ -37,7 +41,7 @@ class Edit(BaseModel):
     defaults: bool = False
 
 
-class Permit(BaseModel):
+class Permit(ConditionalWrite):
     attachment: Attachment | None = None
     note: StrictStr | None = None
     classification: Literal['planned', 'last_minute', 'trip', 'strike'] | None = None
@@ -49,7 +53,7 @@ class Permit(BaseModel):
     original_id: str | None = None
 
 
-class Assignment(BaseModel):
+class Assignment(ConditionalWrite):
     communicated: StrictBool | None = None
     replace_key: str | None = None
     exceptional: StrictBool = False
@@ -58,7 +62,7 @@ class Assignment(BaseModel):
     value: str | None = None
 
 
-class ManualPermit(BaseModel):
+class ManualPermit(ConditionalWrite):
     model_config = {"extra": "forbid"}
     note: StrictStr | None = None
     id: str
@@ -258,6 +262,7 @@ def create_app(path=None, seed=None):
     @app.get('/api/day/{day}')
     def get_day(day: date):
         with store.connect() as db:
+            db.execute('BEGIN')
             ds, state = load(db, day.isoformat())
             rules = policies(db, ds)
             history = read_history(db)
@@ -269,7 +274,7 @@ def create_app(path=None, seed=None):
         for item in problems:
             item['context'] = timetables.conflict_context(history, d, item['key'], state['asg'][d][item['key']]) or timetables.context(history, state, d, item['key'], facts)
         selected = timetables.version(history, d)
-        return dict(dataset=display, state=state, rows=rs, issues=problems, references=timetables.reference_issues(history, state, d),
+        return dict(concurrency=concurrency.snapshot(state, ds, d), dataset=display, state=state, rows=rs, issues=problems, references=timetables.reference_issues(history, state, d),
                     timetable=dict(id=selected['id'], effective=selected['effective']), autoDis={d: auto_availability(ds, state, d)})
 
     @app.get('/api/orari')
@@ -457,19 +462,21 @@ def create_app(path=None, seed=None):
     @app.get('/api/permessi')
     def get_permits():
         with store.connect() as db:
+            db.execute('BEGIN')
             ds, state = load(db)
             versions = read_history(db)['versions']
             ds = presented(db, ds)
             versions = [dict(v, dataset=presented(db, v['dataset'])) for v in versions]
         summaries, balances = recovery.summary(state)
         manual = {p['teacher']: p for p in recovery.ledger(state).values() if p['date'] is None}
-        return dict(dataset=ds, timetableVersions=[dict(effective=v['effective'], dataset=v['dataset']) for v in versions], permitAttachments=state['permitAttachments'], permessi=state['permessi'], permitRequests=state['permitRequests'], permitNotes=state['permitNotes'], permitKinds=state['permitKinds'], recoveries=summaries, balances=balances, manualPermits=manual, manualPermitNotes=state['manualPermitNotes'])
+        return dict(concurrency=concurrency.snapshot(state), dataset=ds, timetableVersions=[dict(effective=v['effective'], dataset=v['dataset']) for v in versions], permitAttachments=state['permitAttachments'], permessi=state['permessi'], permitRequests=state['permitRequests'], permitNotes=state['permitNotes'], permitKinds=state['permitKinds'], recoveries=summaries, balances=balances, manualPermits=manual, manualPermitNotes=state['manualPermitNotes'])
 
     @app.post('/api/manual-permits')
     def save_manual_permit(e: ManualPermit):
         with store.connect() as db:
             db.execute('BEGIN IMMEDIATE')
             ds, state = load(db)
+            concurrency.check(e.expected, concurrency.snapshot(state), [concurrency.key('manualPermits', '', e.id)])
             existing = state['manualPermits'].get(e.id)
             if e.id not in ds['teachers'] or (ds['teachers'][e.id].get('retired') and not existing):
                 raise ValueError('Docente non valido.')
@@ -490,7 +497,7 @@ def create_app(path=None, seed=None):
                         state['manualPermitNotes'][e.id] = note
             recovery.validate(state)
             store.write(db, 'state', state)
-        return {'ok': True}
+        return {'ok': True, 'concurrency': concurrency.snapshot(state)}
 
     @app.post('/api/permessi')
     def save_permit(e: Permit):
@@ -501,6 +508,10 @@ def create_app(path=None, seed=None):
         with store.connect() as db:
             db.execute('BEGIN IMMEDIATE')
             ds, state = load(db, d)
+            references = [concurrency.key('permessi', d, e.id)]
+            if source:
+                references.append(concurrency.key('permessi', *source))
+            concurrency.check(e.expected, concurrency.snapshot(state), references)
             permits = state['permessi']
             if source and source[1] not in permits.get(source[0], {}):
                 raise ValueError('Permesso originale non più presente.')
@@ -551,7 +562,7 @@ def create_app(path=None, seed=None):
                 state['permitIds'][d][e.id] = pid
             recovery.validate(state)
             save_state(db, ds, state, {d, source[0]} if source else {d})
-        return {'ok': True}
+        return {'ok': True, 'concurrency': concurrency.snapshot(state)}
 
     def timetable_plan(db, data, effective):
         ds = normalize_dataset(data)
@@ -621,15 +632,8 @@ def create_app(path=None, seed=None):
         with store.connect() as db:
             db.execute('BEGIN IMMEDIATE')
             ds, state = load(db)
-            days = [e.day.isoformat()]
-            if e.future:
-                days += [d for d in state[e.group] if d > days[0]]
-            elif e.until:
-                current = e.day + timedelta(days=1)
-                while current <= e.until:
-                    if current.weekday() < 5:
-                        days.append(current.isoformat())
-                    current += timedelta(days=1)
+            days = concurrency.entry_days(e, state)
+            concurrency.check(e.expected, concurrency.snapshot(state), [concurrency.key(e.group, d, e.id) for d in days])
             attachment = attachments.insert(db, e.attachment.model_dump() if e.attachment else None) if 'attachment' in e.model_fields_set else None
             attachment_group = {'abs': 'absenceAttachments', 'dis': 'disAttachments'}.get(e.group)
             for d in days:
@@ -664,7 +668,7 @@ def create_app(path=None, seed=None):
                     if e.group == 'dis':
                         state['disSites'].setdefault(d, {})[e.id] = e.site or None
             save_state(db, ds, state, days if e.group != 'dis' else [])
-        return {'ok': True}
+        return {'ok': True, 'concurrency': concurrency.snapshot(state, ds, e.day.isoformat())}
 
     @app.get('/api/candidates')
     def get_candidates(day: date, key: str):
@@ -683,6 +687,10 @@ def create_app(path=None, seed=None):
         with store.connect() as db:
             db.execute('BEGIN IMMEDIATE')
             ds, state = load(db, e.day.isoformat())
+            references = [concurrency.key('asg', e.day.isoformat(), e.key)]
+            if e.replace_key:
+                references.append(concurrency.key('asg', e.day.isoformat(), e.replace_key))
+            concurrency.check(e.expected, concurrency.snapshot(state, ds, e.day.isoformat()), references)
             assignments = state['asg'].setdefault(e.day.isoformat(), {})
             if e.communicated is not None:
                 old = assignments.get(e.key)
@@ -690,7 +698,7 @@ def create_app(path=None, seed=None):
                     raise ValueError('Comunicato disponibile solo per entrate e uscite già registrate.')
                 old['communicated'] = e.communicated
                 save_state(db, ds, state, [e.day.isoformat()])
-                return {'ok': True}
+                return {'ok': True, 'concurrency': concurrency.snapshot(state, ds, e.day.isoformat())}
             if e.replace_key:
                 if e.replace_key == e.key or e.replace_key not in assignments or e.key in assignments or e.value is None:
                     raise ValueError('Sostituzione del conflitto non valida o riga già assegnata.')
@@ -705,7 +713,7 @@ def create_app(path=None, seed=None):
                 assignments[e.key] = validate_assignment(ds, state, e.day.isoformat(), e.key, e.value, policies(db, ds), e.exceptional, saved=bool(unchanged))
             recovery.validate(state)
             save_state(db, ds, state, [e.day.isoformat()], revalidate=True)
-        return {'ok': True}
+        return {'ok': True, 'concurrency': concurrency.snapshot(state, ds, e.day.isoformat())}
 
     @app.get('/api/export')
     def export():

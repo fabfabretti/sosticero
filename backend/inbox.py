@@ -304,7 +304,7 @@ class Inbox:
                 item = self.item(db, identifier)
                 if item['status'] != 'pending':
                     if item['status'] == ('accepted' if action == 'accept' else 'ignored'):
-                        return dict(ok=True, status=item['status'])
+                        return dict(ok=True, status=item['status'], alreadyProcessed=True)
                     raise HTTPException(409, 'Comunicazione già elaborata. Aggiorna Inbox.')
                 teacher = None
                 if action == 'accept':

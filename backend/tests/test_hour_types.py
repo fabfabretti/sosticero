@@ -3,7 +3,7 @@ import copy
 import tempfile
 import unittest
 from pathlib import Path
-from fastapi.testclient import TestClient
+from backend.tests.client import TestClient
 from backend.main import create_app
 from backend.domain import normalize_dataset, candidates, rows, validate_assignment
 from backend.hour_types import merge_types, validate_types

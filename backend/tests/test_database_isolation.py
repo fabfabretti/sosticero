@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from fastapi.testclient import TestClient
+from backend.tests.client import TestClient
 from backend.main import create_app, DEFAULT_DATABASE
 from backend.tests.test_app import fixture
 

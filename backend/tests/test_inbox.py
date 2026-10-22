@@ -10,7 +10,7 @@ import threading
 import unittest
 from unittest.mock import patch
 
-from fastapi.testclient import TestClient
+from backend.tests.client import TestClient
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives import serialization
 from backend.main import create_app
@@ -240,6 +240,19 @@ class InboxTest(unittest.TestCase):
             self.assertEqual(self.action(item).status_code, 422)
         self.assertEqual(self.state(), before)
         self.assertEqual(self.inbox.status()['pending'], 1)
+
+    def test_second_acceptance_reports_unused_choices_and_invalidates_manual_baseline(self):
+        item = self.discover()[0]
+        body = dict(day=DAY, group='abs', id='absent', hours=[2])
+        self.client.post('/api/entries', json=body).raise_for_status()
+        ref = f'abs|{DAY}|absent'
+        old = self.client.get('/api/day/' + DAY).json()['concurrency']['records'][ref]
+        self.action(item, note='first').raise_for_status()
+        second = self.action(item, teacher='co', note='second').json()
+        self.assertTrue(second['alreadyProcessed'])
+        self.assertNotIn('second', self.state()['absenceNotes'][DAY]['absent'])
+        self.assertNotIn('co', self.state()['abs'][DAY])
+        self.assertEqual(self.client.post('/api/entries', json=dict(body, expected={ref: old})).status_code, 409)
 
     def test_failures_preserve_items_and_restore_keeps_key(self):
         self.discover()
