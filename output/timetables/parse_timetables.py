@@ -116,9 +116,32 @@ def parse(root):
         if printed and printed < export_classes[key]:
             warnings.append(dict(tipo='articolazione_da_verificare', docente=key[0], giorno=key[1], ora=key[2],
                                  classi_pdf=item['classi'], classi_export=sorted(export_classes[key])))
+    support_names = parse_support(root / 'ORARIO DEFINITIVO SOSTEGNO 26-27.pdf', teachers, slots, classes, sites, warnings)
+    for item in slots.values():
+        if teachers[item['docente']]['ruolo'] != 'sostegno' or 'docente_referente_originale' not in item:
+            continue
+        ref = name_key(item['docente_referente_originale'])
+        ref = {'GHIBELLINI': 'GIBELLINI', 'CRMELITI': 'CARMELITI', 'DALLALIBERA': 'DELLALIBERA'}.get(ref, ref)
+        candidates = [t for t in teachers.values() if t['ruolo'] != 'sostegno' and (ref == name_key(t.get('cognome_originale', '')) or name_key(t['nome_originale']).startswith(ref) and len(ref) > 3)] if ref else []
+        matching = [t['id'] for t in candidates if (other := slots.get((t['id'], item['giorno'], item['ora']))) and set(other['classi']) & set(item['classi'])]
+        if len(matching) == 1:
+            item['compresenze'] = matching
+            other = slots[matching[0], item['giorno'], item['ora']]
+            other['compresenze'].append(item['docente'])
+            item['aula'] = other['aula']
+        elif item['classi']:
+            warnings.append(dict(tipo='referente_non_verificato', docente=item['docente'], giorno=item['giorno'], ora=item['ora'], classi=item['classi'], referente=item['docente_referente_originale'], candidati=matching))
+    for item in slots.values():
+        if item['sede'] is None:
+            warnings.append(dict(tipo='sede_non_determinata', docente=item['docente'], giorno=item['giorno'], ora=item['ora'], testo=item['attivita_originale']))
+    return dict(docenti=list(teachers.values()), orario=list(slots.values()), anomalie=warnings), support_names
+
+
+def parse_support(pdf_path, teachers, slots, classes, sites, warnings):
+    """Read the support PDF into the supplied teacher/slot catalogue."""
     support_names = []
-    pdf_name = 'ORARIO DEFINITIVO SOSTEGNO 26-27.pdf'
-    with pdfplumber.open(root / pdf_name) as pdf:
+    pdf_name = pdf_path.name
+    with pdfplumber.open(pdf_path) as pdf:
         for page in pdf.pages:
             found = 0
             for table in page.find_tables():
@@ -167,24 +190,7 @@ def parse(root):
                                           fonte=[dict(file=pdf_name, pagina=page.page_number, bbox=table.rows[hour].cells[day+1])])
             if found != 4:
                 raise ValueError(f'Expected 4 support tables on page {page.page_number}, got {found}')
-    for item in slots.values():
-        if teachers[item['docente']]['ruolo'] != 'sostegno' or 'docente_referente_originale' not in item:
-            continue
-        ref = name_key(item['docente_referente_originale'])
-        ref = {'GHIBELLINI': 'GIBELLINI', 'CRMELITI': 'CARMELITI', 'DALLALIBERA': 'DELLALIBERA'}.get(ref, ref)
-        candidates = [t for t in teachers.values() if t['ruolo'] != 'sostegno' and (ref == name_key(t.get('cognome_originale', '')) or name_key(t['nome_originale']).startswith(ref) and len(ref) > 3)] if ref else []
-        matching = [t['id'] for t in candidates if (other := slots.get((t['id'], item['giorno'], item['ora']))) and set(other['classi']) & set(item['classi'])]
-        if len(matching) == 1:
-            item['compresenze'] = matching
-            other = slots[matching[0], item['giorno'], item['ora']]
-            other['compresenze'].append(item['docente'])
-            item['aula'] = other['aula']
-        elif item['classi']:
-            warnings.append(dict(tipo='referente_non_verificato', docente=item['docente'], giorno=item['giorno'], ora=item['ora'], classi=item['classi'], referente=item['docente_referente_originale'], candidati=matching))
-    for item in slots.values():
-        if item['sede'] is None:
-            warnings.append(dict(tipo='sede_non_determinata', docente=item['docente'], giorno=item['giorno'], ora=item['ora'], testo=item['attivita_originale']))
-    return dict(docenti=list(teachers.values()), orario=list(slots.values()), anomalie=warnings), support_names
+    return support_names
 
 
 def preserve_identities(result, catalogue):
