@@ -26,7 +26,7 @@ export function useQuietRefresh<T>(load: () => Promise<T>, apply: (value: T) => 
     alive.current = true;
     invalidate();
     const poll = async () => {
-      if (running.current || document.visibilityState === 'hidden') return;
+      if (running.current || document.visibilityState === 'hidden' || document.documentElement?.dataset.auth === 'locked') return;
       running.current = true;
       const n = generation.current;
       try {

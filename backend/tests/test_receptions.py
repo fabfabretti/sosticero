@@ -131,6 +131,17 @@ class ReceptionApiTest(unittest.TestCase):
         self.client.post('/api/import', json=archive).raise_for_status()
         self.assertFalse(self.client.get('/api/receptions').json()['versions'])
 
+    def test_background_sync_status_does_not_expire_preview(self):
+        from backend.storage import Store
+        body, impact = self.preview()
+        store = Store(str(self.path))
+        with store.connect() as db:
+            store.write(db, 'googleSheetsStatus', dict(lastSuccess='later', error=''))
+        self.save(body, impact).raise_for_status()
+        response = self.client.get('/api/orari', params=dict(day=DAY))
+        self.assertEqual(response.headers['content-encoding'], 'gzip')
+        self.assertEqual(response.json()['dataset']['receptions'][0]['teacher'], 'rp')
+
     def test_stale_preview_and_backup_failure(self):
         body, impact = self.preview()
         self.client.post('/api/entries', json=dict(day=DAY, group='abs', id='bottom', hours=[2])).raise_for_status()

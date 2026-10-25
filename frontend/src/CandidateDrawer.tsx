@@ -35,11 +35,13 @@ export function CandidateDrawer({
   name,
   onClose,
   onAssign,
+  readOnlyReason,
 }: {
   open: Row;
   cands: Candidate[];
   current?: string;
   busy: boolean;
+  readOnlyReason?: string;
   name: (id: string) => string;
   onClose: () => void;
   onAssign: (id: string, exceptional?: boolean) => void;
@@ -92,6 +94,7 @@ export function CandidateDrawer({
             ×
           </button>
         </header>
+        {readOnlyReason && <p role="status" className="ui-notice" id="candidate-permission">{readOnlyReason}</p>}
         <div className="lst">
           {cands.map((c, index) => {
             const cross = !!(c.loc && open.sede && c.loc !== open.sede);
@@ -100,6 +103,9 @@ export function CandidateDrawer({
               {c.ty === "RP" && (cands[index - 1]?.ty !== "RP" || cands[index - 1]?.convenient !== c.convenient) && <h3 className="fallback-title">{c.convenient ? "Recuperi permesso · ore favorevoli" : "Altri recuperi permesso"}</h3>}
               {c.exceptional && !cands[index - 1]?.exceptional && <h3 className="fallback-title">Solo in caso di necessità</h3>}
               <button
+                aria-disabled={!!readOnlyReason || undefined}
+                aria-describedby={readOnlyReason ? "candidate-permission" : undefined}
+                style={readOnlyReason ? {cursor:"not-allowed"} : undefined}
                 disabled={!!c.why || busy || c.enable === false}
                 className={
                   "c1" +
@@ -107,7 +113,7 @@ export function CandidateDrawer({
                   (cross ? " cross-site" : "") +
                   (current === c.id ? " sel" : "")
                 }
-                onClick={() => { if (!c.exceptional || window.confirm(`Usare comunque ${c.name} alla ${open.h}ª ora? Tipo occupato: ${c.typeLabel || c.ty}.`)) onAssign(c.id, !!c.exceptional); }}
+                onClick={() => { if (readOnlyReason) return; if (!c.exceptional || window.confirm(`Usare comunque ${c.name} alla ${open.h}ª ora? Tipo occupato: ${c.typeLabel || c.ty}.`)) onAssign(c.id, !!c.exceptional); }}
               >
                 <span className="m">
                   <b>{c.name}</b>

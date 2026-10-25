@@ -27,10 +27,10 @@ function harness(component, responses = {}, notify = false) {
   const window = { addEventListener: (name, fn) => listeners.set(name, fn), removeEventListener: name => listeners.delete(name), dispatchEvent: event => listeners.get(event.type)?.() };
   runInNewContext(ts.transpileModule(readFileSync('src/Inbox.tsx', 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
-  }).outputText, { exports, Map, Date, Event, CustomEvent, AudioContext: FakeAudioContext, window,
+  }).outputText, { exports, Map, Date, Event, CustomEvent, AudioContext: FakeAudioContext, window, document:{documentElement:{dataset:{}}},
     setInterval: fn => timers.push(fn), clearInterval() {},
     fetch: async (url, options) => { calls.push({ url, options }); return { ok: true, json: async () => ({}) }; },
-    require: id => id === 'react' ? react : id === 'react/jsx-runtime' ? { jsx, jsxs: jsx } : { Link: 'a' },
+    require: id => id === './useQuietRefresh' ? {useQuietRefresh:(load,apply)=>({refresh:async()=>apply(await load()),invalidate(){}})} : id === './session' ? {sessionFetch:async (url,options)=>{calls.push({url,options});return {ok:true,headers:{get:()=>'7'},json:async()=>({version:'uploaded-version'})};}} : id === 'react' ? react : id === 'react/jsx-runtime' ? { jsx, jsxs: jsx } : { Link: 'a' },
   });
   const render = () => {
     index = 0;
@@ -52,6 +52,7 @@ test('Settings uploads raw key, saves source and reports connection failures wit
   const upload = h.calls.find(c => c.url === '/api/inbox/credentials');
   assert.equal(upload.options.body, file);
   assert.ok(h.calls.some(c => c.url === 'inbox/connection' && c.body?.worksheet === 'Risposte del modulo 1'));
+  assert.equal(h.calls.find(c => c.url === 'inbox/connection' && c.body)?.body.expected, 'uploaded-version');
   assert.ok(!text(h.render()).includes('private_key'));
   button(h, 'Test connessione salvata').props.onClick(); await settle();
   assert.ok(h.render().some(n => n.props?.role === 'alert' && text(n).includes('Accesso negato')));

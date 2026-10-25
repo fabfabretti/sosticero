@@ -1,3 +1,5 @@
+import { useQuietRefresh } from './useQuietRefresh';
+import { sessionFetch } from './session';
 import { ClassificationChoices } from "./ClassificationChoices";
 import { AttachmentField, type ImageDraft } from "./Attachments";
 import type { AbsenceKind } from "./types";
@@ -5,8 +7,8 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 
 type Api = <T>(url: string, body?: unknown) => Promise<T>;
-export type InboxStatus = { pending: number; received?: number; configured: boolean; email?: string; spreadsheet?: string; worksheet?: string; lastSuccess?: string; error?: string };
-type Item = { id: string; raw: string[]; status: string; processed?: string; submitted?: string; name?: string; case?: string; start?: string; end?: string; days?: string[]; hours?: number[]; teacher?: string; nameMatched?: boolean; teacherName?: string; teachers?: { id: string; name: string }[]; overlaps?: { day: string; hours: number[] }[]; error: string };
+export type InboxStatus = { generation?: number; version?: string; pending: number; received?: number; configured: boolean; email?: string; spreadsheet?: string; worksheet?: string; lastSuccess?: string; error?: string };
+type Item = { generation?: number; acceptedBy?: {id:string;username:string;name:string} | null; id: string; raw: string[]; status: string; processed?: string; submitted?: string; name?: string; case?: string; start?: string; end?: string; days?: string[]; hours?: number[]; teacher?: string; nameMatched?: boolean; teacherName?: string; teachers?: { id: string; name: string }[]; overlaps?: { day: string; hours: number[] }[]; error: string };
 const date = (value?: string) => value ? value.split("-").reverse().join("/") : "—";
 const timestamp = (value?: string) => value ? new Date(value).toLocaleString("it-IT") : "Mai";
 
@@ -32,6 +34,7 @@ export function useInboxStatus(api: Api, notify = false) {
       oscillator.start(time); oscillator.stop(time + .25);
     };
     const refresh = async () => {
+      if (document.documentElement?.dataset.auth === 'locked') return;
       if (running) { queued = true; return; }
       running = true;
       const n = ++revision;
@@ -71,7 +74,7 @@ export function InboxNotice({ count }: { count: number }) {
   return <div className="inbox-notice" role="status" aria-atomic="true">{count > 0 && <><span>{count} comunicazioni da esaminare</span><Link to="/inbox">Apri Inbox →</Link></>}</div>;
 }
 
-export function SheetsSettings({ api }: { api: Api }) {
+export function SheetsSettings({ api, onSummary, revision }: { api: Api; onSummary?: (value: string) => void; revision?: number }) {
   const [status, setStatus] = useState<InboxStatus>();
   const liveStatus = useInboxStatus(api);
   const [spreadsheet, setSpreadsheet] = useState("1lgAmKTn4S5GfiOI6WPT4Onsesb4RsDiqhAGaDi6UBmA");
@@ -79,27 +82,33 @@ export function SheetsSettings({ api }: { api: Api }) {
   const [file, setFile] = useState<File>();
   const [busy, setBusy] = useState(false), [error, setError] = useState(""), [message, setMessage] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    let live = true;
-    void api<InboxStatus>("inbox/connection").then(s => { if (live) { setStatus(s); if (s.spreadsheet) setSpreadsheet(s.spreadsheet); if (s.worksheet) setWorksheet(s.worksheet); } }).catch(e => { if (live) setError(String(e)); });
-    return () => { live = false; };
-  }, [api]);
+  const { refresh, invalidate } = useQuietRefresh(
+    () => api<InboxStatus>("inbox/connection"),
+    value => { setStatus(value); setSpreadsheet(value.spreadsheet || ""); setWorksheet(value.worksheet || "Risposte del modulo 1"); },
+    busy || !!file || (!!status && (spreadsheet !== (status.spreadsheet || "") || worksheet !== (status.worksheet || "Risposte del modulo 1"))),
+    "inbox-connection",
+  );
+  useEffect(() => { void refresh().catch(e => setError(String(e))); }, [api]);
+  useEffect(() => { onSummary?.(error || liveStatus?.error ? 'Collegamento da verificare' : status ? `${status.configured ? 'Configurato' : 'Da configurare'} · ultima sincronizzazione: ${timestamp(liveStatus?.lastSuccess || status.lastSuccess)}` : 'Caricamento…'); }, [status, liveStatus, error, onSummary]);
   const run = async (test: boolean) => {
-    setBusy(true); setError(""); setMessage("");
+    invalidate(); setBusy(true); setError(""); setMessage("");
     try {
       if (test) {
-        await api("inbox/test", {});
+        await api("inbox/test", { _generation: status?.generation });
         setMessage("Connessione riuscita. Il foglio è leggibile.");
       } else {
+        let saved = status;
         if (file) {
           if (file.size > 32768) throw Error("File JSON troppo grande (massimo 32 KB).");
           // Credentials use a bounded raw upload, never a JSON body echoed by validation errors.
-          const response = await fetch("/api/inbox/credentials", { method: "POST", headers: { "Content-Type": "application/json" }, body: file });
+          const response = await sessionFetch("/api/inbox/credentials", { method: "POST", headers: { "Content-Type": "application/json", "X-Record-Version": status?.version || "" }, body: file }, status?.generation);
           const result = await response.json();
           if (!response.ok) throw Error(typeof result.detail === "string" ? result.detail : "Caricamento della chiave fallito.");
+          saved = { ...result, generation: Number(response.headers.get("X-Data-Generation") || status?.generation || 0) };
+          setStatus(saved);
           setFile(undefined); if (fileInput.current) fileInput.current.value = "";
         }
-        setStatus(await api<InboxStatus>("inbox/connection", { spreadsheet, worksheet }));
+        setStatus(await api<InboxStatus>("inbox/connection", { spreadsheet, worksheet, expected: saved?.version, _generation: saved?.generation }));
         setMessage("Configurazione salvata. Tutte le risposte esistenti verranno caricate in Inbox.");
         window.dispatchEvent(new Event("inbox-changed"));
       }
@@ -133,7 +142,7 @@ export function AbsenceInbox({ api }: { api: Api }) {
   const overrides = useRef(new Map<string, Item>());
   const refresh = async () => {
     const n = ++request.current;
-    try { const next = await api<Item[]>("inbox?history=" + history); if (n === request.current) { setItems(next.map(item => item.status === "pending" ? overrides.current.get(item.id) || item : item)); setError(""); if (!history) window.dispatchEvent(new CustomEvent("inbox-changed", { detail: { pending: next.length } })); } }
+    try { const next = await api<Item[]>("inbox?history=" + history); if (n === request.current) { setItems(next.map(item => ({...item,generation:(next as Item[] & {generation?:number}).generation})).map(item => item.status === "pending" ? overrides.current.get(item.id) || item : item)); setError(""); if (!history) window.dispatchEvent(new CustomEvent("inbox-changed", { detail: { pending: next.length } })); } }
     catch (e) { if (n === request.current) setError(String(e)); }
     finally { if (n === request.current) setLoading(false); }
   };
@@ -145,9 +154,9 @@ export function AbsenceInbox({ api }: { api: Api }) {
   const act = async (item: Item, action: string, teacher?: string) => {
     ++request.current; setBusy(item.id); setError("");
     try {
-      const result = await api<Item & { alreadyProcessed?: boolean }>(`inbox/${item.id}/${action}`, { teacher: teacher || item.teacher, ...(action === "accept" ? drafts[item.id] : {}) });
+      const result = await api<Item & { alreadyProcessed?: boolean }>(`inbox/${item.id}/${action}`, { _generation: item.generation, teacher: teacher || item.teacher, ...(action === "accept" ? drafts[item.id] : {}) });
       if (action === "preview") { overrides.current.set(item.id, result); setItems(items.map(i => i.id === item.id ? result : i)); }
-      else { overrides.current.delete(item.id); await refresh(); if (result.alreadyProcessed) setError(`Comunicazione già ${result.status === "accepted" ? "accettata" : "ignorata"}. Le tue scelte non sono state applicate.`); if (history) window.dispatchEvent(new Event("inbox-changed")); }
+      else { overrides.current.delete(item.id); await refresh(); if (result.alreadyProcessed) setError(`Comunicazione già ${result.status === "accepted" ? "accettata" : "ignorata"}${result.acceptedBy ? ` da ${result.acceptedBy.name} (${result.acceptedBy.username})` : ""}. Le tue scelte non sono state applicate.`); if (history) window.dispatchEvent(new Event("inbox-changed")); }
     } catch (e) { await refresh(); setError(String(e)); }
     finally { setBusy(undefined); }
   };
@@ -174,7 +183,7 @@ export function AbsenceInbox({ api }: { api: Api }) {
           <p className="sub">Applicati a tutti i giorni della comunicazione. Le note si aggiungono a quelle già presenti.</p>
         </fieldset>
       </details>}
-      {item.status === "pending" ? <div className="inbox-actions"><button className="inbox-accept" disabled={!!busy || !!item.error} onClick={() => void act(item, "accept")}>{busy === item.id ? "Attendi…" : "Accetta"}</button><button disabled={!!busy} onClick={() => void act(item, "ignore")}>Ignora</button></div> : <span className="inbox-result">{item.status === "accepted" ? "Accettata" : "Ignorata"}</span>}
+      {item.status === "pending" ? <div className="inbox-actions"><button className="inbox-accept" disabled={!!busy || !!item.error} onClick={() => void act(item, "accept")}>{busy === item.id ? "Attendi…" : "Accetta"}</button><button disabled={!!busy} onClick={() => void act(item, "ignore")}>Ignora</button></div> : <span className="inbox-result">{item.status === "accepted" ? item.acceptedBy ? `Accettata da ${item.acceptedBy.name} (${item.acceptedBy.username})` : "Accettata · autore non disponibile" : "Ignorata"}</span>}
       <details className="inbox-details"><summary aria-label={`Dettagli comunicazione di ${item.name || item.raw[2] || "docente"}`}>⋯</summary>
         <p className="sub">Inviata: {item.raw[0] || timestamp(item.submitted)}{item.processed ? ` · Elaborata: ${timestamp(item.processed)}` : ""}</p>
         {item.days && <ul>{item.days.map(day => <li key={day}>{date(day)} · Ore {item.hours?.join(", ")}{item.overlaps?.find(o => o.day === day)?.hours.length ? ` · Già presenti: ${item.overlaps.find(o => o.day === day)!.hours.join(", ")}` : ""}</li>)}</ul>}

@@ -12,6 +12,7 @@ function mount(api, confirm = () => true) {
   runInNewContext(ts.transpileModule(readFileSync('src/Receptions.tsx', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText, {
     exports, Uint8Array, btoa, window: { confirm }, require(id) {
       if (id === 'react') return { useState: state, useEffect() {}, useRef: initial => { const [value] = state({ current: initial }); return value; } };
+      if (id === './useQuietRefresh') return { useQuietRefresh() {} };
       if (id === './StatsCalendar') return { todayInRome: () => '2026-10-12' };
       return { jsx, jsxs: jsx };
     },

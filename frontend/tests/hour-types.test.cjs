@@ -14,7 +14,7 @@ function component(file, confirm = () => true) {
   const jsx = (type, props) => ({ type, props });
   runInNewContext(ts.transpileModule(readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText, {
     exports, window: { confirm }, document: { addEventListener() {}, removeEventListener() {} },
-    require(id) { if (id === 'react') return react; if (id === 'react/jsx-runtime') return { jsx, jsxs: jsx }; throw Error(id); },
+    require(id) { if (id === './useQuietRefresh') return {useQuietRefresh:(load,apply)=>({refresh:async()=>apply(await load()),invalidate(){}})}; if (id === 'react') return react; if (id === 'react/jsx-runtime') return { jsx, jsxs: jsx }; throw Error(id); },
   });
   return { render(props) { cursor = 0; const tree = Object.values(exports)[0](props); const nodes = []; function walk(n) { if (Array.isArray(n)) return n.forEach(walk); if (!n || typeof n !== 'object') return; nodes.push(n); walk(n.props?.children); } walk(tree); return nodes; }, start() { effects.forEach(f => f()); } };
 }
@@ -22,7 +22,7 @@ const settle = () => new Promise(resolve => setImmediate(resolve));
 test('type controls retain saved values on failure and update after successful save', async () => {
   const c = component('src/HourTypes.tsx'); let fail = false; const calls = [];
   const policy = { label: 'PE', available: false, visible: true, school: null, color: 'blue' };
-  const api = async (url, body) => { calls.push(body); if (!body) return { types: { 'code:PE': policy }, needsReimport: false }; if (fail) throw Error('Save failed'); return { 'code:PE': { ...policy, ...body } }; };
+  const api = async (url, body) => { calls.push(body); if (!body) return { types: { 'code:PE': policy }, needsReimport: false }; if (fail) throw Error('Save failed'); Object.assign(policy,body); return { 'code:PE': { ...policy, ...body } }; };
   const props = { api }; c.render(props); c.start(); await settle();
   const control = () => c.render(props).find(n => n.props?.['aria-label'] === 'PE: Disponibile per supplenze');
   fail = true; await control().props.onChange({ target: { checked: true } }); await settle();
@@ -30,7 +30,7 @@ test('type controls retain saved values on failure and update after successful s
   assert.ok(c.render(props).some(n => n.props?.role === 'alert'));
   fail = false; control().props.onChange({ target: { checked: true } }); await settle();
   assert.equal(control().props.checked, true);
-  assert.equal(calls.at(-1).id, 'code:PE'); assert.equal(calls.at(-1).school, null);
+  assert.equal(calls.filter(Boolean).at(-1).id, 'code:PE'); assert.equal(calls.filter(Boolean).at(-1).school, null);
 });
 test('occupied candidates require confirmation and hard blocked buttons stay disabled', () => {
   for (const accepted of [false, true]) {

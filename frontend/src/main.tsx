@@ -1,3 +1,5 @@
+import { Auth, useAccount } from "./Auth";
+import { requestApi } from "./session";
 import { preconditions, ApiError, type Baseline } from "./concurrency";
 import { useQuietRefresh } from "./useQuietRefresh";
 import { ClassificationChoices } from "./ClassificationChoices";
@@ -48,21 +50,7 @@ const parseItalianDate = (value: string) => {
   const parsed = new Date(iso + "T12:00");
   return !Number.isNaN(parsed.getTime()) && localDate(parsed) === iso ? iso : "";
 };
-async function api<T>(url: string, body?: unknown): Promise<T> {
-  const r = await fetch(
-    "/api/" + url,
-    body === undefined
-      ? {}
-      : {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        },
-  );
-  const data = await r.json();
-  if (!r.ok) throw new ApiError(r.status, data.detail);
-  return data;
-}
+const api = requestApi;
 const TABS = [
   { path: "/", label: "Supplenze" },
   { path: "/permessi", label: "Permessi" },
@@ -95,6 +83,7 @@ function Glasses() {
   );
 }
 function TopBar({ current, pending = 0 }: { current: string; pending?: number }) {
+  const account = useAccount();
   return (
     <header className="bar">
       <span className="brand">
@@ -112,6 +101,7 @@ function TopBar({ current, pending = 0 }: { current: string; pending?: number })
           </Link>
         ))}
       </nav>
+      {account && <div className="account-identity"><strong>{account.name}</strong><span>{account.campus === 'centrale' ? 'Centrale' : 'Succursale'}</span><button className="ui-button" onClick={() => window.dispatchEvent(new Event('session-logout'))}>Esci</button></div>}
     </header>
   );
 }
@@ -128,7 +118,7 @@ function Permessi() {
   const [manualHours, setManualHours] = useState("");
   const [editingManual, setEditingManual] = useState(false);
   const [sort, setSort] = useState<{ field: "date" | "requested"; ascending: boolean }>({ field: "date", ascending: false });
-  const [data, setData] = useState<{ concurrency: Baseline; timetableVersions?: { effective: string | null; dataset: Data["dataset"] }[]; dataset: Data["dataset"]; permitAttachments?: AttachmentMap; permessi: Record<string, Record<string, number[]>>; permitRequests?: Record<string, Record<string, string>>; permitNotes?: Record<string, Record<string, string>>; manualPermitNotes?: Record<string, string>; permitKinds?: Record<string, Record<string, AbsenceKind>>; recoveries?: Record<string, Record<string, import("./types").PermitRecovery>>; balances?: Record<string, { remaining: number; expired: number; eligible: number }>; manualPermits?: Record<string, { id: string; hours: number; recovered: number; remaining: number; recoveries: { date: string; h: number; key: string }[] }> }>();
+  const [data, setData] = useState<{ generation?: number; concurrency: Baseline; timetableVersions?: { effective: string | null; dataset: Data["dataset"] }[]; dataset: Data["dataset"]; permitAttachments?: AttachmentMap; permessi: Record<string, Record<string, number[]>>; permitRequests?: Record<string, Record<string, string>>; permitNotes?: Record<string, Record<string, string>>; manualPermitNotes?: Record<string, string>; permitKinds?: Record<string, Record<string, AbsenceKind>>; recoveries?: Record<string, Record<string, import("./types").PermitRecovery>>; balances?: Record<string, { remaining: number; expired: number; eligible: number }>; manualPermits?: Record<string, { id: string; hours: number; recovered: number; remaining: number; recoveries: { date: string; h: number; key: string }[] }> }>();
   const [dayInput, setDayInput] = useState(italianDate(localDate(new Date())));
   const [requestedInput, setRequestedInput] = useState(italianDate(localDate(new Date())));
   const day = parseItalianDate(dayInput);
@@ -295,6 +285,8 @@ function Permessi() {
 }
 
 function Settings() {
+  const account = useAccount();
+  const readOnly = account?.campus !== "centrale";
   const [data, setData] = useState<Data>(),
     [error, setError] = useState("");
   const request = useRef(0);
@@ -313,9 +305,10 @@ function Settings() {
   const upload = async (file: File | undefined, target: string) => {
     if (!file) return;
     try {
-      const content = JSON.parse(await file.text());
+      let content = JSON.parse(await file.text());
       if (target === 'import') {
-        const preview = await api<{ overrides: { teacher: string; review: boolean }[] }>('import/preview', content);
+        const preview = await api<{ generation: number; overrides: { teacher: string; review: boolean }[] }>('import/preview', content);
+        content = { ...content, _generation: preview.generation };
         const review = preview.overrides.filter(r => r.review);
         if (!window.confirm(`Ripristinare l’archivio? ${review.length} modifiche manuali richiedono verifica${review.length ? ': ' + [...new Set(review.map(r => r.teacher))].join(', ') : ''}. Le modifiche incompatibili useranno le ore importate fino alla verifica.`)) return;
       }
@@ -348,6 +341,8 @@ function Settings() {
           {error}
         </p>
       )}
+      {readOnly && <p role="status">Configurazione condivisa: modifiche riservate alla sede Centrale.</p>}
+      <fieldset className="settings-permissions" disabled={readOnly}>
       <section className="dataset">
         <TimetableImport api={api} onImported={() => void refresh()} />
         <div className="db-status">
@@ -374,6 +369,15 @@ function Settings() {
               onChange={(e) => void upload(e.target.files?.[0], "import")}
             />
           </label>
+
+        </div>
+        <div className="db-status">Dati salvati nel database SQLite.</div>
+      </section>
+      <HourTypes key={JSON.stringify(data?.dataset)} api={api} />
+      <ReceptionImport api={api} />
+      <SheetsSettings api={api} />
+      <BackupSection />
+      </fieldset>
           <button
             onClick={() => {
               document.documentElement.dataset.theme =
@@ -384,13 +388,6 @@ function Settings() {
           >
             Chiaro / scuro
           </button>
-        </div>
-        <div className="db-status">Dati salvati nel database SQLite.</div>
-      </section>
-      <HourTypes key={JSON.stringify(data?.dataset)} api={api} />
-      <ReceptionImport api={api} />
-      <SheetsSettings api={api} />
-      <BackupSection />
     </section>
   );
 }
@@ -438,11 +435,13 @@ function App() {
   return (
     <HashRouter>
       {testing && <div className="testing-ribbon" role="status">TESTING</div>}
-      <Shell />
+      <Auth><Shell /></Auth>
     </HashRouter>
   );
 }
 function Supplenze() {
+  const account = useAccount();
+  const canAssign = (site: string | null | undefined) => !!account && site === account.campus;
   const [day, setDay] = useState(localDate(new Date())),
     [month, setMonth] = useState(
       new Date(new Date().getFullYear(), new Date().getMonth(), 1),
@@ -1074,13 +1073,14 @@ function Supplenze() {
           {data?.issues.map((i) => (
             <p role="alert" key={i.key}>
               Assegnazione da verificare: {i.context ? `${i.context.teacherName}, ${i.context.h}ª, ${i.context.c}, ${i.context.site || 'sede ignota'} → ${i.context.substituteName}` : i.key}: {i.message}{" "}
-              <label>Sposta su una riga attuale <select aria-label="Riga per risolvere il conflitto" defaultValue="" onChange={e => {
+              <label>Sposta su una riga attuale <select aria-label="Riga per risolvere il conflitto" disabled={!canAssign(i.context?.site)} defaultValue="" onChange={e => {
                 const key = e.target.value;
                 if (key && window.confirm('Spostare questa assegnazione sulla riga selezionata? Sarà verificata prima del salvataggio.')) void mutate('assignments', {day, key, value: assigned[i.key]?.v, replace_key: i.key});
                 e.target.value = '';
-              }}><option value="">Seleziona…</option>{data?.rows.filter(r => r.k !== i.key && !assigned[r.k]).map(r => <option key={r.k} value={r.k}>{r.h}ª · {r.c}</option>)}</select></label>{" "}
+              }}><option value="">Seleziona…</option>{data?.rows.filter(r => r.k !== i.key && !assigned[r.k] && canAssign(r.sede)).map(r => <option key={r.k} value={r.k}>{r.h}ª · {r.c}</option>)}</select></label>{" "}
               <button
                 className="lk"
+                disabled={!canAssign(i.context?.site)} title={!canAssign(i.context?.site) ? "Modifica riservata alla sede della riga" : undefined}
                 onClick={() => void mutate("assignments", { day, key: i.key })}
               >
                 Rimuovi
@@ -1155,7 +1155,8 @@ function Supplenze() {
                           </button>
                           {entryExitBoundary(r.k, assigned) && <span className="opt communicated">
                             <button type="button" className={assigned[r.k].communicated ? "on" : ""}
-                              aria-pressed={assigned[r.k].communicated === true} disabled={busy}
+                              aria-pressed={assigned[r.k].communicated === true} disabled={busy || !canAssign(r.sede)}
+                              title={!canAssign(r.sede) ? `Assegnazione riservata alla sede ${r.sede || "non indicata"}` : undefined}
                               aria-label={`Comunicato ${r.c}: ${entryExitCellLabel(r.k, assigned)}`}
                               onClick={() => void mutate("assignments", { day, key: r.k, communicated: !assigned[r.k].communicated })}>
                               {assigned[r.k].communicated && <span aria-hidden="true">✓ </span>}Comunicato
@@ -1165,6 +1166,7 @@ function Supplenze() {
                             <button
                               className="clr"
                               aria-label="Svuota"
+                              disabled={!canAssign(r.sede)} title={!canAssign(r.sede) ? `Assegnazione riservata alla sede ${r.sede || "non indicata"}` : undefined}
                               onClick={() =>
                                 void mutate("assignments", { day, key: r.k })
                               }
@@ -1201,6 +1203,7 @@ function Supplenze() {
           cands={cands.map(c => ({ ...c, name: entryExitLabel(c.id, open.h) || c.name }))}
           current={assigned[open.k]?.v}
           busy={busy}
+          readOnlyReason={!canAssign(open.sede) ? `Assegnazione riservata alla sede ${open.sede || "non indicata"}` : undefined}
           name={name}
           onClose={() => {
             ++candidateRequest.current;
@@ -1208,6 +1211,7 @@ function Supplenze() {
             setOpen(undefined);
           }}
           onAssign={async (value, exceptional) => {
+            if (!canAssign(open.sede)) return;
             const selectedRow = open;
             invalidate();
             ++candidateRequest.current; setLoadingCandidates(false); setOpen(undefined);
@@ -1231,6 +1235,7 @@ function Supplenze() {
 }
 
 function BackupSection() {
+  const backupGeneration = useRef<number | undefined>(undefined);
   const [backups, setBackups] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -1240,17 +1245,15 @@ function BackupSection() {
   const loadBackups = async () => {
     setError("");
     try {
-      const res = await fetch("/api/backups");
-      if (!res.ok) {
-        const e = await res.json().catch(() => ({}));
-        throw new Error(e.detail || "Errore caricamento backup");
-      }
-      setBackups(await res.json());
+      const values = await api<any[] & {generation:number}>("backups");
+      backupGeneration.current = values.generation;
+      setBackups(values);
     } catch (e) {
       setError(String(e));
     }
   };
 
+  useQuietRefresh(() => api<any[] & {generation:number}>("backups"), values => { backupGeneration.current = values.generation; setBackups(values); }, loading || !!confirming, "settings-backups");
   useEffect(() => {
     void loadBackups();
   }, []);
@@ -1260,11 +1263,7 @@ function BackupSection() {
     setError("");
     setSuccess("");
     try {
-      const res = await fetch("/api/backups", { method: "POST" });
-      if (!res.ok) {
-        const e = await res.json().catch(() => ({}));
-        throw new Error(e.detail || "Errore creazione backup");
-      }
+      await api("backups", {});
       setSuccess("Backup creato con successo");
       await loadBackups();
     } catch (e) {
@@ -1279,15 +1278,7 @@ function BackupSection() {
     setError("");
     setSuccess("");
     try {
-      const res = await fetch("/api/backups/restore", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ filename, confirm: true }),
-      });
-      if (!res.ok) {
-        const e = await res.json().catch(() => ({}));
-        throw new Error(e.detail || "Errore ripristino backup");
-      }
+      await api("backups/restore", { filename, confirm: true, _generation: backupGeneration.current });
       setSuccess("Backup ripristinato con successo");
       setConfirming(null);
       await loadBackups();

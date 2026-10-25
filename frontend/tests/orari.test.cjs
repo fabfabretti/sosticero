@@ -8,7 +8,7 @@ function load(file, require, confirm = () => true) {
   const exports = {};
   runInNewContext(ts.transpileModule(readFileSync(file, 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
-  }).outputText, { exports, require, URLSearchParams, setTimeout, clearTimeout, window: { confirm }, document: { elementFromPoint: () => null } });
+  }).outputText, { exports, require: id => id === './useQuietRefresh' ? {useQuietRefresh:(load,apply)=>({refresh:async()=>{const v=await load();apply(v);return v;},invalidate(){}})} : require(id), URLSearchParams, setTimeout, clearTimeout, window: { confirm }, document: { elementFromPoint: () => null } });
   return exports;
 }
 const timetables = load('src/timetables.ts');
@@ -29,6 +29,7 @@ function component(file, confirm) {
   };
   const jsx = (type, props) => ({ type, props });
   const exports = load(file, id => {
+    if (id === './useQuietRefresh') return { useQuietRefresh: (load,apply) => ({ refresh:async()=>{const v=await load();apply(v);return v;},invalidate(){} }) };
     if (id === 'react') return react;
     if (id === 'react/jsx-runtime') return { jsx, jsxs: jsx };
     if (id === './timetables') return timetables;

@@ -95,7 +95,7 @@ No Python, Node, Docker, or WSL required. Download the latest `Sosticero_<date>.
 - If Windows shows "Windows protected your PC", click **More info** → **Run anyway**; the app is unsigned.
 - Everything the app saves lives in a `data` folder beside the exe, backups included. To update, replace the exe and keep that folder.
 
-Then go to **Settings** and choose **Carica database JSON** to upload your timetable.
+Create the local accounts as described under **Account, accesso e permessi per sede**, sign in, then go to **Settings** and choose **Carica database JSON** to upload your timetable.
 
 ## Deploy on Linux
 
@@ -481,6 +481,174 @@ riprovare. Non viene ripetuta automaticamente una modifica rifiutata. Se una
 comunicazione Inbox è già stata elaborata, viene indicato che le scelte del
 secondo operatore non sono state applicate.
 
-Importazioni globali e ripristini del database vanno eseguiti fuori dalle
-sessioni di modifica degli operatori: il coordinamento di queste operazioni
-con modifiche contemporanee non è incluso nella protezione dei singoli record.
+Importazioni globali e ripristini coordinano le modifiche contemporanee con
+un lock e una generazione esterna al database scolastico (vedi sotto).
+Le schermate precedenti richiedono una nuova verifica prima del salvataggio.
+
+### Account, accesso e permessi per sede
+
+L'app richiede un account locale. Non esistono password predefinite o account
+amministratore web. Ogni account ha nome utente univoco, nome visualizzato,
+sede (`centrale` o `succursale`) e stato abilitato. Il nome e la sede appaiono
+in alto a destra, con **Esci**. Le password vengono conservate soltanto come
+hash Argon2id; i cookie di sessione sono HttpOnly e SameSite, revocabili e con
+scadenza assoluta di 12 ore. Il login limita temporaneamente i tentativi errati.
+
+| Operazione | Centrale | Succursale |
+| --- | --- | --- |
+| Consultare tutte le pagine, entrambe le sedi e tutti i docenti/candidati | Sì | Sì |
+| Assegnare, cambiare, svuotare, spostare una supplenza o segnare Comunicato | Solo righe Centrale | Solo righe Succursale |
+| Assenze, classi fuori, disponibilità, permessi e saldi manuali | Modifica condivisa | Modifica condivisa |
+| Accettare/ignorare comunicazioni Inbox | Sì | Sì |
+| Modificare nomi e orari manuali dalla pagina Orari | Entrambe le sedi | Entrambe le sedi |
+| Esportazioni PDF da Supplenze e Orari | Sì | Sì |
+| Regole condivise, connessione Google e importazioni da Settings | Modifica | Sola lettura |
+| Archivio JSON, creazione/ripristino backup da Settings | Sì | Solo elenco/stato |
+| Tema e filtro Centrale/Succursale/Entrambe | Locale al browser | Locale al browser |
+
+La sede della **riga da coprire** determina il permesso di assegnazione: un
+account Centrale può usare un docente di Succursale se le regole di disponibilità
+e spostamento lo consentono. Righe e candidati dell'altra sede restano visibili;
+i comandi non autorizzati mostrano il cursore di divieto e una spiegazione
+accessibile anche da tastiera/touch. Il server verifica i permessi anche sulle
+richieste dirette. Gli spostamenti che coinvolgono due sedi richiedono la
+rimozione da parte della sede originale e l'assegnazione da parte della sede
+di destinazione. Una sede non risolta non concede permessi aggiuntivi.
+
+Tema e filtro sono preferenze in `localStorage`: non si sincronizzano fra
+browser, non dipendono dall'account e non cambiano i permessi. Succursale può
+aprire Settings e cambiare il proprio tema, ma non pubblicare configurazione
+condivisa. Le chiavi private Google non sono mai restituite al browser.
+
+#### Creare e gestire gli account localmente
+
+Gli account risiedono in `data/auth.sqlite`, separato dal database scolastico
+`data/supplenze.sqlite`. `AUTH_DATABASE_PATH` può selezionare un altro percorso
+esplicito. La gestione richiede accesso locale al terminale, non un ruolo web.
+Dopo aver installato le dipendenze Python, dalla cartella del progetto:
+
+```sh
+.venv/bin/python -m backend.auth --database data/auth.sqlite init
+.venv/bin/python -m backend.auth --database data/auth.sqlite create centrale --name Centrale --campus centrale
+.venv/bin/python -m backend.auth --database data/auth.sqlite create succursale --name Succursale --campus succursale
+.venv/bin/python -m backend.auth --database data/auth.sqlite list
+```
+
+Su Windows, dal terminale nella cartella dell'eseguibile, usare il suo nome
+seguito da `--accounts`, ad esempio:
+
+```powershell
+.\Sosticero_2026-10-22.exe --accounts create centrale --name Centrale --campus centrale
+.\Sosticero_2026-10-22.exe --accounts create succursale --name Succursale --campus succursale
+.\Sosticero_2026-10-22.exe --accounts reset centrale
+```
+
+Le password (10–256 caratteri) vengono richieste senza eco nel terminale,
+mai passate negli argomenti. Sul container già aggiornato, l'equivalente è:
+
+```sh
+podman compose exec app python -m backend.auth --database /data/auth.sqlite create centrale --name Centrale --campus centrale
+podman compose exec app python -m backend.auth --database /data/auth.sqlite reset centrale
+```
+
+Ulteriori comandi locali:
+
+```sh
+.venv/bin/python -m backend.auth --database data/auth.sqlite reset centrale
+.venv/bin/python -m backend.auth --database data/auth.sqlite rename centrale "Maria"
+.venv/bin/python -m backend.auth --database data/auth.sqlite campus centrale succursale
+.venv/bin/python -m backend.auth --database data/auth.sqlite disable succursale
+.venv/bin/python -m backend.auth --database data/auth.sqlite enable succursale
+```
+
+Il cambio password/sede, la disabilitazione e la modifica dell'account revocano
+le sue sessioni; riabilitare non riattiva vecchi cookie. Usare `--testing` e un
+percorso in una directory temporanea per verificare i comandi: la modalità test
+rifiuta la directory marcata come operativa. Un archivio scolastico ripristinato
+senza account richiede un nuovo bootstrap locale e non abilita accesso anonimo.
+
+#### HTTP locale, sessioni e ripristini
+
+La normale pubblicazione resta su `127.0.0.1:8000` e permette HTTP locale senza
+certificati. Per HTTPS configurare `APP_ORIGIN=https://nome-del-servizio` tramite
+la configurazione del servizio: i cookie diventano Secure e il server valida
+Host/origine, senza fidarsi automaticamente degli header di proxy. HTTP remoto
+non protegge le password e non è abilitato dalla configurazione normale.
+Le scritture richiedono token CSRF e una generazione dei dati compatibile con
+la schermata visualizzata. Una richiesta rifiutata non viene ripetuta da sola.
+
+Se scade la sessione durante una modifica, il login blocca temporaneamente
+l'interazione mantenendo gli input in memoria. Lo stesso account può riprendere
+con verifica dei permessi e della concorrenza. Esci o il passaggio a un account
+diverso eliminano gli input dell'account precedente.
+
+Orari e configurazione condivisa verificano gli aggiornamenti ogni 15 secondi
+senza azzerare scorrimento, focus, pannelli, file selezionati o modifiche aperte.
+Gli aggiornamenti che interessano un'interazione in corso vengono rinviati.
+Due modifiche dello stesso nome o regola condivisa non si sovrascrivono in
+silenzio. Un cambiamento della base oraria può richiedere una nuova revisione
+dell'editor Orari; gli aggiornamenti dello stato Inbox non invalidano da soli
+un'anteprima. Le assegnazioni interessate restano presenti e segnalate da verificare.
+
+Le importazioni globali e i ripristini coordinano le scritture tramite un lock
+locale condiviso con la gestione account e la pubblicazione del worker Inbox.
+Su Linux le letture possono procedere insieme; le scritture mantengono accesso
+esclusivo e attendono le letture in corso. Su Windows il lock resta esclusivo.
+Una generazione persistita fuori dal database ripristinabile impedisce a una
+richiesta rimasta in attesa di riapplicare dati precedenti. Dopo una pubblicazione
+occorre rileggere e verificare gli eventuali input basati sulla vecchia generazione;
+un tentativo fallito può comunque richiedere questa rilettura prudenziale.
+Il worker scarta i risultati recuperati con configurazione/generazione superata.
+
+I backup SQLite e gli archivi JSON scolastici non contengono account, hash di
+password o sessioni. Il ripristino conserva gli account attualmente installati
+e invalida le sessioni. Per recuperare le identità su un'altra macchina occorre
+un backup separato e protetto di `auth.sqlite` (con SQLite online backup se in
+uso), oppure ricreare esplicitamente gli account. Non copiare file SQLite vivi
+con `cp`; non pubblicare il database identità fra gli archivi scaricabili.
+
+Esempio di copia separata delle identità (scegliere una destinazione protetta
+nuova; il comando rifiuta di sovrascrivere un file esistente):
+
+```sh
+.venv/bin/python - <<'PYTHON'
+import os, sqlite3
+from contextlib import closing
+path = '/percorso/protetto/auth-recovery.sqlite'
+fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+os.close(fd)
+with closing(sqlite3.connect('file:data/auth.sqlite?mode=ro', uri=True)) as source:
+    with closing(sqlite3.connect(path)) as target:
+        source.backup(target)
+PYTHON
+```
+
+Per recuperare questa copia: fermare il servizio (`podman compose down`),
+mettere da parte l'eventuale `data/auth.sqlite` e i relativi file `-wal`/`-shm`,
+copiare la copia chiusa in `data/auth.sqlite` e mantenere permessi `600`.
+Prima del riavvio revocare tutte le vecchie sessioni:
+
+```sh
+.venv/bin/python - <<'PYTHON'
+from backend.auth import Identities
+identities = Identities('data/auth.sqlite')
+with identities.gate():
+    identities.revoke()
+PYTHON
+LOCAL_UID=$(id -u) LOCAL_GID=$(id -g) podman compose up -d --build --force-recreate
+```
+
+Su Windows fermare l'eseguibile prima della copia; il reset locale delle
+password con `--accounts reset` revoca le sessioni dei rispettivi account.
+Un ripristino scolastico fallito recupera il database precedente da una copia
+di sicurezza creata prima dell'operazione; le sessioni restano invalidate.
+
+#### Chi ha accettato un'assenza da Inbox
+
+L'accettazione salva, nella stessa transazione dell'assenza, l'identificativo
+dell'account e una fotografia del nome utente/nome visualizzato. **Cronologia**
+mostra «Accettata da Nome (utente)» e l'orario di elaborazione. Accettazioni
+ripetute o concorrenti conservano il primo autore; rinominare o disabilitare
+l'account non riscrive la storia. Per le vecchie comunicazioni senza attribuzione
+compare «Accettata · autore non disponibile». Non viene attribuito un autore
+retroattivo, e questa funzione non introduce un registro generale di ogni modifica.

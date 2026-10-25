@@ -1,17 +1,21 @@
+import { useQuietRefresh } from './useQuietRefresh';
 import { useEffect, useState } from "react";
 export type HourType = { label: string; available: boolean; visible: boolean; school: boolean | null; color: string };
-type Inventory = { types: Record<string, HourType>; needsReimport: boolean };
-export function HourTypes({ api }: { api: <T>(url: string, body?: unknown) => Promise<T> }) {
+type Inventory = { generation?: number; versions?: Record<string, string>; types: Record<string, HourType>; needsReimport: boolean };
+export function HourTypes({ api, onSummary, revision }: { api: <T>(url: string, body?: unknown) => Promise<T>; onSummary?: (value: string) => void; revision?: string }) {
   const [data, setData] = useState<Inventory>();
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  useEffect(() => { let active = true; api<Inventory>("hour-types").then(d => { if (active) setData(d); }).catch(e => { if (active) setError(String(e)); }); return () => { active = false; }; }, [api]);
+  const { refresh, invalidate } = useQuietRefresh(() => api<Inventory>("hour-types"), next => setData(old => JSON.stringify(old) === JSON.stringify(next) && old?.generation === next.generation ? old : next), pending, "hour-types");
+  useEffect(() => { void refresh().catch(e => setError(String(e))); }, [api, revision]);
+  useEffect(() => { onSummary?.(error ? 'Regole non disponibili' : data ? `${Object.keys(data.types).length} tipi · ${Object.values(data.types).filter(type => type.available).length} disponibili` : 'Caricamento…'); }, [data, error, onSummary]);
   const save = async (id: string, value: HourType) => {
+    invalidate();
     setPending(true); setError(""); setMessage("Salvataggio…");
     try {
-      const types = await api<Record<string, HourType>>("hour-types", { id, available: value.available, visible: value.visible, school: value.school });
-      setData(d => d && { ...d, types }); setMessage("Salvato");
+      const types = await api<Record<string, HourType>>("hour-types", { id, expected: data?.versions?.[id], _generation: data?.generation, available: value.available, visible: value.visible, school: value.school });
+      await refresh(); setMessage("Salvato");
     } catch (e) { setError(String(e)); setMessage(""); }
     finally { setPending(false); }
   };
