@@ -130,7 +130,9 @@ docker run -d --name supplenze --restart unless-stopped \
 
 Use `sudo` for Docker commands if your installation requires it. To update, rebuild the image, run `docker rm -f supplenze`, and repeat the `docker run` command. The mounted data directory survives container removal.
 
-The supplied Compose file uses Podman’s `userns_mode: keep-id`; Docker users should use the commands above. (I'll add Docker Compose at some point. Sadly I am now a Fedora girl, so my lovely Docker is on pause until further setups on my end.)
+The normal `compose.yaml` uses Podman’s `userns_mode: keep-id`; Docker users running locally should use the commands above.
+
+For the separate Docker server deployment behind Nginx Proxy Manager, see [Server deployment](docs/server-deployment.md). It uses one local deployment command to sync source and build on the server, persistent server data and reviewed SSH commands; the normal local Compose configuration stays unchanged.
 
 ### Without containers
 

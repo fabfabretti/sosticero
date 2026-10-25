@@ -1153,7 +1153,7 @@ td.none {
   font-weight: 800;
   text-align: center;
   letter-spacing: 1px;
-  z-index: 2000;
+  z-index: 10001;
   pointer-events: none;
   box-shadow: 0 2px 5px #0004;
 }
