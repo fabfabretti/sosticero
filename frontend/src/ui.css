@@ -1,0 +1,50 @@
+/* Shared presentation. ui-scope exposes primitives without restyling compact planner widgets. */
+.ui-page, .ui-scope {
+  --ui-gap: 8px;
+  --ui-field-gap: 12px;
+  --ui-label-gap: 8px;
+  --ui-padding: 12px;
+  --ui-control-padding: 6px 8px;
+  --ui-control-height: 36px;
+  --ui-radius: 4px;
+  --ui-form-width: 640px;
+  --ui-danger: color-mix(in srgb, var(--ink) 35%, #c34242);
+  --ui-surface: var(--pan);
+  --ui-border: var(--line);
+  min-width: 0;
+  color: var(--ink);
+  font: inherit;
+}
+.ui-page h1, .ui-page .ui-title { margin: 0; font-size: 22px; }
+.ui-page h2 { margin: 0; font-size: 16px; color: var(--ink); font-weight: 650; line-height: 1.4; }
+.ui-page h3 { margin: 0; font-size: 15px; color: var(--ink); font-weight: 600; line-height: 1.4; }
+.ui-page :where(p) { margin: 0; line-height: 1.45; }
+.ui-page .sub { color: var(--mute); font-size: 12px; }
+.ui-page a { color: var(--acc); }
+.ui-surface { min-width: 0; background: var(--ui-surface); border: 1px solid var(--ui-border); border-radius: var(--ui-radius); }
+.ui-table { width: 100%; border-collapse: collapse; font-size: 13px; border: 0; background: transparent; }
+.ui-table :is(th, td) { text-align: left; padding: var(--ui-padding); border-bottom: 1px solid var(--ui-border); vertical-align: top; }
+.ui-form { display: grid; gap: var(--ui-field-gap); min-width: 0; }
+.ui-page :is(label:has(> input:not([type="checkbox"])), label:has(> select), label:has(> textarea), .ui-field) { display: grid; gap: var(--ui-label-gap); width: 100%; min-width: 0; font-size: 13px; font-weight: 500; color: var(--ink); line-height: 1.4; }
+.ui-page :is(input:not([type="checkbox"]), select, textarea) { font: inherit; font-size: 13px; color: var(--ink); background: var(--bg); border: 1px solid var(--ui-border); border-radius: var(--ui-radius); padding: var(--ui-control-padding); min-height: var(--ui-control-height); min-width: 0; width: 100%; }
+.ui-page textarea { min-height: 64px; resize: vertical; }
+.ui-page input[type="checkbox"] { width: 18px; height: 18px; flex: 0 0 auto; accent-color: var(--acc); }
+.ui-actions { display: flex; align-items: end; gap: var(--ui-gap); flex-wrap: wrap; }
+.ui-actions .ui-field { flex: 1 1 240px; }
+:is(.ui-page, .ui-scope) .ui-button, .ui-page :is(.classification button, .attachment-field > button) { display: inline-flex; align-items: center; justify-content: center; width: auto; min-height: var(--ui-control-height); padding: var(--ui-control-padding); border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-surface); color: var(--ink); font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; justify-self: start; }
+:is(.ui-page, .ui-scope) .ui-button-primary, .ui-page .classification button.on { background: var(--acc); color: var(--on); border-color: var(--acc); }
+:is(.ui-page, .ui-scope) .ui-button-danger { color: var(--ui-danger); }
+:is(.ui-page, .ui-scope) .ui-button.on:not(.ui-button-primary) { background: var(--soft); color: var(--acc); border-color: var(--acc); }
+:is(.ui-page, .ui-scope) .ui-button:hover:not(:disabled), .ui-page :is(.classification button, .attachment-field > button):hover:not(:disabled) { filter: brightness(.95); }
+.ui-page :disabled, .ui-scope .ui-button:disabled { opacity: .55; cursor: not-allowed; }
+.ui-page :is(summary, button, input, select, textarea, .attachment-paste):focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+.ui-notice { padding: var(--ui-control-padding); background: var(--soft); border-left: 2px solid var(--acc); font-size: 13px; overflow-wrap: anywhere; }
+.ui-notice:empty { display: none; }
+.ui-notice-error { color: var(--ui-danger); border-color: var(--ui-danger); }
+.ui-page .classification { margin: 0; gap: var(--ui-gap); flex-wrap: wrap; }
+.ui-page .attachment-field { gap: var(--ui-gap); margin: 0; }
+.ui-page .attachment-paste { padding: var(--ui-padding); border-radius: var(--ui-radius); }
+.ui-page .attachment-field p { color: var(--ui-danger); }
+@media (max-width: 650px), (pointer: coarse) {
+  .ui-page, .ui-scope { --ui-control-height: 44px; }
+}

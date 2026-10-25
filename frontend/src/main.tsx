@@ -6,6 +6,13 @@ import { ClassificationChoices } from "./ClassificationChoices";
 import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./style.css";
+import './ui.css';
+import './settings.css';
+import './inbox.css';
+import './permessi.css';
+import './orari.css';
+import './supplenze.css';
+import { SettingsGroup } from './SettingsGroup';
 import type { Row, Candidate, Data, AbsenceKind, Assignment } from "./types";
 import { TimetableImport } from "./TimetableImport";
 import { HourTypes } from "./HourTypes";
@@ -203,14 +210,14 @@ function Permessi() {
   const warning = (text: string) => <HourHelp text={text}>
     <svg className="warning-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 22 21H2Z" fill="none" stroke="currentColor" strokeWidth="2"/><path d="M12 9v5m0 3v1" stroke="currentColor" strokeWidth="2"/></svg>
   </HourHelp>;
-  return <div className="app permessi">
+  return <div className="app ui-page permessi">
     <aside>
     {conflict && <div role="alert"><p>Il record è cambiato. I valori inseriti sono rimasti nel modulo.</p><button className="ui-button" onClick={async () => { try { await refresh(); reset(); setConflict(false); setError(""); } catch (e) { setError(String(e)); } }}>Ricarica valori salvati</button></div>}
     <form className="permit-form" onSubmit={e => { e.preventDefault(); if (manual) { if (teacher && Number.isInteger(Number(manualHours)) && Number(manualHours) > 0) void save({ id: teacher, hours: Number(manualHours), note, editing: editingManual }, "manual-permits"); return; } if (invalidDates || !teacher || !selected.length) return; void save({ day, id: teacher, requested_on: requestedOn || null, note, attachment, classification: original ? editClassification : newClassification, hours: selected, ...(original ? { original_day: original.day, original_id: original.id } : {}) }); }}>
       <h2>{manual ? (editingManual ? "Modifica saldo manuale" : "Aggiungi saldo manuale") : original ? "Modifica permesso" : "Aggiungi permesso"}</h2>
       <label className="manual-permit-toggle"><input type="checkbox" checked={manual} disabled={busy} onChange={e => { reset(); setManual(e.target.checked); setError(""); }} />Saldo manuale senza data</label>
       <fieldset disabled={busy || !data}>
-        <div className="permit-teacher">
+        <div className="ui-field permit-teacher">
           <label htmlFor="permit-teacher">Docente</label>
           <div className="sw">
             <input id="permit-teacher" disabled={editingManual} aria-label="Cerca docente" placeholder="Docente, es. ros" autoComplete="off" value={query}
@@ -238,15 +245,15 @@ function Permessi() {
         <ClassificationChoices value={original ? editClassification : newClassification} onChange={original ? setEditClassification : setNewClassification} />
         <label>Data permesso<input required aria-label="Data permesso" type="text" inputMode="numeric" placeholder="gg/mm/aaaa" pattern="[0-9]{2}/[0-9]{2}/[0-9]{4}" value={dayInput} aria-invalid={!!dayInput && !day} onChange={e => setDayInput(e.target.value)} /></label>
         <label>Data richiesta (facoltativa)<input aria-label="Data richiesta" type="text" inputMode="numeric" placeholder="gg/mm/aaaa" pattern="[0-9]{2}/[0-9]{2}/[0-9]{4}" value={requestedInput} aria-invalid={!!requestedInput && !requestedOn} onChange={e => setRequestedInput(e.target.value)} /></label>
-        <div><span>Ore di permesso</span><div className="hrs permit-hours">{hours.map(h => <span className="permit-hour" key={h}>
+        <div className="ui-field"><span>Ore di permesso</span><div className="hrs permit-hours">{hours.map(h => <span className="permit-hour" key={h}>
           <button type="button" aria-label={`Permesso ${h}ª ora`} aria-pressed={selected.includes(h)} className={selected.includes(h) ? "on" : ""} onClick={() => setSelected(selected.includes(h) ? selected.filter(v => v !== h) : [...selected, h])}>{h}</button>
           {teacher && selected.includes(h) && (overLimit || !scheduled(teacher, day, h)) && warning([overLimit ? `Massimo giornaliero: ${maximum} ore di permesso; selezionate ${selected.length}.` : "", !scheduled(teacher, day, h) ? `${h}ª ora: nessuna attività prevista nell’orario per questa ora.` : ""].filter(Boolean).join(" "))}
         </span>)}</div></div>
 
         <p className="sub">Massimo giornaliero: {maximum} ore · Selezionate: {selected.length}. Sono comprese tutte le attività in orario, inclusi POT e DIS.</p>
         </>}
-        <button className="permit-save" type="submit" disabled={conflict || !teacher || (manual ? !Number.isInteger(Number(manualHours)) || Number(manualHours) < 1 : invalidDates || !selected.length)}>{busy ? "Salvataggio…" : manual ? "Salva saldo manuale" : "Salva permesso"}</button>
-        {(original || editingManual) && <button type="button" onClick={reset}>Annulla modifica</button>}
+        <button className="ui-button ui-button-primary permit-save" type="submit" disabled={conflict || !teacher || (manual ? !Number.isInteger(Number(manualHours)) || Number(manualHours) < 1 : invalidDates || !selected.length)}>{busy ? "Salvataggio…" : manual ? "Salva saldo manuale" : "Salva permesso"}</button>
+        {(original || editingManual) && <button className="ui-button" type="button" onClick={reset}>Annulla modifica</button>}
       </fieldset>
       <div className="permit-feedback" aria-live="polite">{!manual && invalidDates && <p role="alert">Inserisci date valide nel formato gg/mm/aaaa.</p>}{(error || (!manual && overLimit)) && <p role="alert">{error || `Superato il massimo giornaliero di ${maximum} ore di permesso.`}</p>}</div>
     </form>
@@ -255,7 +262,7 @@ function Permessi() {
     <h1>Permessi</h1>
     <p className="sub">Per i permessi con data, recupero entro un mese dal permesso, scadenza inclusa. Le assegnazioni RP future riservano già le ore e sono elencate per data.</p>
     {!data && !error && <p role="status">Caricamento…</p>}
-    <div className="permit-table"><table><thead><tr><th>Docente</th>{([ ["date", "Data permesso"], ["requested", "Data richiesta"] ] as const).map(([field, title]) => <th key={field} aria-sort={sort.field === field ? (sort.ascending ? "ascending" : "descending") : "none"}><button className="lk" onClick={() => setSort({ field, ascending: sort.field === field ? !sort.ascending : false })}>{title}{sort.field === field ? (sort.ascending ? " ↑" : " ↓") : " ↕"}</button></th>)}{["Ore di permesso", "Scadenza recupero", "Ore recuperate", "Dettaglio recuperi", "Ore da recuperare", "Azioni"].map(title => <th key={title}>{title}</th>)}</tr></thead>
+    <div className="ui-surface permit-table"><table className="ui-table"><thead><tr><th>Docente</th>{([ ["date", "Data permesso"], ["requested", "Data richiesta"] ] as const).map(([field, title]) => <th key={field} aria-sort={sort.field === field ? (sort.ascending ? "ascending" : "descending") : "none"}><button className="lk" onClick={() => setSort({ field, ascending: sort.field === field ? !sort.ascending : false })}>{title}{sort.field === field ? (sort.ascending ? " ↑" : " ↓") : " ↕"}</button></th>)}{["Ore di permesso", "Scadenza recupero", "Ore recuperate", "Dettaglio recuperi", "Ore da recuperare", "Azioni"].map(title => <th key={title}>{title}</th>)}</tr></thead>
       <tbody>{records.map(r => <tr key={r.date + r.id} className={(data?.balances?.[r.id]?.remaining ?? r.periods.length) > 0 ? "permit-outstanding" : undefined}>
         <td><span className="permit-name">{data?.dataset.teachers[r.id]?.name || r.id}</span><RecordInfo text={data?.permitNotes?.[r.date]?.[r.id]} links={[{ label: "Apri allegato permesso", id: data?.permitAttachments?.[r.date]?.[r.id] }]} /></td><td>{r.date.split("-").reverse().join("/")}</td>
         <td>{data?.permitRequests?.[r.date]?.[r.id]?.split("-").reverse().join("/") || "—"}</td>
@@ -270,7 +277,7 @@ function Permessi() {
     {!!Object.keys(data?.manualPermits || {}).length && <section className="manual-permits">
       <h2>Saldi manuali</h2>
       <p className="sub">Ore pregresse senza data e senza scadenza automatica.</p>
-      <div className="permit-table"><table><thead><tr>{["Docente", "Ore totali", "Ore recuperate", "Dettaglio recuperi", "Ore da recuperare", "Azioni"].map(title => <th key={title}>{title}</th>)}</tr></thead><tbody>
+      <div className="ui-surface permit-table"><table className="ui-table"><thead><tr>{["Docente", "Ore totali", "Ore recuperate", "Dettaglio recuperi", "Ore da recuperare", "Azioni"].map(title => <th key={title}>{title}</th>)}</tr></thead><tbody>
       {Object.entries(data?.manualPermits || {}).sort(([a], [b]) => (data?.dataset.teachers[a]?.name || a).localeCompare(data?.dataset.teachers[b]?.name || b)).map(([id, p]) => <tr key={id} className={p.remaining > 0 ? "permit-outstanding" : undefined}>
         <td><span className="permit-name">{data?.dataset.teachers[id]?.name || id}</span><RecordInfo text={data?.manualPermitNotes?.[id]} /></td><td>{p.hours}</td><td>{p.recovered}</td>
         <td>{p.recoveries.length ? <ul className="recovery-details">{p.recoveries.map(item => <li key={item.date + item.key}>{italianDate(item.date)} · {item.h}ª ora</li>)}</ul> : "—"}</td>
@@ -287,6 +294,14 @@ function Permessi() {
 function Settings() {
   const account = useAccount();
   const readOnly = account?.campus !== "centrale";
+  const [hourSummary, setHourSummary] = useState('Caricamento…');
+  const [receptionSummary, setReceptionSummary] = useState('Ricevimenti: caricamento…');
+  const [connectionSummary, setConnectionSummary] = useState('Caricamento…');
+  const [backupSummary, setBackupSummary] = useState('Caricamento…');
+  const [backupRevision, setBackupRevision] = useState(0);
+  const [archiveError, setArchiveError] = useState('');
+  const [archiveMessage, setArchiveMessage] = useState('');
+  const [theme, setTheme] = useState(() => document.documentElement.dataset.theme || (window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
   const [data, setData] = useState<Data>(),
     [error, setError] = useState("");
   const request = useRef(0);
@@ -294,7 +309,7 @@ function Settings() {
     const n = ++request.current;
     try {
       const d = await api<Data>("day/" + localDate(new Date()));
-      if (n === request.current) setData(d);
+      if (n === request.current) { setData(d); setError(''); }
     } catch (e) {
       setError(String(e));
     }
@@ -304,21 +319,24 @@ function Settings() {
   }, []);
   const upload = async (file: File | undefined, target: string) => {
     if (!file) return;
+    setArchiveError(''); setArchiveMessage('');
     try {
       let content = JSON.parse(await file.text());
       if (target === 'import') {
         const preview = await api<{ generation: number; overrides: { teacher: string; review: boolean }[] }>('import/preview', content);
         content = { ...content, _generation: preview.generation };
         const review = preview.overrides.filter(r => r.review);
-        if (!window.confirm(`Ripristinare l’archivio? ${review.length} modifiche manuali richiedono verifica${review.length ? ': ' + [...new Set(review.map(r => r.teacher))].join(', ') : ''}. Le modifiche incompatibili useranno le ore importate fino alla verifica.`)) return;
+        if (!window.confirm(`Ripristinare l’archivio ${file.name}? I dati attuali verranno sostituiti. ${review.length} modifiche manuali richiedono verifica${review.length ? ': ' + [...new Set(review.map(r => r.teacher))].join(', ') : ''}. Le modifiche incompatibili useranno le ore importate fino alla verifica.`)) return;
       }
       await api(target, content);
       await refresh();
+      setBackupRevision(value => value + 1); setArchiveMessage('Archivio ripristinato.');
     } catch (e) {
-      setError(String(e));
+      setArchiveError(String(e));
     }
   };
   const exportData = async () => {
+    setArchiveError(''); setArchiveMessage('');
     try {
       const b = await api("export");
       const url = URL.createObjectURL(
@@ -330,66 +348,43 @@ function Settings() {
       a.click();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (e) {
-      setError(String(e));
+      setArchiveError(String(e));
     }
   };
-  return (
-    <section className="settings">
-      <h1>Settings</h1>
-      {error && (
-        <p role="alert" style={{ color: "#c34242" }}>
-          {error}
-        </p>
-      )}
-      {readOnly && <p role="status">Configurazione condivisa: modifiche riservate alla sede Centrale.</p>}
-      <fieldset className="settings-permissions" disabled={readOnly}>
-      <section className="dataset">
-        <TimetableImport api={api} onImported={() => void refresh()} />
-        <div className="db-status">
-          {data
-            ? `${Object.keys(data.dataset.teachers).length} docenti · ${data.dataset.classes.length} classi`
-            : "Caricamento…"}
+  return <section className="ui-page settings">
+    <h1>Settings</h1>
+    <p className="settings-intro settings-muted">Configurazione, collegamenti e gestione dei dati.</p>
+    {readOnly && <p className="ui-notice" role="status">Configurazione condivisa: modifiche riservate alla sede Centrale.</p>}
+    <fieldset className="settings-permissions" disabled={readOnly}>
+    <SettingsGroup title="Orari e ricevimenti" description="Importa e verifica gli impegni settimanali." status={[data ? `${Object.keys(data.dataset.teachers).length} docenti · ${data.dataset.classes.length} classi` : error ? 'Orario non disponibile' : 'Caricamento…', receptionSummary].join(' · ')}>
+      <TimetableImport api={api} onImported={() => { void refresh(); setBackupRevision(value => value + 1); }} />
+      {error && <p className="ui-notice ui-notice-error" role="alert">{error}</p>}
+      {!!data?.dataset.warnings.length && <details className="settings-disclosure"><summary>{data.dataset.warnings.length} anomalie da verificare</summary><pre className="settings-pre">{JSON.stringify(data.dataset.warnings, null, 2)}</pre></details>}
+      <ReceptionImport api={api} onSummary={setReceptionSummary} revision={backupRevision} onImported={() => setBackupRevision(value => value + 1)} />
+    </SettingsGroup>
+    <SettingsGroup title="Regole supplenze" description="Disponibilità e visibilità dei tipi di ora." status={hourSummary}>
+      <HourTypes api={api} onSummary={setHourSummary} revision={`${backupRevision}:${JSON.stringify(data?.dataset)}`} />
+    </SettingsGroup>
+    <SettingsGroup title="Collegamenti" description="Importazione delle assenze da Google Forms." status={connectionSummary}>
+      <SheetsSettings api={api} onSummary={setConnectionSummary} revision={backupRevision} />
+    </SettingsGroup>
+    <SettingsGroup title="Dati e backup" description="Esporta i dati o ripristina un archivio salvato." status={backupSummary}>
+      <section className="settings-subsection" aria-label="Archivio JSON">
+        <h2>Archivio JSON</h2>
+        <p className="settings-muted">Esporta i dati portabili oppure sostituiscili con un archivio JSON. I backup del database sono elencati sotto.</p>
+        <div className="ui-actions"><button className="ui-button" onClick={() => void exportData()}>Esporta supplenze</button>
+          <label className="ui-field">Archivio da ripristinare<input type="file" accept=".json,application/json" onChange={e => void upload(e.target.files?.[0], "import")} /></label>
         </div>
-        {!!data?.dataset.warnings.length && (
-          <details className="db-status">
-            <summary>{data.dataset.warnings.length} anomalie da verificare</summary>
-            <pre style={{ whiteSpace: "pre-wrap" }}>
-              {JSON.stringify(data.dataset.warnings, null, 2)}
-            </pre>
-          </details>
-        )}
-        <div className="archive-actions">
-          <button onClick={() => void exportData()}>Esporta supplenze</button>
-          <label>
-            Importa supplenze
-            <input
-              hidden
-              type="file"
-              accept=".json"
-              onChange={(e) => void upload(e.target.files?.[0], "import")}
-            />
-          </label>
-
-        </div>
-        <div className="db-status">Dati salvati nel database SQLite.</div>
+        {archiveMessage && <p className="ui-notice" role="status">{archiveMessage}</p>}
+        {archiveError && <p className="ui-notice ui-notice-error" role="alert">{archiveError}</p>}
       </section>
-      <HourTypes key={JSON.stringify(data?.dataset)} api={api} />
-      <ReceptionImport api={api} />
-      <SheetsSettings api={api} />
-      <BackupSection />
-      </fieldset>
-          <button
-            onClick={() => {
-              document.documentElement.dataset.theme =
-                document.documentElement.dataset.theme === "dark"
-                  ? "light"
-                  : "dark";
-            }}
-          >
-            Chiaro / scuro
-          </button>
-    </section>
-  );
+      <BackupSection onSummary={setBackupSummary} revision={backupRevision} onRestored={() => { void refresh(); setBackupRevision(value => value + 1); }} />
+    </SettingsGroup>
+    </fieldset>
+    <SettingsGroup title="Aspetto" description="Scegli il tema dell’interfaccia." status={theme === 'dark' ? 'Scuro' : 'Chiaro'}>
+      <div className="ui-actions"><button className="ui-button" aria-pressed={theme === 'dark'} onClick={() => { const next = theme === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = next; setTheme(next); }}>Chiaro / scuro</button></div>
+    </SettingsGroup>
+  </section>;
 }
 function Shell() {
   const { pathname } = useLocation();
@@ -457,7 +452,7 @@ function Supplenze() {
     [editingKind, setEditingKind] = useState<string>(),
     [absenceNote, setAbsenceNote] = useState(""),
     [entryNote, setEntryNote] = useState(""),
-    [site, setSite] = useState("centrale"),
+    [site, setSite] = useState<string>(account?.campus || "centrale"),
     [filter, setFilter] = useState(() => {
       try {
         const saved = localStorage.getItem("supplenze-campus");
@@ -468,6 +463,27 @@ function Supplenze() {
     [cands, setCands] = useState<Candidate[]>([]),
     [busy, setBusy] = useState(false),
     [selected, setSelected] = useState(0);
+  const [entryOpen, setEntryOpen] = useState(false);
+  const [entrySuccess, setEntrySuccess] = useState("");
+  const entryTrigger = useRef<HTMLButtonElement>(null);
+  const entryDialog = useRef<HTMLDivElement>(null);
+  const clearEntry = () => { setQuery(""); setChosen(undefined); setSelected(0); setEntryNote(""); setEntryAttachment(undefined); setEntrySuccess(""); };
+  const closeEntry = () => { setEntryOpen(false); clearEntry(); };
+  useEffect(() => {
+    if (!entryOpen) return;
+    document.getElementById("q")?.focus();
+    const key = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { e.preventDefault(); closeEntry(); }
+      if (e.key === "Tab") {
+        const nodes = Array.from(entryDialog.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], [tabindex="0"]') || []);
+        const first = nodes[0], last = nodes.at(-1);
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
+      }
+    };
+    document.addEventListener("keydown", key);
+    return () => { document.removeEventListener("keydown", key); entryTrigger.current?.focus(); };
+  }, [entryOpen]);
   const [entryAttachment, setEntryAttachment] = useState<ImageDraft>();
   const [editAttachment, setEditAttachment] = useState<ImageDraft>();
   const [editingDis, setEditingDis] = useState<string>();
@@ -501,12 +517,15 @@ function Supplenze() {
   const { refresh, invalidate } = useQuietRefresh(
     () => api<Data>("day/" + day),
     next => { setData(old => JSON.stringify(old) === JSON.stringify(next) ? old : next); setLoadedDay(day); },
-    busy || loadingCandidates || !!open || !!editingKind || !!editingDis || !!disTeacher || !!query || !!chosen || !!entryNote || !!entryAttachment,
+    entryOpen || busy || loadingCandidates || !!open || !!editingKind || !!editingDis || !!disTeacher || !!query || !!chosen || !!entryNote || !!entryAttachment,
     day,
+    entryOpen,
   );
   useEffect(() => {
     ++candidateRequest.current;
     setOpen(undefined);
+    setEntryOpen(false);
+    clearEntry();
     void refresh().catch(e => setError(String(e)));
     setConflict(false);
     setLoadingCandidates(false);
@@ -562,6 +581,7 @@ function Supplenze() {
   };
   const choose = async (r: Row) => {
     if (busy) return;
+    closeEntry();
     const n = ++candidateRequest.current;
     invalidate();
     candidateBaseline.current = data?.concurrency;
@@ -591,15 +611,12 @@ function Supplenze() {
             .filter(
               (t) =>
                 !t.retired &&
-                !entries(kind)[t.id] &&
                 norm(teacherSearchText(t)).includes(norm(query)),
             )
             .map((t) => ({ id: t.id, label: t.name, group: kind })),
           ...(kind === "abs"
             ? data.dataset.classes
-                .filter(
-                  (c) => !entries("cf")[c] && norm(c).includes(norm(query)),
-                )
+                .filter((c) => norm(c).includes(norm(query)))
                 .map((c) => ({ id: c, label: c, group: "cf" as const }))
             : []),
         ]
@@ -611,10 +628,11 @@ function Supplenze() {
           .slice(0, 6)
       : [];
   const target = chosen || suggestions[selected];
+  const duplicate = !!target && Object.hasOwn(entries(target.group === "cf" ? "cf" : kind), target.id);
   useEffect(() => { if (kind !== "abs" || target?.group === "cf") setEntryNote(""); }, [kind, target?.group]);
   useEffect(() => { setEntryAttachment(undefined); }, [day, kind, target?.id, target?.group]);
   const add = async () => {
-    if (busy || adding.current || !target || (!wholeDay && !entryHours.length)) return;
+    if (busy || conflict || duplicate || adding.current || !target || (!wholeDay && !entryHours.length)) return;
     const group = target.group === "cf" ? "cf" : kind;
     if (entries(group)[target.id] || (group === "cf" && kind !== "abs")) return;
     adding.current = true;
@@ -627,6 +645,7 @@ function Supplenze() {
         ...(group === "abs" ? { classification, note: entryNote } : {}),
       });
       if (saved) {
+        setEntrySuccess(`${target.label}: registrazione aggiunta.`);
         setEntryAttachment(undefined);
         setEntryNote("");
         focusAfterAdd.current = true;
@@ -737,8 +756,8 @@ function Supplenze() {
           <ClassificationChoices value={data?.state.absenceKinds?.[day]?.[id] || null} onChange={value => void mutate("entries", { day, group: "abs", id, hours: hs, classification: value })} />
           <label>Note (facoltative)<textarea aria-label={"Note assenza di " + name(id)} value={absenceNote} disabled={busy} onChange={e => setAbsenceNote(e.target.value)} /></label>
           <AttachmentField key={`abs|${day}|${id}`} value={editAttachment} saved={data?.state.absenceAttachments?.[day]?.[id]} onChange={setEditAttachment} disabled={busy} />
-          <button disabled={busy} onClick={async () => { if (await mutate("entries", { day, group: "abs", id, hours: hs, note: absenceNote, attachment: editAttachment })) { setEditAttachment(undefined); setEditingKind(undefined); } }}>Salva nota e allegato</button>
-          <button onClick={() => { setEditingKind(undefined); setEditAttachment(undefined); }}>Annulla</button>
+          <button className="ui-button" disabled={busy} onClick={async () => { if (await mutate("entries", { day, group: "abs", id, hours: hs, note: absenceNote, attachment: editAttachment })) { setEditAttachment(undefined); setEditingKind(undefined); } }}>Salva nota e allegato</button>
+          <button className="ui-button" onClick={() => { setEditingKind(undefined); setEditAttachment(undefined); }}>Annulla</button>
         </div>}
         </div>
       );
@@ -864,8 +883,8 @@ function Supplenze() {
         </div>
         {editingDis === id && Object.hasOwn(manual, id) && <div className="absence-editor">
           <AttachmentField key={`dis|${day}|${id}`} value={editAttachment} saved={data?.state.disAttachments?.[day]?.[id]} onChange={setEditAttachment} disabled={busy} />
-          <button disabled={busy} onClick={async () => { if (await mutate("entries", { day, group: "dis", id, hours: hs, site: data?.state.disSites[day]?.[id], attachment: editAttachment })) { setEditAttachment(undefined); setEditingDis(undefined); } }}>Salva allegato</button>
-          <button onClick={() => { setEditingDis(undefined); setEditAttachment(undefined); }}>Annulla</button>
+          <button className="ui-button" disabled={busy} onClick={async () => { if (await mutate("entries", { day, group: "dis", id, hours: hs, site: data?.state.disSites[day]?.[id], attachment: editAttachment })) { setEditAttachment(undefined); setEditingDis(undefined); } }}>Salva allegato</button>
+          <button className="ui-button" onClick={() => { setEditingDis(undefined); setEditAttachment(undefined); }}>Annulla</button>
         </div>}</div>
       );
     })}
@@ -882,7 +901,7 @@ function Supplenze() {
     .filter(Boolean);
   return (
     <>
-      <div className="app" aria-busy={busy} inert={busy || !!open}>
+      <div className="app ui-scope supplenze" aria-busy={busy} inert={busy || !!open || entryOpen}>
         <aside>
           <div>
             <div className="cal-h">
@@ -942,96 +961,7 @@ function Supplenze() {
               })}
             </div>
           </div>
-          <form className="daily-entry" onSubmit={e => { e.preventDefault(); void add(); }}>
-            <h2><label htmlFor="q">Aggiungi assenti o a disposizione</label></h2>
-            <div className="entry-search">
-            <div className="sw">
-              <input
-                id="q"
-                aria-label="Cerca docente o classe"
-                placeholder={
-                  kind === "abs"
-                    ? "Docente o classe, es. ros, 3a"
-                    : "Docente a disposizione"
-                }
-                value={query}
-                onChange={(e) => {
-                  if (chosen) setEntryNote("");
-                  setQuery(e.target.value);
-                  setChosen(undefined);
-                  setSelected(0);
-                }}
-                onKeyDown={(e) => {
-                  if (e.nativeEvent?.isComposing) { if (e.key === "Enter") e.preventDefault(); return; }
-                  if (e.key === "Escape") { setQuery(""); setChosen(undefined); }
-                  if (e.key === "ArrowDown") {
-                    e.preventDefault();
-                    setSelected(
-                      (selected + 1) % Math.max(1, suggestions.length),
-                    );
-                  }
-                  if (e.key === "ArrowUp") {
-                    e.preventDefault();
-                    setSelected(
-                      (selected + suggestions.length - 1) %
-                        Math.max(1, suggestions.length),
-                    );
-                  }
-                  if (e.key === "Enter") { e.preventDefault(); void add(); }
-                }}
-              />
-              {!!suggestions.length && (
-                <div className="sug">
-                  {suggestions.map((s, i) => (
-                    <button
-                      key={s.group + s.id}
-                      className={selected === i ? "on" : ""}
-                      type="button"
-                      onClick={() => { if (chosen && chosen.id !== s.id) setEntryNote(""); setChosen(s); setQuery(s.label); }}
-                    >
-                      {s.label}
-                      <small>
-                        {s.group === "cf" ? "classe assente" : "docente"}
-                      </small>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            <button className="entry-submit" type="submit" disabled={busy || !target || (!wholeDay && !entryHours.length)}>{busy ? "…" : "Aggiungi"}</button>
-            </div>
-            <div className="opt">
-              <button type="button"
-                className={wholeDay ? "on" : ""}
-                aria-pressed={wholeDay}
-                onClick={() => setWholeDay(!wholeDay)}
-              >
-                Tutto il giorno
-              </button>
-              <button type="button"
-                className={kind === "dis" ? "on" : ""}
-                aria-pressed={kind === "dis"}
-                onClick={() => { setKind(kind === "abs" ? "dis" : "abs"); setChosen(undefined); setSelected(0); }}
-              >
-                A disposizione
-              </button>
-            </div>
-            {!wholeDay && <div className="hrs entry-hours" role="group" aria-label="Ore da aggiungere">{hours.map(h => <button key={h} type="button" aria-label={`Aggiungi ${h}ª ora`} aria-pressed={entryHours.includes(h)} className={entryHours.includes(h) ? "on" : ""} onClick={() => setEntryHours(entryHours.includes(h) ? entryHours.filter(v => v !== h) : [...entryHours, h])}>{h}</button>)}</div>}
-            {kind === "abs" && target?.group !== "cf" && <>
-              <ClassificationChoices value={classification} onChange={setClassification} />
-              <label className="entry-note">Note (facoltative)<textarea aria-label="Note nuova assenza" value={entryNote} disabled={busy} onChange={e => setEntryNote(e.target.value)} /></label>
-            </>}
-            {target?.group !== "cf" && <AttachmentField key={`${day}|${kind}|${target?.id}`} value={entryAttachment} onChange={setEntryAttachment} disabled={busy} />}
-            {kind === "dis" && (
-              <label className="dis-location">
-                Sede della disposizione
-                <select value={site} onChange={(e) => setSite(e.target.value)}>
-                  <option value="centrale">Centrale</option>
-                  <option value="succursale">Succursale</option>
-                </select>
-              </label>
-            )}
-          </form>
+          <button ref={entryTrigger} className="ui-button entry-trigger" onClick={() => { ++candidateRequest.current; setLoadingCandidates(false); setOpen(undefined); clearEntry(); setEntryOpen(true); }}>+ Aggiungi</button>
           <div className="lists">
             {([["planned", "Assenze programmate"], ["trip", "In gita"], ["strike", "In sciopero"], [null, "Assenze non classificate"], ["last_minute", "Assenze last minute"]] as const).map(([value, label]) => {
               const ids = absentIds.filter(id => absenceKind(id) === value);
@@ -1043,13 +973,15 @@ function Supplenze() {
           </div>
         </aside>
         <main>
+          {!entryOpen && <>
           {error && (
-            <p role="alert" style={{ color: "#c34242" }}>
+            <p className="ui-notice ui-notice-error" role="alert">
               {error}
             </p>
           )}
           {conflict && conflictSummary && <p className="ui-notice" role="status">{conflictSummary}</p>}
           {conflict && <button className="ui-button" onClick={async () => { try { await refresh(); setEditingKind(undefined); setEditingDis(undefined); setDisTeacher(undefined); setEditAttachment(undefined); setQuery(""); setChosen(undefined); setEntryNote(""); setEntryAttachment(undefined); setConflict(false); setError(""); } catch (e) { setError(String(e)); } }}>Ricarica valori salvati</button>}
+          </>}
           {!!reminders.length && (
             <p className="reminder" role="status">
               <svg className="warning-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 22 21H2Z" fill="none" stroke="currentColor" strokeWidth="2"/><path d="M12 9v5m0 3v1" stroke="currentColor" strokeWidth="2"/></svg>
@@ -1197,6 +1129,112 @@ function Supplenze() {
           <SubstitutionExport key={`${day}-${filter}`} initialChoice={filter === "centrale" || filter === "succursale" ? filter : "both"} data={data} day={day} disabled={busy || loadedDay !== day} specialLabel={key => entryExitCellLabel(key, data?.state.asg[day] || {})} />
         </main>
       </div>
+      {entryOpen && <div className="entry-backdrop" onClick={e => { if (e.target === e.currentTarget) closeEntry(); }}>
+        <div ref={entryDialog} className="entry-dialog supplenze ui-page ui-surface" role="dialog" aria-modal="true" aria-labelledby="entry-title" aria-busy={busy}>
+          <div className="entry-heading"><div><h2 id="entry-title">Aggiungi assenti o a disposizione</h2><p>{italianDate(day)}</p></div>
+            <button className="ui-button" aria-label="Chiudi inserimento" onClick={closeEntry}>×</button>
+          </div>
+          {error && (
+            <p className="ui-notice ui-notice-error" role="alert">
+              {error}
+            </p>
+          )}
+          {conflict && conflictSummary && <p className="ui-notice" role="status">{conflictSummary}</p>}
+          {conflict && <button className="ui-button" onClick={async () => { try { await refresh(); setEditingKind(undefined); setEditingDis(undefined); setDisTeacher(undefined); setEditAttachment(undefined); setQuery(""); setChosen(undefined); setEntryNote(""); setEntryAttachment(undefined); setConflict(false); setError(""); } catch (e) { setError(String(e)); } }}>Ricarica valori salvati</button>}
+          <form className="entry-form ui-form" onSubmit={e => { e.preventDefault(); void add(); }}>
+            <label htmlFor="q">Cerca docente o classe</label>
+            <div className="entry-search">
+            <div className="sw">
+              <input
+                id="q"
+                aria-label="Cerca docente o classe"
+                placeholder={
+                  kind === "abs"
+                    ? "Docente o classe, es. ros, 3a"
+                    : "Docente a disposizione"
+                }
+                value={query}
+                onChange={(e) => {
+                  setEntrySuccess("");
+                  if (chosen) setEntryNote("");
+                  setQuery(e.target.value);
+                  setChosen(undefined);
+                  setSelected(0);
+                }}
+                onKeyDown={(e) => {
+                  if (e.nativeEvent?.isComposing) { if (e.key === "Enter") e.preventDefault(); return; }
+                  if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    setSelected(
+                      (selected + 1) % Math.max(1, suggestions.length),
+                    );
+                  }
+                  if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    setSelected(
+                      (selected + suggestions.length - 1) %
+                        Math.max(1, suggestions.length),
+                    );
+                  }
+                  if (e.key === "Enter") { e.preventDefault(); void add(); }
+                }}
+              />
+              {!!suggestions.length && (
+                <div className="sug">
+                  {suggestions.map((s, i) => (
+                    <button
+                      key={s.group + s.id}
+                      className={selected === i ? "on" : ""}
+                      type="button"
+                      onClick={() => { if (chosen && chosen.id !== s.id) setEntryNote(""); setChosen(s); setQuery(s.label); }}
+                    >
+                      {s.label}
+                      <small>
+                        {s.group === "cf" ? "classe assente" : "docente"}
+                      </small>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button className="ui-button ui-button-primary entry-submit" type="submit" disabled={busy || conflict || duplicate || !target || (!wholeDay && !entryHours.length)}>{busy ? "…" : "Aggiungi"}</button>
+            </div>
+            {duplicate && <p className="ui-notice" role="status">{target?.label}: già registrato per questa data.</p>}
+            {entrySuccess && <p className="ui-notice" role="status">{entrySuccess}</p>}
+            <div className="opt">
+              <button type="button"
+                className={wholeDay ? "on" : ""}
+                aria-pressed={wholeDay}
+                onClick={() => setWholeDay(!wholeDay)}
+              >
+                Tutto il giorno
+              </button>
+              <button type="button"
+                className={kind === "dis" ? "on" : ""}
+                aria-pressed={kind === "dis"}
+                onClick={() => { setKind(kind === "abs" ? "dis" : "abs"); setChosen(undefined); setSelected(0); }}
+              >
+                A disposizione
+              </button>
+            </div>
+            {!wholeDay && <div className="hrs entry-hours" role="group" aria-label="Ore da aggiungere">{hours.map(h => <button key={h} type="button" aria-label={`Aggiungi ${h}ª ora`} aria-pressed={entryHours.includes(h)} className={entryHours.includes(h) ? "on" : ""} onClick={() => setEntryHours(entryHours.includes(h) ? entryHours.filter(v => v !== h) : [...entryHours, h])}>{h}</button>)}</div>}
+            {kind === "abs" && target?.group !== "cf" && <>
+              <ClassificationChoices value={classification} onChange={setClassification} />
+              <label className="entry-note">Note (facoltative)<textarea aria-label="Note nuova assenza" value={entryNote} disabled={busy} onChange={e => setEntryNote(e.target.value)} /></label>
+            </>}
+            {target?.group !== "cf" && <AttachmentField key={`${day}|${kind}|${target?.id}`} value={entryAttachment} onChange={setEntryAttachment} disabled={busy} />}
+            {kind === "dis" && (
+              <label className="dis-location">
+                Sede della disposizione
+                <select value={site} onChange={(e) => setSite(e.target.value)}>
+                  <option value="centrale">Centrale</option>
+                  <option value="succursale">Succursale</option>
+                </select>
+              </label>
+            )}
+          </form>
+        </div>
+      </div>}
       {open && (
         <CandidateDrawer
           open={open}
@@ -1234,183 +1272,47 @@ function Supplenze() {
   );
 }
 
-function BackupSection() {
+function BackupSection({ onSummary, revision, onRestored }: { onSummary: (value: string) => void; revision: number; onRestored: () => void }) {
   const backupGeneration = useRef<number | undefined>(undefined);
-  const [backups, setBackups] = useState<any[]>([]);
+  const [backups, setBackups] = useState<{ filename: string; created_at: string; size: number }[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
-  const [confirming, setConfirming] = useState<any | null>(null);
-
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const loadBackups = async () => {
-    setError("");
-    try {
-      const values = await api<any[] & {generation:number}>("backups");
-      backupGeneration.current = values.generation;
-      setBackups(values);
-    } catch (e) {
-      setError(String(e));
-    }
+    try { const values = await api<typeof backups & {generation:number}>('backups'); backupGeneration.current = values.generation; setBackups(values); setError(''); setLoaded(true); }
+    catch (e) { setError(String(e)); }
   };
-
-  useQuietRefresh(() => api<any[] & {generation:number}>("backups"), values => { backupGeneration.current = values.generation; setBackups(values); }, loading || !!confirming, "settings-backups");
+  useQuietRefresh(() => api<typeof backups & {generation:number}>('backups'), values => { backupGeneration.current = values.generation; setBackups(values); setLoaded(true); }, loading, 'settings-backups');
+  useEffect(() => { void loadBackups(); }, [revision]);
   useEffect(() => {
-    void loadBackups();
-  }, []);
-
-  const createBackup = async () => {
-    setLoading(true);
-    setError("");
-    setSuccess("");
+    onSummary(error ? 'Backup non disponibili' : !loaded ? 'Caricamento…' : backups.length ? `${backups.length} backup · ultimo ${new Date(backups[0].created_at).toLocaleDateString('it-IT')}` : 'Nessun backup');
+  }, [backups, error, loaded, onSummary]);
+  const run = async (filename?: string) => {
+    if (filename && !window.confirm(`Ripristinare il backup ${filename}? I dati attuali verranno sovrascritti. Questa operazione non è annullabile.`)) return;
+    setLoading(true); setError(''); setSuccess('');
     try {
-      await api("backups", {});
-      setSuccess("Backup creato con successo");
+      await api(filename ? 'backups/restore' : 'backups', filename ? { filename, confirm: true, _generation: backupGeneration.current } : {});
+      setSuccess(filename ? 'Backup ripristinato con successo.' : 'Backup creato con successo.');
       await loadBackups();
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setLoading(false);
-    }
+      if (filename) onRestored();
+    } catch (e) { setError(String(e)); }
+    finally { setLoading(false); }
   };
-
-  const restoreBackup = async (filename: string) => {
-    setLoading(true);
-    setError("");
-    setSuccess("");
-    try {
-      await api("backups/restore", { filename, confirm: true, _generation: backupGeneration.current });
-      setSuccess("Backup ripristinato con successo");
-      setConfirming(null);
-      await loadBackups();
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const formatSize = (bytes: number) => {
-    if (bytes < 1024) return bytes + " B";
-    const kb = bytes / 1024;
-    if (kb < 1024) return kb.toFixed(1) + " KB";
-    const mb = kb / 1024;
-    return mb.toFixed(2) + " MB";
-  };
-
-  const formatDate = (iso: string) => {
-    try {
-      return new Date(iso).toLocaleString("it-IT");
-    } catch {
-      return iso;
-    }
-  };
-
-  return (
-    <section className="backup-section" style={{ marginTop: "2rem" }}>
-      <h2>Backup e ripristino</h2>
-      {error && (
-        <p role="alert" style={{ color: "#c34242" }}>
-          {error}
-        </p>
-      )}
-      {success && (
-        <p role="status" style={{ color: "#4a9" }}>
-          {success}
-        </p>
-      )}
-      <div style={{ marginBottom: "1rem" }}>
-        <button onClick={() => void createBackup()} disabled={loading}>
-          Crea backup manuale
-        </button>
-      </div>
-      <div>
-        <h3>Backups disponibili</h3>
-        {backups.length === 0 ? (
-          <p>Nessun backup disponibile</p>
-        ) : (
-          <ul style={{ listStyle: "none", padding: 0 }}>
-            {backups.map((b) => (
-              <li
-                key={b.filename}
-                style={{
-                  border: "1px solid var(--border, #ddd)",
-                  padding: "0.5rem 1rem",
-                  marginBottom: "0.5rem",
-                  borderRadius: "4px",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                }}
-              >
-                <div>
-                  <div style={{ fontWeight: "bold" }}>{b.filename}</div>
-                  <div style={{ fontSize: "0.9em", opacity: 0.8 }}>
-                    {formatDate(b.created_at)} · {formatSize(b.size)}
-                  </div>
-                </div>
-                <button
-                  onClick={() => setConfirming(b)}
-                  disabled={loading}
-                  style={{ background: "#c34242", color: "#fff" }}
-                >
-                  Ripristina
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-      {confirming && (
-        <div
-          className="confirm-overlay"
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: "rgba(0,0,0,0.5)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1000,
-          }}
-        >
-          <div
-            className="confirm-dialog"
-            style={{
-              background: "var(--bg, #fff)",
-              padding: "2rem",
-              borderRadius: "8px",
-              maxWidth: "600px",
-              margin: "1rem",
-              boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
-            }}
-          >
-            <h3 style={{ color: "#c34242" }}>Attenzione: ripristino backup</h3>
-            <p>
-              Ripristinare il backup <strong>{confirming.filename}</strong>?
-            </p>
-            <p>
-              <strong>I dati attuali verranno sovrascritti.</strong> Questa
-              operazione non è annullabile.
-            </p>
-            <div style={{ marginTop: "2rem", display: "flex", gap: "1rem" }}>
-              <button
-                onClick={() => restoreBackup(confirming.filename)}
-                disabled={loading}
-                style={{ background: "#c34242", color: "#fff" }}
-              >
-                {loading ? "Ripristinando..." : "Conferma ripristino"}
-              </button>
-              <button onClick={() => setConfirming(null)} disabled={loading}>
-                Annulla
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </section>
-  );
+  const formatSize = (bytes: number) => bytes < 1024 ? `${bytes} B` : bytes < 1048576 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1048576).toFixed(2)} MB`;
+  return <section className="settings-subsection" aria-label="Backup del database">
+    <h2>Backup del database</h2>
+    <p className="settings-muted">Copie complete del database. Il ripristino sostituisce i dati attuali.</p>
+    <div className="ui-actions"><button className="ui-button ui-button-primary" onClick={() => void run()} disabled={loading}>Crea backup manuale</button></div>
+    {loading && <p className="ui-notice" role="status">Operazione in corso…</p>}
+    {error && <p className="ui-notice ui-notice-error" role="alert">{error}</p>}
+    {success && <p className="ui-notice" role="status">{success}</p>}
+    {!loaded && !error ? <p className="settings-muted">Caricamento…</p> : !backups.length ? <p className="settings-muted">Nessun backup disponibile</p> : <ul className="settings-list">
+      {backups.map(backup => <li key={backup.filename}>
+        <div><strong>{backup.filename}</strong><small className="settings-muted">{new Date(backup.created_at).toLocaleString('it-IT')} · {formatSize(backup.size)}</small></div>
+        <button className="ui-button ui-button-danger" disabled={loading} onClick={() => void run(backup.filename)}>Ripristina</button>
+      </li>)}
+    </ul>}
+  </section>;
 }
 createRoot(document.getElementById("root")!).render(<App />);

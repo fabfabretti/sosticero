@@ -35,7 +35,7 @@ export function SubstitutionExport({ data, day, initialChoice, disabled, special
       if (latest.current === snapshot) setError(`Impossibile generare il PDF: ${e instanceof Error ? e.message : String(e)}`);
     } finally { setGenerating(false); }
   };
-  return <details className="substitution-export">
+  return <details className="ui-page ui-surface substitution-export">
     <summary>Stampa / PDF</summary>
     <div className="export-controls">
       <label>Sede da esportare <select value={choice} disabled={generating} onChange={e => { setChoice(e.target.value as CampusChoice); setResult(undefined); setError(''); }}>
@@ -43,16 +43,16 @@ export function SubstitutionExport({ data, day, initialChoice, disabled, special
         <option value="succursale">Separata</option>
         <option value="both">Entrambe (un PDF, fogli separati)</option>
       </select></label>
-      <button type="button" disabled={disabled || !data || !choice || generating} onClick={() => void generate()}>{generating ? 'Generazione…' : 'Genera PDF'}</button>
+      <button className="ui-button ui-button-primary" type="button" disabled={disabled || !data || !choice || generating} onClick={() => void generate()}>{generating ? 'Generazione…' : 'Genera PDF'}</button>
     </div>
     {generating && <p role="status">Preparazione dei fogli…</p>}
-    {error && <p role="alert">{error}</p>}
+    {error && <p className="ui-notice ui-notice-error" role="alert">{error}</p>}
     {result && <div className="export-result">
       <p role="status">PDF pronto.</p>
       {result.warnings.map(w => <p role="alert" key={w}>{w}</p>)}
       <div className="export-controls">
-        <a href={result.url} download={result.filename}>Scarica PDF</a>
-        <a href={result.url} target="_blank" rel="noopener noreferrer">Apri PDF / Stampa</a>
+        <a className="ui-button" href={result.url} download={result.filename}>Scarica PDF</a>
+        <a className="ui-button" href={result.url} target="_blank" rel="noopener noreferrer">Apri PDF / Stampa</a>
       </div>
     </div>}
   </details>;

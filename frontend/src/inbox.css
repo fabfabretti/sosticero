@@ -1,0 +1,33 @@
+.inbox-page { width: 100%; max-width: 1100px; margin: 0 auto; padding: 26px 34px; display: flex; flex-direction: column; gap: var(--ui-padding); }
+.inbox-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--ui-padding); flex-wrap: wrap; }
+.inbox-heading > div:first-child { display: grid; gap: var(--ui-gap); }
+.inbox-empty { padding: var(--ui-padding); display: grid; gap: var(--ui-gap); }
+.inbox-actions { display: flex; flex-wrap: wrap; gap: var(--ui-gap); }
+.inbox-item { display: flex; align-items: center; gap: var(--ui-padding); flex-wrap: wrap; padding: var(--ui-padding); }
+.inbox-person { display: flex; align-items: center; flex-wrap: wrap; gap: var(--ui-gap); min-width: 0; overflow-wrap: anywhere; }
+.inbox-name { font-weight: 600; }
+.inbox-page .inbox-teacher { width: 220px; max-width: 100%; }
+.inbox-absence { display: flex; align-items: center; flex-wrap: wrap; gap: var(--ui-gap); flex: 1 1 200px; min-width: 0; }
+.inbox-absence strong { font-weight: 500; }
+.inbox-hours { flex-wrap: wrap; }
+.inbox-hours span { display: inline-grid; place-items: center; width: 24px; height: 24px; font-size: 12px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); color: var(--mute); }
+.inbox-hours span.on { background: var(--acc); border-color: var(--acc); color: var(--on); font-weight: 600; }
+.inbox-submitted { color: var(--mute); font-size: 12px; }
+.inbox-result { color: var(--mute); }
+.inbox-details { flex: 0 0 auto; min-width: 0; }
+.inbox-details summary { display: grid; place-items: center; cursor: pointer; color: var(--mute); padding: 6px 8px; min-width: var(--ui-control-height); min-height: var(--ui-control-height); list-style: none; font-size: 20px; }
+.inbox-details summary::-webkit-details-marker { display: none; }
+.inbox-details[open] { flex-basis: 100%; }
+.inbox-details[open] summary { width: fit-content; margin-left: auto; }
+.inbox-details .sub { margin-bottom: var(--ui-gap); }
+.inbox-item dl > div { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 3fr); gap: var(--ui-gap); overflow-wrap: anywhere; }
+.inbox-item dd { margin: 0; }
+.inbox-item > .ui-notice { flex-basis: 100%; }
+.inbox-metadata { flex-basis: 100%; order: 1; min-width: 0; border-top: 1px solid var(--ui-border); }
+.inbox-metadata summary { cursor: pointer; display: flex; align-items: center; padding-block: var(--ui-gap); min-height: var(--ui-control-height); font-size: 13px; }
+.inbox-metadata fieldset { border: 0; padding: var(--ui-gap) 0; margin: 0; display: grid; gap: var(--ui-field-gap); min-width: 0; }
+@media (max-width: 650px) {
+  .inbox-page { padding: 16px 12px; }
+  .inbox-absence, .inbox-person { flex-basis: 100%; }
+  .inbox-page .inbox-teacher { flex: 1 1 180px; }
+}

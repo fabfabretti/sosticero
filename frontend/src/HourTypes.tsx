@@ -19,11 +19,11 @@ export function HourTypes({ api, onSummary, revision }: { api: <T>(url: string, 
     } catch (e) { setError(String(e)); setMessage(""); }
     finally { setPending(false); }
   };
-  return <section className="hour-types" aria-labelledby="hour-types-title">
+  return <section className="hour-types settings-subsection" aria-labelledby="hour-types-title">
     <h2 id="hour-types-title">Tipi di ora</h2>
     <p className="sub">Le regole valgono per tutti i docenti e tutti i giorni. “Presso questa scuola” descrive l’attività e non cambia la disponibilità.</p>
     {data?.needsReimport && <p className="sub">Reimporta l’orario originale per recuperare tutte le sigle: il precedente import conservava solo POT, UTC, UTS e DIS.</p>}
-    <p role="status">{message}</p>{error && <p role="alert">{error}</p>}
+    <p className="ui-notice" role="status">{message}</p>{error && <p className="ui-notice ui-notice-error" role="alert">{error}</p>}
     {!data ? <p>Caricamento…</p> : <fieldset disabled={pending}>
       <legend className="sr-only">Regole per tipo di ora</legend>
       <div className="hour-type-head" aria-hidden="true"><span>Tipo</span><span>Disponibile per supplenze</span><span>Mostra tra i candidati</span><span>Presso questa scuola</span></div>

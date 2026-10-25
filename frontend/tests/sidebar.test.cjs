@@ -29,8 +29,14 @@ const tooltip = (() => {
 })();
 
 // Run the actual App handlers with deferred HTTP responses and minimal hook storage.
-function app(localStorage = { getItem: () => null, setItem() {} }, confirm = () => false) {
-  const effects = [], requests = [], comps = new Map();
+function app(localStorage = { getItem: () => null, setItem() {} }, confirm = () => false, campus = 'centrale') {
+  const effects = [], requests = [], comps = new Map(), timers = [];
+  const listeners = new Map();
+  const document = { documentElement: { dataset: {} }, activeElement: null, visibilityState: 'visible',
+    getElementById: () => ({ focus() {} }), querySelectorAll: () => [],
+    addEventListener: (name, fn) => { if (!listeners.has(name)) listeners.set(name, new Set()); listeners.get(name).add(fn); },
+    removeEventListener: (name, fn) => listeners.get(name)?.delete(fn) };
+
   const inboxStatus = { pending: 0 };
   let App, pathname = '/', current = null;
   const envelope = () => {
@@ -55,8 +61,8 @@ function app(localStorage = { getItem: () => null, setItem() {} }, confirm = () 
       const e = envelope();
       const i = e.count++;
       if (!(i in e.slots) || (!deps || deps.some((d, j) => d !== e.slots[i].value?.[j])))
-        effects.push(fn);
-      e.slots[i] = { value: deps };
+        effects.push(() => { e.slots[i]?.cleanup?.(); e.slots[i] = { value: deps, cleanup: fn() }; });
+
     },
   };
   const jsx = (type, props) => ({ type, props });
@@ -84,10 +90,10 @@ function app(localStorage = { getItem: () => null, setItem() {} }, confirm = () 
     exports: {}, URLSearchParams, Date, localStorage, setTimeout, clearTimeout,
     setInterval: () => 1, clearInterval() {},
     window: { innerWidth: 1024, innerHeight: 768, confirm },
-    document: { documentElement: { dataset: {} }, getElementById: () => ({ focus() {} }) },
+    document,
     fetch: fetcher,
     require(id) {
-      if (id === './Auth') return { Auth: ({children}) => children, useAccount: () => ({ id:'test', username:'test', name:'Test', campus:'centrale' }) };
+      if (id === './Auth') return { Auth: ({children}) => children, useAccount: () => ({ id:'test', username:'test', name:'Test', campus }) };
       if (id === './session') return { requestApi: async (url, body) => {
         const response = await fetcher('/api/'+url, body === undefined ? undefined : {method:'POST',body:JSON.stringify(body)});
         const data = await response.json(); if (!response.ok) throw new ApiErrorClass(response.status,data.detail); return data;
@@ -96,8 +102,8 @@ function app(localStorage = { getItem: () => null, setItem() {} }, confirm = () 
         const exports = {};
         runInNewContext(ts.transpileModule(readFileSync('src/' + id.slice(2) + '.ts', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, {
           exports, require: () => ({ ...react, useLayoutEffect: react.useEffect }),
-          document: { visibilityState: 'visible', querySelectorAll: () => [], addEventListener() {}, removeEventListener() {} },
-          setInterval: () => 1, clearInterval() {},
+          document,
+          setInterval: fn => { timers.push(fn); return timers.length; }, clearInterval() {},
         });
         if (id === './concurrency') ApiErrorClass=exports.ApiError;
         return exports;
@@ -108,6 +114,11 @@ function app(localStorage = { getItem: () => null, setItem() {} }, confirm = () 
         createRoot: () => ({ render: element => { App = element.type; } }),
       };
       if (id === './TimetableImport') return { TimetableImport: 'timetable-import' };
+      if (id === './SettingsGroup') {
+        const exports = {};
+        runInNewContext(ts.transpileModule(readFileSync('src/SettingsGroup.tsx', 'utf8'), {compilerOptions: {module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX}}).outputText, {exports, require: () => ({jsx, jsxs: jsx})});
+        return exports;
+      }
       if (id === './Receptions') return { ReceptionImport: 'reception-import' };
       if (id === './HourTypes') return { HourTypes: 'hour-types' };
       if (id === './CandidateDrawer') return { CandidateDrawer: 'drawer' };
@@ -154,7 +165,7 @@ function app(localStorage = { getItem: () => null, setItem() {} }, confirm = () 
     effects.splice(0).forEach(fn => fn());
     return nodes;
   }
-  return { render, requests, inboxStatus, go: p => {
+  return { render, requests, inboxStatus, document, timers, key: e => { for (const fn of listeners.get("keydown") || []) fn(e); }, go: p => {
     const screen = path => ['/permessi', '/settings', '/stats', '/banca-ore', '/orari'].includes(path) ? path : '/';
     if (screen(p) !== screen(pathname)) for (const component of comps.keys()) {
       if (['Supplenze', 'Permessi', 'Settings', 'BackupSection'].includes(component?.name)) comps.delete(component);
@@ -171,8 +182,8 @@ const data = {
 };
 const now = new Date();
 const todayYmd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-async function loaded(over = {}) {
-  const a = app();
+async function loaded(over = {}, campus) {
+  const a = app(undefined, undefined, campus);
   a.render();
   a.requests.shift().resolve({ ...data, ...over });
   await settle();
@@ -416,7 +427,7 @@ test('future tabs show placeholder screens and mark their tab current', () => {
     assert.equal(currentTab(a).props.href, '#' + route, route + ' tab is current');
   }
   a.go('/settings');
-  assert.ok(a.render().find(n => n.props?.className === 'settings'), 'settings shows the management screen');
+  assert.ok(a.render().find(n => n.props?.className?.split(' ').includes('settings')), 'settings shows the management screen');
   assert.equal(currentTab(a).props.href, '#/settings');
   a.go('/');
   assert.ok(!a.render().some(n => n.props?.className === 'stub'), 'Supplenze is not a placeholder');
@@ -525,12 +536,12 @@ test('permit search supports keyboard selection and immediately warns above the 
   for (const h of [1,2,3]) permitHour(a,h).props.onClick();
   assert.equal(a.render().filter(n => n.props?.className === 'warning-icon').length, 3);
   assert.ok(a.render().some(n => n.props?.role === 'alert'));
-  assert.equal(a.render().find(n => n.props?.className === 'permit-save').props.disabled, false);
+  assert.equal(a.render().find(n => n.props?.className?.split(' ').includes('permit-save')).props.disabled, false);
   permitForm(a).props.onSubmit({ preventDefault() {} });
   assert.deepEqual(JSON.parse(a.requests.shift().options.body).hours, [1,2,3]);
   permitHour(a,3).props.onClick();
   assert.equal(a.render().filter(n => n.props?.className === 'warning-icon').length, 0);
-  assert.equal(a.render().find(n => n.props?.className === 'permit-save').props.disabled, false);
+  assert.equal(a.render().find(n => n.props?.className?.split(' ').includes('permit-save')).props.disabled, false);
 });
 
 test('request date is optional, submitted and restored when editing', async () => {
@@ -609,9 +620,10 @@ test('permit recovery register shows dated links, expiry, totals and refreshes o
 const entryData = { ...data, dataset: { ...data.dataset, teachers: {
   a: { id: 'a', name: 'Anna', code: 'A' }, b: { id: 'b', name: 'Barbara', code: 'B' }, c: { id: 'c', name: 'Carla', code: 'C' },
 }, classes: ['1A'] } };
+const openEntry = a => clickText(a, '+ Aggiungi');
 const search = a => a.render().find(n => n.props?.id === 'q');
-const submitEntry = a => a.render().find(n => n.type === 'form' && n.props.className === 'daily-entry').props.onSubmit({ preventDefault() {} });
-const entrySubmit = a => a.render().find(n => n.props?.className === 'entry-submit');
+const submitEntry = a => a.render().find(n => n.type === 'form' && n.props.className === 'entry-form ui-form').props.onSubmit({ preventDefault() {} });
+const entrySubmit = a => a.render().find(n => n.props?.className?.split(' ').includes('entry-submit'));
 const suggestion = (a, name) => a.render().find(n => n.type === 'button' && n.props.children?.[0] === name && n.props.children?.[1]?.type === 'small');
 const pressed = (a, text) => a.render().find(n => n.type === 'button' && n.props.children === text).props['aria-pressed'];
 async function resolveEntry(a, response = entryData) {
@@ -619,7 +631,7 @@ async function resolveEntry(a, response = entryData) {
   a.requests.shift().resolve(response); await settle();
 }
 test('daily selection, explicit submit and Enter retain options for consecutive entries', async () => {
-  const a = await loaded(entryData);
+  const a = await loaded(entryData); openEntry(a);
   assert.equal(pressed(a, 'Tutto il giorno'), true);
   assert.ok(!a.render().some(n => n.props?.children === 'Più giorni'));
   search(a).props.onChange({ target: { value: 'anna' } }); suggestion(a, 'Anna').props.onClick();
@@ -640,7 +652,7 @@ test('daily selection, explicit submit and Enter retain options for consecutive 
   clickText(a, 'Last minute'); assert.equal(pressed(a, 'Last minute'), false);
 });
 test('daily keyboard, invalidation, composition and failed save preserve draft', async () => {
-  const a = await loaded(entryData);
+  const a = await loaded(entryData); openEntry(a);
   search(a).props.onChange({ target: { value: 'a' } });
   search(a).props.onKeyDown({ key: 'ArrowDown', preventDefault() {} });
   search(a).props.onKeyDown({ key: 'Enter', nativeEvent: { isComposing: true }, preventDefault() {} }); assert.equal(a.requests.length, 0);
@@ -650,10 +662,10 @@ test('daily keyboard, invalidation, composition and failed save preserve draft',
   search(a).props.onChange({ target: { value: 'anna' } }); suggestion(a, 'Anna').props.onClick();
   search(a).props.onChange({ target: { value: 'missing' } }); assert.equal(entrySubmit(a).props.disabled, true);
   submitEntry(a); assert.equal(a.requests.length, 0);
-  search(a).props.onKeyDown({ key: 'Escape' }); assert.equal(search(a).props.value, '');
+  a.key({ key: 'Escape', preventDefault() {} }); assert.equal(search(a), undefined); openEntry(a); assert.equal(search(a).props.value, '');
 });
 test('availability and class entries omit classification while defaults and campus persist', async () => {
-  const a = await loaded(entryData); clickText(a, 'Last minute'); clickText(a, 'A disposizione');
+  const a = await loaded(entryData); openEntry(a); clickText(a, 'Last minute'); clickText(a, 'A disposizione');
   assert.ok(!a.render().some(n => n.props?.children === 'Last minute'));
   a.render().find(n => n.props?.className === 'dis-location').props.children[1].props.onChange({ target: { value: 'succursale' } });
   search(a).props.onChange({ target: { value: 'anna' } }); submitEntry(a);
@@ -716,7 +728,7 @@ test('permit dates default to today in Italian format and reject invalid calenda
   permitHour(a, 1).props.onClick();
   for (const value of ['31/02/2026', '10/2026', '02/29/2026']) {
     permitDay(a).props.onChange({ target: { value } });
-    assert.equal(a.render().find(n => n.props?.className === 'permit-save').props.disabled, true);
+    assert.equal(a.render().find(n => n.props?.className?.split(' ').includes('permit-save')).props.disabled, true);
     permitForm(a).props.onSubmit({ preventDefault() {} });
     assert.equal(a.requests.length, 0);
   }
@@ -728,7 +740,7 @@ test('permit dates default to today in Italian format and reject invalid calenda
   assert.equal(body.requested_on, null);
 });
 
-test('saved over-limit permits keep warnings and highlight name and remaining hours', async () => {
+test('saved over-limit permits keep warnings and identify outstanding balances', async () => {
   const a = await permitsLoaded({ '2026-10-12': { t: [1,2,3] } });
   assert.equal(a.render().filter(n => n.props?.className === 'warning-icon').length, 3);
   assert.ok(a.render().some(n => n.props?.className === 'permit-outstanding'));
@@ -745,7 +757,7 @@ test('manual permits save an undated number of hours without absence fields', as
   permitTeacher(a).props.onKeyDown({ key: 'Enter', preventDefault() {} });
   const total = () => a.render().find(n => n.props?.['aria-label'] === 'Ore totali da recuperare');
   total().props.onChange({ target: { value: '8' } });
-  assert.equal(a.render().find(n => n.props?.className === 'permit-save').props.disabled, false);
+  assert.equal(a.render().find(n => n.props?.className?.split(' ').includes('permit-save')).props.disabled, false);
   permitForm(a).props.onSubmit({ preventDefault() {} });
   const req = a.requests.shift();
   assert.equal(req.url, '/api/manual-permits');
@@ -829,7 +841,7 @@ test('daily info combines source notes and keeps permit-only information', async
 });
 
 test('trip choice saves teacher classification and groups mixed sources once', async () => {
-  const a = await loaded(entryData);
+  const a = await loaded(entryData); openEntry(a);
   clickText(a, 'In gita');
   search(a).props.onChange({ target: { value: 'anna' } }); submitEntry(a);
   assert.equal(JSON.parse(a.requests[0].options.body).classification, 'trip');
@@ -863,8 +875,53 @@ test('Settings delegates timetable imports to the reviewed version import flow',
   assert.equal(a.requests.filter(r => r.url.startsWith('/api/timetable')).length, 0);
 });
 
+test('Settings groups share independent native disclosures and theme changes preserve workflow identity', () => {
+  const a = app(); a.go('/settings');
+  const nodes = a.render();
+  assert.deepEqual(nodes.filter(node => node.props?.className === 'settings-group-title').map(node => node.props.children), ['Orari e ricevimenti', 'Regole supplenze', 'Collegamenti', 'Dati e backup', 'Aspetto']);
+  const groups = nodes.filter(node => node.props?.className?.split(' ').includes('settings-group'));
+  assert.equal(groups.length, 5);
+  assert.ok(groups.every(node => node.type === 'details' && !node.props.open && !node.props.name));
+  assert.equal(a.requests.filter(request => request.options?.method === 'POST').length, 0);
+  const importer = nodes.find(node => node.type === 'timetable-import');
+  nodes.find(node => node.type === 'button' && node.props.children === 'Chiaro / scuro').props.onClick();
+  assert.equal(a.render().find(node => node.type === 'timetable-import').type, importer.type);
+  assert.equal(a.requests.filter(request => request.options?.method === 'POST').length, 0);
+});
+
+test('Settings backup restore requires a named confirmation and exposes failures without removing the backup', async () => {
+  let accepted = false; const prompts = [];
+  const a = app(undefined, message => { prompts.push(message); return accepted; }); a.go('/settings'); a.render();
+  a.requests.find(request => request.url === '/api/backups').resolve([{filename:'before.sqlite', created_at:'2026-10-21T09:00:00', size:2048}]);
+  await settle();
+  let restore = a.render().find(node => node.type === 'button' && node.props.children === 'Ripristina');
+  await restore.props.onClick();
+  assert.match(prompts[0], /before.sqlite.*sovrascritti/);
+  assert.equal(a.requests.filter(request => request.url === '/api/backups/restore').length, 0);
+  accepted = true; restore.props.onClick();
+  const request = a.requests.find(request => request.url === '/api/backups/restore');
+  assert.deepEqual(JSON.parse(request.options.body), {filename:'before.sqlite', confirm:true});
+  request.resolve({detail:'Ripristino fallito'}, false); await settle();
+  assert.ok(a.render().some(node => node.props?.role === 'alert' && String(node.props.children).includes('Ripristino fallito')));
+  assert.ok(a.render().some(node => node.type === 'button' && node.props.children === 'Ripristina' && !node.props.disabled));
+  a.render().find(node => node.type === 'button' && node.props.children === 'Ripristina').props.onClick();
+  a.requests.filter(request => request.url === '/api/backups/restore').at(-1).resolve({ok:true}); await settle();
+  a.requests.filter(request => request.url === '/api/backups').at(-1).resolve([{filename:'before.sqlite', created_at:'2026-10-21T09:00:00', size:2048}]); await settle();
+  assert.ok(a.render().some(node => node.props?.role === 'status' && node.props.children === 'Backup ripristinato con successo.'));
+  assert.ok(a.requests.filter(request => request.url.startsWith('/api/day/')).length > 1, 'successful restore refreshes Settings data');
+});
+
+test('Settings JSON restore names the file and cancel performs no import', async () => {
+  const prompts = []; const a = app(undefined, message => { prompts.push(message); return false; }); a.go('/settings'); a.render();
+  a.render().find(node => node.props?.type === 'file' && node.props.accept === '.json,application/json').props.onChange({target:{files:[{name:'archive.json',text:async()=>'{"schema":7}'}]}});
+  await settle();
+  a.requests.find(request => request.url === '/api/import/preview').resolve({overrides:[]}); await settle();
+  assert.match(prompts[0], /archive.json.*sostituiti/);
+  assert.equal(a.requests.filter(request => request.url === '/api/import').length, 0);
+});
+
 test('new absence note saves with teacher, survives failure and clears after success or source/date changes', async () => {
-  const a = await loaded(entryData);
+  const a = await loaded(entryData); openEntry(a);
   const draft = () => noteField(a, 'Note nuova assenza');
   assert.ok(draft());
   search(a).props.onChange({ target: { value: 'anna' } }); suggestion(a, 'Anna').props.onClick();
@@ -888,7 +945,7 @@ test('new absence note saves with teacher, survives failure and clears after suc
   search(a).props.onChange({ target: { value: 'bar' } });
   draft().props.onChange({ target: { value: 'date note' } });
   a.render().find(n => n.props?.className === 'd').props.onClick(); a.render();
-  assert.equal(draft().props.value, '');
+  assert.equal(draft(), undefined); openEntry(a); assert.equal(draft().props.value, '');
 });
 
 test('both Permessi creation modes show notes before teacher selection and save manual balance drafts', async () => {
@@ -976,7 +1033,7 @@ test('entry and exit blocks show one boundary time and persist Comunicato', asyn
 
 
 test('Inbox status changes preserve the active absence draft and current route', async () => {
-  const a = await loaded(entryData);
+  const a = await loaded(entryData); openEntry(a);
   search(a).props.onChange({ target: { value: 'anna' } });
   suggestion(a, 'Anna').props.onClick();
   noteField(a, 'Note nuova assenza').props.onChange({ target: { value: 'keep draft' } });
@@ -1066,4 +1123,76 @@ test('stale metadata save keeps text and baseline until explicit reload', async 
   assert.ok(a.render().some(n => n.type === 'button' && n.props.children === 'Ricarica valori salvati'));
   a.render().find(n => n.type === 'button' && n.props.children === 'Salva nota e allegato').props.onClick();
   assert.equal(a.requests.length, 0, 'no silent retry with a fresh baseline');
+});
+
+const entryDialog = a => a.render().find(n => n.props?.role === 'dialog' && n.props['aria-labelledby'] === 'entry-title');
+const descendants = node => !node || typeof node !== 'object' ? [] : Array.isArray(node) ? node.flatMap(descendants) : [node, ...descendants(node.props?.children)];
+test('entry dialog trigger, dismissal, focus trap, draft reset and refresh pause', async () => {
+  const a = await loaded(entryData);
+  assert.equal(entryDialog(a), undefined);
+  assert.ok(!descendants(a.render().find(n => n.type === 'aside')).some(n => n.type === 'form'));
+  let focused = '';
+  a.document.getElementById = () => ({ focus() { focused = 'search'; } });
+  const trigger = a.render().find(n => n.props?.className === 'ui-button entry-trigger');
+  trigger.props.ref.current = { focus() { focused = 'trigger'; } };
+  openEntry(a); assert.ok(entryDialog(a)); assert.equal(focused, 'search');
+  assert.equal(a.render().find(n => n.props?.className === 'app ui-scope supplenze').props.inert, true);
+  const first = { focus() { focused = 'first'; } }, last = { focus() { focused = 'last'; } };
+  entryDialog(a).props.ref.current = { querySelectorAll: () => [first, last] };
+  a.document.activeElement = last;
+  let prevented = false;
+  a.key({ key: 'Tab', preventDefault() { prevented = true; } });
+  assert.equal(focused, 'first'); assert.equal(prevented, true);
+  a.document.activeElement = first; a.key({ key: 'Tab', shiftKey: true, preventDefault() {} }); assert.equal(focused, 'last');
+  for (const timer of a.timers) timer(); await settle(); assert.equal(a.requests.length, 0);
+  search(a).props.onChange({ target: { value: 'anna' } });
+  noteField(a, 'Note nuova assenza').props.onChange({ target: { value: 'discard' } });
+  a.key({ key: 'Escape', preventDefault() {} }); assert.equal(entryDialog(a), undefined); assert.equal(focused, 'trigger');
+  openEntry(a); assert.equal(search(a).props.value, ''); assert.equal(noteField(a, 'Note nuova assenza').props.value, '');
+  const backdrop = a.render().find(n => n.props?.className === 'entry-backdrop');
+  backdrop.props.onClick({ target: {}, currentTarget: {} }); assert.ok(entryDialog(a), 'inside click keeps dialog open');
+  const outside = {}; backdrop.props.onClick({ target: outside, currentTarget: outside }); assert.equal(entryDialog(a), undefined);
+  openEntry(a); a.render().find(n => n.props?.['aria-label'] === 'Chiudi inserimento').props.onClick(); assert.equal(entryDialog(a), undefined);
+  for (const timer of a.timers) timer(); await settle(); assert.equal(a.requests.length, 1, 'polling resumes after close');
+});
+test('opening entry cancels pending candidates and opening candidates closes entry', async () => {
+  const a = await loaded(entryData);
+  slot(a).props.onClick(); openEntry(a); a.requests.shift().resolve([]); await settle();
+  assert.ok(entryDialog(a)); assert.equal(drawer(a), undefined);
+  slot(a).props.onClick(); a.requests.shift().resolve([]); await settle();
+  assert.equal(entryDialog(a), undefined); assert.ok(drawer(a));
+  openEntry(a); assert.ok(entryDialog(a)); assert.equal(drawer(a), undefined);
+});
+test('entry campus defaults to account, persists explicit selection, confirms saves and blocks duplicates', async () => {
+  const a = await loaded(entryData, 'succursale'); openEntry(a); clickText(a, 'A disposizione');
+  const campus = () => a.render().find(n => n.props?.className === 'dis-location').props.children[1];
+  assert.equal(campus().props.value, 'succursale');
+  campus().props.onChange({ target: { value: 'centrale' } });
+  search(a).props.onChange({ target: { value: 'anna' } }); submitEntry(a);
+  const saved = { ...entryData, state: { ...data.state, dis: { [todayYmd]: { a: [1] } } } };
+  await resolveEntry(a, saved);
+  assert.equal(campus().props.value, 'centrale');
+  assert.ok(descendants(entryDialog(a)).some(n => n.props?.role === 'status' && n.props.children.includes('Anna: registrazione aggiunta')));
+  search(a).props.onChange({ target: { value: 'anna' } }); suggestion(a, 'Anna').props.onClick();
+  assert.equal(entrySubmit(a).props.disabled, true); submitEntry(a); assert.equal(a.requests.length, 0);
+  assert.ok(descendants(entryDialog(a)).some(n => n.props?.role === 'status' && JSON.stringify(n.props.children).includes('già registrato')));
+});
+test('entry failures and conflicting saved values are recoverable inside dialog', async () => {
+  const a = await loaded(entryData); openEntry(a);
+  search(a).props.onChange({ target: { value: 'anna' } }); submitEntry(a);
+  a.requests.shift().resolve({ detail: 'failure' }, false); await settle();
+  assert.ok(descendants(entryDialog(a)).some(n => n.props?.role === 'alert' && n.props.children.includes('failure')));
+  submitEntry(a); a.requests.shift().resolve({ detail: 'changed' }, false, 409); await settle();
+  a.requests.shift().resolve({ ...entryData, state: { ...data.state, abs: { [todayYmd]: { a: [2,3] } }, absenceNotes: { [todayYmd]: { a: 'remote note' } } } }); await settle();
+  assert.ok(descendants(entryDialog(a)).some(n => n.props?.role === 'status' && n.props.children.includes('Ore salvate: 2, 3') && n.props.children.includes('remote note')));
+  assert.equal(search(a).props.value, 'anna');
+  const reload = descendants(entryDialog(a)).find(n => n.type === 'button' && n.props.children === 'Ricarica valori salvati');
+  const pending = reload.props.onClick(); a.requests.shift().resolve(entryData); await pending;
+  assert.ok(entryDialog(a)); assert.equal(search(a).props.value, ''); assert.equal(entrySubmit(a).props.disabled, true);
+});
+test('recorded classes also explain duplicate prevention', async () => {
+  const a = await loaded({ ...entryData, state: { ...data.state, cf: { [todayYmd]: { '1A': [2] } } } }); openEntry(a);
+  search(a).props.onChange({ target: { value: '1A' } }); suggestion(a, '1A').props.onClick();
+  assert.equal(entrySubmit(a).props.disabled, true); submitEntry(a); assert.equal(a.requests.length, 0);
+  assert.ok(descendants(entryDialog(a)).some(n => n.props?.role === 'status' && JSON.stringify(n.props.children).includes('già registrato')));
 });

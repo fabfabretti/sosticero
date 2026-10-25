@@ -35,7 +35,7 @@ export function TimetableImport({ api, onImported }: { api: <T>(url: string, bod
     finally { setBusy(false); }
   };
   const names = (ids: string[], old = false) => ids.map(id => `${(old ? impact?.previousTeachers?.[id] : impact?.teachers[id]) || id} (${id})`).join(', ') || 'Nessuno';
-  return <section className="timetable-import" aria-label="Importa versione orario">
+  return <section className="settings-subsection ui-form" aria-label="Importa versione orario">
     <h2>Orario</h2>
     <p>Seleziona il JSON completo di docenti e lezioni. Ogni versione vale dalla decorrenza fino alla successiva; gli ID dei docenti devono restare stabili.</p>
     <label>Decorrenza <input type="date" value={effective} disabled={busy} required onChange={e => { invalidate(); setEffective(e.target.value); }} /></label>
@@ -46,13 +46,13 @@ export function TimetableImport({ api, onImported }: { api: <T>(url: string, bod
       catch { if (n === request.current) setError('File JSON non valido.'); }
     }} /></label>
     {file && <p>{file.name}</p>}
-    <button className="permit-save" disabled={busy || !file || !effective} onClick={preview}>{busy ? 'Elaborazione…' : 'Mostra anteprima'}</button>
-    {error && <p role="alert">{error} Genera nuovamente l’anteprima prima di confermare.</p>}
-    {success && <p role="status">{success}</p>}
-    {impact && <div className="timetable-preview" aria-label="Anteprima importazione">
+    <button className="ui-button ui-button-primary" disabled={busy || !file || !effective} onClick={preview}>{busy ? 'Elaborazione…' : 'Mostra anteprima'}</button>
+    {error && <p className="ui-notice ui-notice-error" role="alert">{error} Genera nuovamente l’anteprima prima di confermare.</p>}
+    {success && <p className="ui-notice" role="status">{success}</p>}
+    {impact && <div className="ui-surface settings-preview" aria-label="Anteprima importazione">
       <h3>Impatto dell’importazione</h3>
       <p>{impact.initial ? 'Primo orario: sarà la versione iniziale anche per le date precedenti.' : `Dal ${impact.effective} ${impact.end ? 'al ' + impact.end : 'fino alla prossima versione'}.`} Le date fuori da questo intervallo restano invariate.</p>
-      {effective < todayInRome() && <p role="alert">Decorrenza nel passato: confermando correggi anche le giornate già registrate nell’intervallo.</p>}
+      {effective < todayInRome() && <p className="ui-notice ui-notice-error" role="alert">Decorrenza nel passato: confermando correggi anche le giornate già registrate nell’intervallo.</p>}
       <p>{impact.changedLessons} lezioni settimanali cambiate · {impact.days.length} giornate registrate coinvolte.</p>
       <p>Docenti aggiunti: {names(impact.added)}</p><p>Docenti rimossi: {names(impact.removed, true)}</p><p>Anagrafiche modificate: {names(impact.changedTeachers)}</p>
       {(impact.added.length > 0 || impact.removed.length > 0) && <p>Controlla gli ID: rimozioni e aggiunte non trasferiscono le registrazioni tra docenti. Verifica che il file sia completo.</p>}
@@ -65,8 +65,9 @@ export function TimetableImport({ api, onImported }: { api: <T>(url: string, bod
         {d.references.map((r, n) => <p key={n}>{r.id}: {r.message}</p>)}
       </details>)}
       <p>Un backup verificato sarà creato prima dell’applicazione. Le assegnazioni non vengono cancellate o spostate automaticamente.</p>
-      <button className="permit-save" disabled={busy} onClick={apply}>Conferma importazione</button>{' '}
-      <button disabled={busy} onClick={() => { invalidate(); setFile(undefined); }}>Annulla</button>
+      <div className="ui-actions"><button className="ui-button ui-button-primary" disabled={busy} onClick={apply}>Conferma importazione</button>
+      <button className="ui-button" disabled={busy} onClick={() => { invalidate(); setFile(undefined); }}>Annulla</button>
+      </div>
     </div>}
   </section>;
 }

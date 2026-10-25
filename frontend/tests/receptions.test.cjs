@@ -36,8 +36,8 @@ test('uncertain matches require selection and a refreshed preview before import'
   assert.equal(screen.button('Conferma ricevimenti').props.disabled, true);
   const search = screen.render().find(node => node.props?.['aria-label'] === 'Docente Riga 2 Rossi');
   search.props.onChange({ target: { value: 'Rossi Mario [one]', setCustomValidity() {} } });
-  assert.equal(screen.button('Conferma ricevimenti').props.disabled, true);
-  await screen.button('Mostra anteprima ricevimenti').props.onClick();
+  assert.equal(screen.button('Verifica abbinamenti').props.disabled, false);
+  await screen.button('Verifica abbinamenti').props.onClick();
   assert.equal(screen.button('Conferma ricevimenti').props.disabled, false);
   await screen.button('Conferma ricevimenti').props.onClick();
   assert.equal(calls.find(([url]) => url === 'receptions' && calls.length)[1].choices['2'].teacher, 'one');
@@ -49,7 +49,7 @@ test('location edits, explicit skips, date changes and cancellation invalidate c
   const screen = mount(async (url, data) => { calls.push([url, data]); return { ...impact, ready: true }; }, () => false);
   await screen.file(); await screen.button('Mostra anteprima ricevimenti').props.onClick();
   screen.render().find(node => node.type === 'select').props.onChange({ target: { value: 'succursale' } });
-  assert.equal(screen.button('Conferma ricevimenti').props.disabled, true);
+  assert.equal(screen.button('Verifica abbinamenti').props.disabled, false);
   screen.render().find(node => node.props?.type === 'checkbox').props.onChange({ target: { checked: true } });
   await screen.button('Mostra anteprima ricevimenti').props.onClick();
   assert.equal(calls.at(-1)[1].choices['2'].skip, true);
@@ -57,7 +57,7 @@ test('location edits, explicit skips, date changes and cancellation invalidate c
   await screen.button('Conferma ricevimenti').props.onClick();
   assert.equal(calls.filter(([url]) => url === 'receptions').length, 0);
   screen.render().find(node => node.props?.type === 'date').props.onChange({ target: { value: '2026-11-02' } });
-  assert.equal(screen.button('Conferma ricevimenti').props.disabled, true);
+  assert.equal(screen.button('Verifica abbinamenti').props.disabled, false);
 });
 
 test('candidate drawer keeps uncertain reception adjacency outside the favorable group', () => {
@@ -74,4 +74,39 @@ test('candidate drawer keeps uncertain reception adjacency outside the favorable
   assert.deepEqual(nodes.filter(node => node.type === 'h3').map(node => node.props.children), ['Recuperi permesso · ore favorevoli', 'Altri recuperi permesso']);
   assert.ok(nodes.some(node => node.props?.className === 'tag' && node.props.children.includes('Potenzialmente favorevole · sede da verificare')));
   assert.equal(nodes.filter(node => node.props?.className?.startsWith('c1')).at(-1).props.disabled, true);
+});
+
+test('unresolved rows come first and keep their position until preview refresh', async () => {
+  const rows = [
+    { ...impact.rows[0], row: 2, name: 'Matched', teacher: 'one' },
+    { ...impact.rows[0], row: 3, name: 'Missing' },
+    { ...impact.rows[0], row: 4, name: 'Conflict', teacher: 'one', error: 'Conflitto' },
+    { ...impact.rows[0], row: 5, name: 'Skipped', skip: true },
+  ];
+  const screen = mount(async (_url, data) => ({ ...impact, rows: rows.map(row => ({ ...row, ...data.choices[row.row] })) }));
+  await screen.file(); await screen.button('Mostra anteprima ricevimenti').props.onClick();
+  const tableRows = () => screen.render().filter(node => node.type === 'tr' && node.props.children[0]?.type === 'td');
+  const names = () => tableRows().map(node => node.props.children[0].props.children[2]);
+  assert.deepEqual(names(), ['Missing', 'Conflict', 'Matched', 'Skipped']);
+  assert.equal(tableRows().filter(node => node.props.className === 'reception-row-unresolved').length, 2);
+  screen.render().find(node => node.props?.['aria-label'] === 'Docente Riga 3 Missing').props.onChange({ target: { value: 'Rossi Mario [one]', setCustomValidity() {} } });
+  assert.deepEqual(names(), ['Missing', 'Conflict', 'Matched', 'Skipped']);
+  assert.equal(screen.button('Conferma ricevimenti'), undefined);
+  assert.equal(screen.button('Verifica abbinamenti').props.disabled, false);
+  await screen.button('Verifica abbinamenti').props.onClick();
+  assert.deepEqual(names(), ['Conflict', 'Matched', 'Missing', 'Skipped']);
+  assert.equal(tableRows().filter(node => node.props.className === 'reception-row-unresolved').length, 1);
+});
+
+test('typed names must match a suggestion and failed verification explains the next action', async () => {
+  let imports = 0;
+  const screen = mount(async (url) => { if (url === 'receptions') imports++; return impact; });
+  await screen.file(); await screen.button('Mostra anteprima ricevimenti').props.onClick();
+  screen.render().find(node => node.props?.['aria-label'] === 'Docente Riga 2 Rossi').props.onChange({ target: { value: 'Rossi', setCustomValidity() {} } });
+  assert.equal(screen.button('Verifica abbinamenti').props.disabled, false);
+  assert.ok(screen.render().some(node => node.type === 'td' && node.props.children.includes('Seleziona un docente dall’elenco dei suggerimenti')));
+  await screen.button('Verifica abbinamenti').props.onClick();
+  assert.equal(screen.button('Conferma ricevimenti').props.disabled, true);
+  assert.ok(screen.render().some(node => node.props?.role === 'status' && Array.isArray(node.props.children) && node.props.children.join('').includes('Importazione bloccata')));
+  assert.equal(imports, 0);
 });

@@ -68,8 +68,9 @@ input:focus-visible {
 }
 .app {
   display: grid;
-  grid-template-columns: 320px 1fr;
-  min-height: 100vh;
+  grid-template-columns: 410px 1fr;
+  flex: 1;
+  min-height: 0;
 }
 aside {
   background: var(--pan);
@@ -193,9 +194,6 @@ select {
   padding: 6px 8px;
   min-width: 0;
 }
-#q {
-  width: 100%;
-}
 .sw {
   position: relative;
 }
@@ -223,33 +221,6 @@ select {
 .sug small {
   color: var(--mute);
 }
-.until {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 6px;
-  color: var(--mute);
-  font-size: 13px;
-}
-.until input {
-  flex: 1;
-}
-.rw {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 3px 0;
-  border-top: 1px solid var(--line);
-}
-.rw .n {
-  flex: 1;
-  min-width: 0;
-  text-align: left;
-  font-size: 14px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
 .lk {
   color: var(--acc);
   font-size: 13px;
@@ -260,7 +231,7 @@ select {
   display: flex;
   gap: 2px;
 }
-.hrs button, .inbox-hours span {
+.hrs button {
   width: 21px;
   height: 22px;
   font-size: 12px;
@@ -268,7 +239,7 @@ select {
   border-radius: 3px;
   color: var(--mute);
 }
-.hrs button.on, .inbox-hours span.on {
+.hrs button.on {
   background: var(--acc);
   border-color: var(--acc);
   color: var(--on);
@@ -282,66 +253,10 @@ select {
 .x:hover {
   color: var(--ink);
 }
-.rw .n:hover {
-  color: var(--acc);
-}
-/* Una sola riga compatta per ogni docente. */
-.app {
-  grid-template-columns: 410px 1fr;
-}
-.rw {
-  flex-wrap: nowrap;
-  gap: 4px;
-  padding: 3px 0;
-}
-.rw .n {
-  flex: 1 1 auto;
-  min-width: 80px;
-  width: auto;
-  font-weight: 500;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.rw .hrs {
-  flex: 0 0 auto;
-  gap: 2px;
-}
-.rw .hrs button {
-  width: 19px;
-  height: 22px;
-  font-size: 11px;
-}
-.rw select[data-dis-site] {
-  flex: 0 0 46px;
-  width: 46px;
-  min-width: 0;
-  padding: 2px;
-  font-size: 11px;
-}
-.rw .x {
-  flex: 0 0 17px;
-  width: 17px;
-}
 @media (max-width: 900px) {
   .app {
     grid-template-columns: 1fr;
   }
-  .rw .n {
-    min-width: 70px;
-  }
-}
-
-.lists {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-}
-.lists h2 {
-  margin: 8px 0 2px;
-}
-.lists h2:first-child {
-  margin-top: 0;
 }
 table {
   width: 100%;
@@ -362,174 +277,6 @@ thead th {
   font-weight: 500;
   background: var(--bg);
 }
-tr.h th {
-  background: var(--bg);
-  color: var(--ink);
-  font-weight: 650;
-  font-size: 14px;
-  padding: 7px 12px;
-  border-top: 1px solid var(--ink);
-}
-td.c {
-  width: 90px;
-}
-td.f {
-  width: 150px;
-}
-td.f span {
-  display: block;
-  border-bottom: 1px dotted var(--mute);
-  height: 18px;
-}
-td.none {
-  color: var(--mute);
-}
-.fill {
-  width: 100%;
-  min-height: 34px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  text-align: left;
-  border-bottom: 2px solid var(--acc);
-  color: var(--acc);
-  font-weight: 600;
-  padding: 0 4px;
-  border-radius: 3px 3px 0 0;
-}
-.fill:hover,
-.fill.open {
-  background: var(--soft);
-}
-.fill.ph {
-  font-weight: 500;
-  border-bottom: 2px dashed var(--acc);
-  opacity: 0.75;
-}
-.fill small {
-  font-weight: 400;
-  color: var(--mute);
-  font-size: 12px;
-  margin-left: auto;
-}
-.clr {
-  color: var(--mute);
-  margin-left: 4px;
-}
-.dr-backdrop {
-  position: fixed;
-  inset: 0;
-  /* Below the drawer (20) but above the sticky top bar (10): clicks land here and close. */
-  z-index: 15;
-}
-.dr {
-  position: fixed;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  /* Above the sticky top bar (z-index 10) so the drawer is not covered. */
-  z-index: 20;
-  width: 420px;
-  max-width: 100%;
-  background: var(--pan);
-  border-left: 2px solid var(--acc);
-  display: flex;
-  flex-direction: column;
-  padding-top: env(safe-area-inset-top, 0px);
-  padding-bottom: env(safe-area-inset-bottom, 0px);
-  animation: in 0.14s ease-out;
-}
-@keyframes in {
-  from {
-    transform: translateX(24px);
-    opacity: 0;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .dr {
-    animation: none;
-  }
-}
-.dr header {
-  padding: 18px 20px 12px;
-  border-bottom: 1px solid var(--line);
-  display: flex;
-  gap: 10px;
-}
-.dr header div {
-  flex: 1;
-}
-.dr header b {
-  font-size: 17px;
-  font-weight: 650;
-}
-.dr header p {
-  margin: 2px 0 0;
-  color: var(--mute);
-}
-.lst {
-  overflow: auto;
-  flex: 1;
-}
-.c1 {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  width: 100%;
-  padding: 11px 20px;
-  border-bottom: 1px solid var(--line);
-  text-align: left;
-}
-.c1:hover:not(:disabled) {
-  background: var(--soft);
-}
-.c1 .m {
-  flex: 1;
-  min-width: 0;
-}
-.c1 .m b {
-  font-weight: 600;
-  display: block;
-}
-.tag {
-  display: inline-block;
-  font-size: 12.5px;
-  margin-top: 2px;
-  color: var(--mute);
-}
-.tag.p {
-  color: var(--acc);
-  font-weight: 600;
-}
-.c1 .ct {
-  text-align: right;
-  font-size: 13px;
-  color: var(--mute);
-  white-space: nowrap;
-}
-.c1 .ct b {
-  color: var(--ink);
-  font-weight: 600;
-}
-.c1.sel {
-  background: var(--soft);
-}
-.c1:disabled {
-  cursor: default;
-}
-.c1:disabled .m b {
-  text-decoration: line-through;
-  color: var(--mute);
-  font-weight: 500;
-}
-.c1:disabled .ct {
-  opacity: 0.55;
-}
-.note {
-  color: var(--mute);
-  font-size: 13px;
-  margin-top: 14px;
-}
 @media (max-width: 900px) {
   .app {
     grid-template-columns: 1fr;
@@ -548,17 +295,9 @@ td.none {
   td {
     padding: 8px 6px;
   }
-  td.f,
   thead th:last-child {
     display: none;
   }
-  .dr {
-    width: 100%;
-  }
-}
-.dataset {
-  border-bottom: 1px solid var(--line);
-  padding-bottom: 12px;
 }
 .upload-btn {
   display: block;
@@ -642,17 +381,6 @@ td.none {
   background: #e5e7eb;
   color: #414651;
 }
-/* Fuori sede: versione attenuata della medesima famiglia cromatica. */
-.type-chip-wrapper.cross-site .type-chip {
-  filter: grayscale(0.66) brightness(0.68);
-  opacity: 0.76;
-}
-.c1.cross-site {
-  background: color-mix(in srgb, var(--pan) 94%, var(--mute) 6%);
-}
-.c1.cross-site .m b {
-  opacity: 0.82;
-}
 .site-filter {
   display: flex;
   gap: 5px;
@@ -672,170 +400,11 @@ td.none {
   border-color: var(--acc);
   font-weight: 600;
 }
-.c1 .m .tag {
-  display: block;
-}
-.c1 .m .type-chip {
-  display: inline-flex;
-}
-.site-chip {
-  display: inline-block;
-  font-size: 11px;
-  line-height: 1.35;
-  padding: 2px 6px;
-  border-radius: 3px;
-  background: var(--soft);
-  color: var(--ink);
-  white-space: nowrap;
-  margin-top: 3px;
-}
-.site-chip.succursale {
-  background: #fff0b3;
-  color: #755000;
-}
-.site-chip.centrale {
-  background: #d7f4df;
-  color: #155b32;
-}
-.room-cell {
-  font-size: 12px;
-  color: var(--mute);
-  white-space: nowrap;
-}
-.room-cell b {
-  color: var(--ink);
-  font-size: 13px;
-}
-@media (max-width: 900px) {
-  .room-cell {
-    white-space: normal;
-  }
-}
-.dis-location {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  margin: 6px 0;
-  font-size: 12px;
-  color: var(--mute);
-}
-.dis-location select {
-  padding: 3px 4px;
-  font-size: 12px;
-  max-width: 108px;
-}
-.dis-picker {
-  margin-top: 7px;
-}
-.dis-picker select {
-  flex: 1;
-  max-width: none;
-}
-.archive-actions {
-  display: flex;
-  gap: 6px;
-  margin-top: 8px;
-  flex-wrap: wrap;
-}
-.archive-actions button,
-.archive-actions label {
-  font-size: 12px;
-  padding: 5px 8px;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  cursor: pointer;
-}
-.archive-actions button:hover,
-.archive-actions label:hover {
-  background: var(--soft);
-}
-/* Profilo candidato: ruolo, classe di concorso, classi della settimana */
-.c1 .m .prof {
-  display: block;
-  margin-top: 4px;
-}
-.c1 .m .cdc {
-  display: block;
-  font-size: 12px;
-  color: var(--mute);
-}
-.c1 .m .cls {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 3px;
-  margin-top: 3px;
-}
-.c1 .m .cls .chip {
-  font-size: 10.5px;
-  line-height: 1.6;
-  padding: 0 5px;
-  border: 1px solid var(--line);
-  border-radius: 3px;
-  color: var(--mute);
-}
-.c1 .m .cls .chip.in {
-  background: var(--soft);
-  color: var(--ink);
-  border-color: var(--acc);
-  font-weight: 600;
-}
-.c1 .m .badge {
-  display: inline-block;
-  margin-top: 3px;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--ink);
-  background: var(--soft);
-  padding: 1px 6px;
-  border-radius: 3px;
-}
-/* Entrata/uscita sempre visibili ma non applicabili: attenuate, senza barrato */
-.c1.off {
-  opacity: 0.55;
-}
-.c1.off .m b,
-.c1.off .ct {
-  text-decoration: none;
-}
-.c1 .m .info {
-  display: block;
-  font-style: normal;
-  font-size: 11.5px;
-  color: var(--mute);
-  margin-top: 2px;
-}
-/* Disponibilità automatica: ore bloccate in sidebar */
-.hrs button.auto {
-  background: var(--soft);
-  border-color: var(--acc);
-  color: var(--acc);
-  font-weight: 600;
-  cursor: not-allowed;
-}
-.hrs button.assigned {
-  background: #fff0b3;
-  border-color: #755000;
-  color: #755000;
-  text-decoration: underline;
-}
-.rw .n .auto-dot {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--acc);
-  margin-right: 5px;
-}
 /* App shell: top bar, tabs, placeholder screens, credits footer */
 .shell {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
-}
-.app {
-  flex: 1;
-  /* Overrides the earlier min-height:100vh now that .shell owns the viewport. */
-  min-height: 0;
 }
 .bar {
   position: sticky;
@@ -896,55 +465,13 @@ td.none {
   text-align: center;
 }
 
-.permessi { grid-template-columns: 410px minmax(0, 1fr); }
-.permessi > aside { border-right: 1px solid var(--line); }
 .app > main { width: 100%; margin-inline: auto; }
-.permit-form { margin: 0; }
-.permit-form h2 { margin-top: 0; }
-.permit-form fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: 12px; }
-.permit-form label { display: grid; gap: 6px; }
-.permit-form input { width: 100%; }
-.permit-form .sub { flex-basis: 100%; margin: 0; }
-.permit-hours { margin-top: 6px; }
-.permit-hours button { width: 24px; height: 24px; }
-.permit-save { background: var(--acc); color: var(--on); border-radius: 3px; padding: 6px 8px; font-size: 13px; }
-.permit-save:disabled { opacity: .5; cursor: not-allowed; }
-.permit-table { overflow-x: auto; }
-.permit-period { display: inline-flex; gap: 4px; align-items: center; margin-right: 12px; }
-.permit-actions button { padding: 8px; }
 .hour-help { display: inline-block; position: relative; }
 .hour-help:focus-visible { outline: 2px solid var(--acc); outline-offset: 3px; }
 /* Fixed so it escapes the sidebar's scroll/overflow clipping; position set by HourHelp. */
 .tip { position: fixed; z-index: 30; width: 230px; padding: 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--pan); color: var(--ink); font-size: 13px; font-weight: normal; box-shadow: 0 4px 12px #0002; }
 .warning-icon { width: 18px; height: 18px; color: #a65b00; vertical-align: middle; }
-.reminder { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-left: 3px solid #a65b00; background: var(--soft); border-radius: 0 4px 4px 0; font-size: 13px; }
-.permit-form [role="alert"] { color: #c34242; }
-@media (max-width: 900px) { .permessi { grid-template-columns: 1fr; } .permessi > aside { order: 0; border-left: 0; } }
-.permessi thead th:last-child { display: table-cell; }
-.permit-hours { flex-wrap: wrap; gap: 8px; }
 
-.permit-teacher { min-width: 0; }
-.permit-teacher > label { margin-bottom: 6px; }
-.permit-hour { position: relative; }
-.permit-hour > .hour-help { position: absolute; top: 28px; left: 50%; margin-left: -9px; }
-.permit-period { position: relative; padding-bottom: 22px; }
-.permit-period > .hour-help { position: absolute; top: 24px; left: 50%; margin-left: -9px; }
-
-.permit-form .permit-hours { height: 48px; gap: 8px; flex-wrap: nowrap; }
-.permit-feedback { height: 80px; overflow-y: auto; margin-top: 12px; font-size: 13px; }
-.permit-feedback p { margin: 0; }
-.permit-form .sub { font-size: 12px; }
-
-.hour-types { margin: 24px 0; padding: 24px; background: var(--pan); border: 1px solid var(--line); border-radius: 12px; }
-.hour-types h2 { margin-top: 0; }
-.hour-types fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
-.hour-type-head, .hour-type-row { display: grid; grid-template-columns: minmax(140px, 1.3fr) repeat(3, minmax(100px, 1fr)); align-items: center; gap: 12px; padding: 14px 0; }
-.hour-type-head { color: var(--mute); font-size: 13px; }
-.hour-type-row { border-top: 1px solid var(--line); }
-.hour-type-row small { display: block; color: var(--mute); margin-top: 6px; font-size: 12px; }
-.hour-type-row label { min-height: 44px; display: flex; align-items: center; gap: 8px; cursor: pointer; }
-.hour-type-row input { width: 20px; height: 20px; accent-color: var(--acc); }
-.mobile-label { display: none; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 .palette-blue { background: #dbeafe; color: #1e3a8a; }
 .palette-green { background: #dcfce7; color: #14532d; }
@@ -952,35 +479,6 @@ td.none {
 .palette-amber { background: #fef3c7; color: #78350f; }
 .palette-rose { background: #ffe4e6; color: #881337; }
 .palette-teal { background: #ccfbf1; color: #134e4a; }
-/* Orari: one weekly grid per teacher, days as columns and periods as rows */
-.orari { flex: 1; padding: 26px 34px; }
-.orari h2 { margin-top: 0; }
-.orari-filter { display: grid; gap: 6px; max-width: 360px; margin: 12px 0 20px; }
-.orari-filter input { width: 100%; }
-.orari-grids { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; align-items: start; }
-.orari-card { background: var(--pan); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
-.orari-card h3 { margin: 0 0 2px; font-size: 15px; }
-.orari-card h3 small { color: var(--mute); font-weight: 400; }
-.orari-cdc { margin: 0 0 8px; font-size: 11px; color: var(--mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.orari-grid { background: transparent; border: 0; font-size: 12px; table-layout: fixed; width: 100%; }
-.orari-grid th, .orari-grid td { padding: 4px 6px; border-bottom: 1px solid var(--line); vertical-align: middle; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.orari-grid thead th { color: var(--mute); font-weight: 500; }
-.orari-grid tbody tr { height: 40px; }
-.orari-grid tbody th { color: var(--mute); font-weight: 500; }
-.orari-grid .type-chip { margin-top: 0; }
-
-
-.orari-session { display: flex; align-items: center; gap: 3px; }
-
-.orari-partners { color: var(--mute); font-size: 11px; cursor: help; }
-.fallback-title { margin: 24px 0 8px; font-size: 15px; color: var(--mute); }
-.exception-action { color: var(--acc); font-size: 13px; }
-@media (max-width: 650px) {
-  .hour-types { padding: 16px; }
-  .hour-type-head { display: none; }
-  .hour-type-row { grid-template-columns: 1fr; gap: 4px; }
-  .mobile-label { display: inline; }
-}
 
 /* Statistics share the planner's sidebar, calendar and segmented controls. */
 .stats-layout { min-height: calc(100vh - var(--bar-h)); }
@@ -1033,7 +531,7 @@ td.none {
 .stats-values summary { cursor: pointer; color: var(--mute); padding: 8px 0; font-size: 12px; }
 .stats-values summary:focus-visible, .stats-notes summary:focus-visible, .stats-scroll:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
 .stats-heatmap td { font-weight: 600; }
-.type-uncovered, .fill.uncovered { background: var(--soft); border: 1px solid #c34242; }
+.type-uncovered { background: var(--soft); border: 1px solid #c34242; }
 .stats-preview-actions { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 24px; padding: 12px; border: 1px solid var(--line); }
 .stats-preview-actions button { padding: 10px 14px; min-height: 44px; border: 1px solid var(--line); border-radius: 5px; }
 .stats-preview-layout { display: block; }
@@ -1090,54 +588,12 @@ td.none {
 @media print { .stats-cell-tooltip { display: none; } }
 
 /* Recovery states retain text labels independently of highlighting. */
-.permit-outstanding td:first-child { font-weight: 700; border-left: 3px solid var(--acc); }
-.permit-expired { display: block; font-size: 12px; color: var(--ink); }
-.recovery-details { margin: 0; padding-left: 16px; min-width: 135px; }
 .type-rp { background: var(--acc); color: var(--on); }
-
-.permessi > main, .permessi > aside { min-width: 0; }
-@media (max-width: 900px) { .permessi { grid-template-columns: minmax(0, 1fr); } }
-
-/* Daily entry keeps the optional controls out of the way until needed. */
-.daily-entry { flex: 0 0 auto; }
-.entry-search { display: flex; align-items: center; gap: 6px; }
-.entry-search .sw { flex: 1; min-width: 0; }
-.entry-search .sug { min-width: 240px; }
-.entry-submit { padding: 6px 8px; border-radius: 3px; background: var(--acc); color: var(--on); font-size: 13px; font-weight: 600; }
-.entry-submit:disabled { opacity: .5; cursor: default; }
-.daily-entry .opt, .classification { flex-wrap: wrap; gap: 4px; }
-.daily-entry .opt button, .classification button { min-height: 26px; padding: 3px 8px; font-size: 12px; }
-.entry-hours { margin-top: 6px; gap: 4px; }
-.entry-hours button { width: 27px; height: 26px; }
-.daily-entry .dis-location { margin-top: 6px; gap: 6px; font-size: 12px; }
-.daily-entry .dis-location select { padding: 3px 5px; }
-.entry-row .classification { margin: 0 0 5px; }
-.rw .edit-kind { flex: 0 0 16px; width: 16px; border-radius: 3px; color: var(--mute); }
-.rw .edit-kind:hover, .rw .edit-kind[aria-expanded="true"] { background: var(--soft); color: var(--acc); }
-.lists > section + section, .lists > section + h2 { margin-top: 8px; }
+.classification { flex-wrap: wrap; gap: 4px; }
+.classification button { min-height: 26px; padding: 3px 8px; font-size: 12px; }
 @media (pointer: coarse) {
-  .daily-entry .opt button, .classification button, .entry-hours button, .entry-submit { min-height: 44px; }
+  .classification button { min-height: 44px; }
 }
-
-.permit-outstanding .permit-name,
-.permit-outstanding .permit-remaining {
-  display: inline-block;
-  background: #fff0b3;
-  color: #755000;
-  font-weight: 700;
-  padding: 3px 6px;
-  border-radius: 3px;
-}
-
-.permit-form .manual-permit-toggle { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
-.permit-form .manual-permit-toggle input { width: auto; }
-.manual-permits { margin-top: 24px; }
-
-/* Notes remain plain text and readable in compact sidebars. */
-.absence-editor { padding: 4px 0 8px; }
-.absence-editor label, .permit-form label:has(textarea) { display: grid; gap: 4px; }
-.absence-editor textarea, .permit-form textarea { width: 100%; min-width: 0; box-sizing: border-box; min-height: 64px; resize: vertical; font: inherit; color: var(--ink); background: var(--pan); border: 1px solid var(--line); border-radius: 4px; padding: 6px; }
-.absence-editor > button { margin-top: 4px; }
 .tip { box-sizing: border-box; max-width: calc(100vw - 16px); white-space: pre-wrap; overflow-wrap: anywhere; overflow-y: auto; }
 .tip:focus-visible, textarea:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
 .testing-ribbon {
@@ -1158,18 +614,6 @@ td.none {
   box-shadow: 0 2px 5px #0004;
 }
 
-.entry-note { display: grid; gap: 4px; margin-top: 8px; }
-.entry-note textarea { width: 100%; box-sizing: border-box; min-height: 54px; resize: vertical; font: inherit; padding: 6px; border: 1px solid var(--line); border-radius: 4px; background: var(--pan); color: var(--ink); }
-.permessi .permit-table th, .permessi .permit-table td { padding: 6px 8px; }
-.permessi .permit-period { padding-bottom: 0; margin-right: 6px; gap: 3px; }
-.permessi .permit-period > .hour-help { position: static; margin-left: 0; }
-.permessi .permit-actions { white-space: nowrap; }
-.permessi .permit-actions button { padding: 4px; min-width: 28px; min-height: 28px; }
-.permessi .permit-actions svg { vertical-align: middle; }
-.permessi .permit-name + .hour-help { margin-left: 6px; }
-.permessi .recovery-details { min-width: 0; }
-.permessi .permit-table td:first-child, .permessi .permit-table td:has(.permit-period) { white-space: nowrap; }
-
 .attachment-field { display: grid; gap: 4px; margin-block: 8px; min-width: 0; }
 .attachment-paste { border: 1px dashed var(--mute); border-radius: 5px; padding: 8px; display: grid; gap: 4px; font-size: 13px; }
 .attachment-paste small { color: var(--mute); }
@@ -1184,181 +628,20 @@ td.none {
 .attachment-paste:focus-visible, .info-trigger:focus-visible, .record-popover a:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
 @media (pointer: coarse) { .record-popover a { min-height: 44px; display: flex; align-items: center; } }
 
-.timetable-import { display: grid; gap: 12px; max-width: 800px; }
-.timetable-import label { display: grid; gap: 6px; }
-.timetable-import input { max-width: 100%; }
-.timetable-import button { min-height: 44px; justify-self: start; }
-.timetable-preview { border: 1px solid var(--line); padding: 16px; border-radius: 8px; overflow-wrap: anywhere; }
-.timetable-preview details { padding: 8px 0; }
-
-.orari-site { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; min-width: 15px; height: 16px; padding: 0 2px; border: 1px solid var(--line); border-radius: 4px; color: var(--ink); background: var(--soft); font-size: 10px; font-weight: 600; }
-
-.orari-site.campus-centrale { background: #dcfce7; color: #14532d; border-color: #86efac; }
-.orari-site.campus-succursale { background: #fef9c3; color: #713f12; border-color: #fde047; }
-.communicated { display: inline-flex; margin: 4px 0 0; }
-
-/* Inbox uses the existing app surfaces and controls. */
-.inbox-page { width: 100%; max-width: 1100px; margin: 0 auto; padding: 24px 28px 48px; }
-.inbox-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
-.inbox-heading h1, .inbox-heading h2 { margin: 0; }
-.inbox-empty, .sheets-settings { padding: 20px; border: 1px solid var(--line); background: var(--pan); border-radius: 8px; margin-top: 16px; }
-
-.inbox-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-.sheets-settings form { display: grid; gap: 12px; max-width: 640px; }
-.sheets-settings label { display: grid; gap: 5px; }
-.sheets-settings input, select.inbox-teacher { width: 100%; min-width: 0; font: inherit; padding: 9px; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; }
-
-.sheets-settings button, .inbox-heading button { min-height: 44px; }
 .inbox-count { margin-left: 6px; padding: 1px 6px; border-radius: 10px; background: var(--soft); color: var(--acc); }
 .inbox-notice:empty { display: none; }
 .inbox-notice { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 12px; padding: 8px 16px; background: var(--soft); color: var(--ink); border-bottom: 1px solid var(--line); }
 .inbox-notice a { color: var(--acc); padding: 5px; }
-.sheets-settings details { margin-top: 12px; overflow-wrap: anywhere; }
-.sheets-settings summary { cursor: pointer; padding: 6px 0; }
-.inbox-item dl > div { display: grid; grid-template-columns: minmax(100px, 1fr) 3fr; gap: 8px; }
-.inbox-item dd { margin: 0; }
-@media (max-width: 600px) { .inbox-page { padding: 16px 12px 32px; } .sheets-settings { padding: 14px; } }
 
-.inbox-actions button { padding: 8px 12px; border: 1px solid var(--line); border-radius: 4px; }
-.inbox-actions button:hover:not(:disabled), .inbox-actions button.on { background: var(--soft); }
-.inbox-actions .inbox-accept { background: var(--acc); color: var(--on); border-color: var(--acc); }
-.inbox-actions .inbox-accept:hover:not(:disabled) { background: var(--acc); filter: brightness(.95); }
-.inbox-actions button:disabled { opacity: .5; cursor: not-allowed; }
-.inbox-page a { color: var(--acc); }
-.inbox-page .error, .sheets-settings .error { border-left: 3px solid var(--acc); padding-left: 10px; }
-
-.inbox-item { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--pan); }
-.inbox-absence { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; flex: 1; min-width: 200px; }
-.inbox-absence strong { font-weight: 500; white-space: nowrap; }
-.inbox-hours span { display: inline-grid; place-items: center; }
-select.inbox-teacher { width: 220px; padding: 5px 8px; height: 32px; }
-.inbox-item .inbox-actions { margin: 0; gap: 6px; }
-.inbox-item .inbox-actions button { padding: 5px 10px; min-height: 32px; }
-.inbox-person { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 140px; }
-.inbox-name { font-weight: 600; }
-.inbox-submitted { color: var(--mute); font-size: 12px; white-space: nowrap; }
-.inbox-result { color: var(--mute); }
-.inbox-details { flex: 0 0 auto; }
-.inbox-details summary { cursor: pointer; color: var(--mute); padding: 4px 8px; list-style: none; font-size: 20px; }
-.inbox-details summary::-webkit-details-marker { display: none; }
-.inbox-details[open] { flex-basis: 100%; }
-.inbox-details[open] summary { width: fit-content; margin-left: auto; }
-.inbox-details .sub { margin-bottom: 8px; }
-.inbox-item > .error { flex-basis: 100%; margin: 0; }
-@media (max-width: 600px) {
-  .inbox-item { gap: 8px; }
-  .inbox-absence { flex-basis: 100%; }
-  .inbox-person { flex-basis: 100%; }
-  select.inbox-teacher { flex: 1; width: 140px; }
-  select.inbox-teacher, .inbox-item .inbox-actions button, .inbox-details summary { min-height: 44px; }
-}
-
-.substitution-export { margin: 16px 0; border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; }
-.substitution-export summary { cursor: pointer; font-weight: 600; min-height: 24px; }
-.export-controls { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; margin: 12px 0; }
-.export-controls label { display: grid; gap: 6px; }
-.export-controls select, .export-controls button, .export-controls a { min-height: 44px; }
-.export-controls a { display: inline-flex; align-items: center; padding: 0 12px; border: 1px solid currentColor; border-radius: 6px; }
-.export-result p { margin: 8px 0; }
-@media (max-width: 600px) { .export-controls label, .export-controls select { width: 100%; min-width: 0; } }
-.export-controls a { color: var(--acc); }
-
-.export-controls button { background: var(--acc); color: var(--on); border: 1px solid var(--acc); border-radius: 6px; padding: 10px 18px; font-weight: 600; }
-.export-controls button:hover:not(:disabled) { filter: brightness(1.12); }
-.export-controls button:disabled { opacity: .5; cursor: default; }
-
-/* Orari uses the same compact controls and campus palette as the planner. */
-.orari-grids { grid-template-columns: repeat(auto-fill, minmax(min(100%, 480px), 1fr)); }
-.orari-toolbar, .orari-card-header, .orari-card-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.orari-toolbar { margin-bottom: 12px; align-items: end; }
-.orari-toolbar label { display: flex; flex-direction: column; gap: 4px; }
-.orari-card { padding: 12px; min-width: 0; }
-.orari-card-header { justify-content: space-between; margin-bottom: 5px; }
-.orari-card-actions { margin-left: auto; justify-content: end; }
-.orari-action { border: 1px solid var(--line); border-radius: 3px; color: var(--mute); padding: 4px 9px; font-size: 13px; line-height: 20px; }
-.orari-action:hover:not(:disabled) { background: var(--soft); color: var(--ink); }
-.orari-action:disabled { opacity: .5; cursor: default; }
-.orari-modified, .orari-review { font-size: 10px; padding: 3px 5px; border-radius: 3px; border: 1px solid var(--line); }
-.orari-modified { color: var(--mute); }
-.orari-review { color: #b45309; background: #fef3c7; }
 .campus-centrale { --campus-edge: #4c9c6a; --campus-fill: #dcfce7; --campus-ink: #14532d; --campus-mark: #237a43; }
 .campus-succursale { --campus-edge: #b89c25; --campus-fill: #fef9c3; --campus-ink: #713f12; --campus-mark: #856512; }
 .campus-unknown { --campus-edge: #9ca3af; --campus-fill: #e5e7eb; --campus-ink: #374151; --campus-mark: var(--mute); }
-.orari-legend { display: flex; gap: 16px; flex-wrap: wrap; margin: 0 0 16px; }
-.orari-legend > span { display: inline-flex; gap: 5px; align-items: center; font-size: 12px; color: var(--campus-mark); }
-.orari-legend i { width: 12px; height: 12px; border: 1px solid var(--campus-edge); border-radius: 3px; background: var(--campus-fill); }
-.orari-grid th, .orari-grid td { padding: 4px 2px; height: auto; overflow: visible; white-space: normal; }
-.orari-grid th:first-child { width: 26px; }
-.orari-grid thead th:last-child { display: table-cell; }
-.orari-grid tbody tr { height: 46px; }
-.orari-grid td.orari-shared { padding: 4px 2px; height: auto; }
-.orari-grid .hour-help { display: block; height: auto; min-height: 0; padding: 0; }
-.orari-session { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 5px; min-height: 32px; padding: 4px 5px; border: 1px solid var(--campus-edge); border-radius: 5px; box-sizing: border-box; color: var(--ink); line-height: 1.3; }
-.orari-session-label { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
-.orari-session-meta { display: flex; flex-wrap: wrap; gap: 3px; min-width: 0; max-width: 100%; align-items: center; margin-left: auto; }
-.orari-shared .orari-session-meta { flex-basis: 100%; justify-content: space-between; }
-.orari-session.orari-special { background: var(--campus-fill); color: var(--campus-ink); }
-.orari-session .orari-site { background: transparent; border: 0; padding: 0; min-width: 0; height: auto; color: var(--campus-mark); font-size: 11px; font-weight: 700; }
-.orari-special .orari-site { color: var(--campus-ink); }
-.orari-session.orari-disabled { opacity: .65; text-decoration: line-through; border-style: dashed; }
-.orari-editing { border-color: var(--acc); }
-.orari-edit-toolbar { display: flex; align-items: center; gap: 6px; white-space: nowrap; overflow-x: auto; padding: 6px 0; margin: 6px 0; }
-.orari-edit-toolbar label { display: flex; align-items: center; gap: 4px; font-size: 12px; flex: 0 0 auto; }
-.orari-edit-toolbar input { width: 116px; min-width: 0; padding: 4px; font-size: 12px; height: 30px; box-sizing: border-box; }
-.orari-edit-toolbar button { flex: 0 0 auto; min-height: 30px; box-sizing: border-box; }
-.orari-edit-hint { color: var(--mute); font-size: 11px; margin: 4px 0 8px; }
-.orari-cell-button { padding: 0; background: transparent; border: 0; width: 100%; text-align: left; cursor: grab; touch-action: none; user-select: none; font: inherit; }
-.orari-cell-button:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
-.orari-drag-source { opacity: .35; }
-.orari-destination { background: var(--soft); outline: 2px dashed var(--acc); outline-offset: -2px; }
-.orari-drag-preview { position: fixed; z-index: 100; pointer-events: none; width: 112px; padding: 5px; background: var(--pan); border: 1px solid var(--line); border-radius: 7px; box-shadow: 0 6px 20px #0004; }
-.orari-drag-preview .orari-session { font-size: 12px; }
-.orari-drag-preview small { display: block; font-size: 10px; color: var(--mute); margin-top: 4px; }
-.orari-impact, .orari-conflicts { border-top: 1px solid var(--line); margin-top: 10px; padding: 10px 0; font-size: 12px; }
-.orari-history { margin: 5px 0; font-size: 12px; color: var(--mute); }
-.orari-history button { display: block; margin: 5px 0; }
-.orari-history-row { display: flex; align-items: center; gap: 8px; }
-.orari-history-row .orari-action { margin-left: auto; }
 :root[data-theme="dark"] .campus-centrale { --campus-mark: #8bd5a4; }
 :root[data-theme="dark"] .campus-succursale { --campus-mark: #e8ce69; }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) .campus-centrale { --campus-mark: #8bd5a4; }
   :root:not([data-theme="light"]) .campus-succursale { --campus-mark: #e8ce69; }
 }
-@media (max-width: 420px) {
-  .orari-card-actions { margin-left: 0; }
-  .orari-session { font-size: 11px; padding: 4px 2px; gap: 3px; }
-  .orari-grid th:first-child { width: 28px; }
-}
-
-.orari-imported-name { display: block; color: var(--mute); font-size: .85em; font-weight: 400; }
-.orari-name-editor { padding: 12px; border-bottom: 1px solid var(--line); }
-.orari-name-fields, .orari-name-actions { display: flex; flex-wrap: wrap; gap: 12px; }
-.orari-name-fields label { flex: 1 1 180px; display: grid; gap: 4px; }
-.orari-name-fields input { width: 100%; min-width: 0; }
-.orari-name-actions { margin-top: 10px; align-items: center; }
-
-
-.inbox-metadata { flex-basis: 100%; order: 1; }
-.inbox-metadata summary { cursor: pointer; padding: 8px 0; }
-.inbox-metadata fieldset { border: 0; padding: 8px 0; display: grid; gap: 12px; min-width: 0; }
-.inbox-metadata textarea { display: block; width: 100%; box-sizing: border-box; }
-
-.orari-activity-editor { width: min(380px, calc(100vw - 32px)); box-sizing: border-box; padding: 20px; border: 1px solid var(--line); border-radius: 10px; background: var(--pan); color: var(--ink); box-shadow: 0 16px 50px #0004; max-height: calc(100dvh - 32px); overflow: visible; }
-.orari-activity-editor::backdrop { background: #0006; }
-.orari-activity-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
-.orari-activity-header h3 { margin: 0 0 4px; font-size: 17px; }
-.orari-activity-header .sub { margin: 0; }
-.orari-class-label { display: block; font-size: 13px; margin-bottom: 6px; }
-.orari-activity-editor input { width: 100%; box-sizing: border-box; min-height: 40px; }
-.orari-activity-editor .sug { max-height: 220px; overflow-y: auto; }
-.orari-clear-class { margin: 7px 0 0; font-size: 12px; }
-.orari-campus-choice { border: 0; padding: 0; margin: 20px 0; min-width: 0; }
-.orari-campus-choice legend { font-size: 13px; margin-bottom: 7px; }
-.orari-campus-choice .opt { display: flex; flex-wrap: nowrap; gap: 6px; }
-.orari-campus-choice button { flex: 1; min-height: 40px; padding: 6px; }
-.orari-activity-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 14px; border-top: 1px solid var(--line); }
-.orari-activity-actions button { min-height: 40px; }
 
 .availability-date { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 13px; }
 .availability-date input { min-height: 44px; padding: 6px 10px; color: var(--ink); background: var(--pan); border: 1px solid var(--line); border-radius: 5px; }
@@ -1381,26 +664,6 @@ select.inbox-teacher { width: 220px; padding: 5px 8px; height: 32px; }
 .availability-tooltip li { padding: 1px 0; overflow-wrap: anywhere; }
 .availability-tooltip small { display: block; margin-top: 7px; color: var(--mute); font-size: 10px; }
 @media (max-width: 480px) { .stats-cards { grid-template-columns: 1fr; } .stats-card { border-left: 0; padding: 6px 0; } }
-.reception-import { margin-block: 1.5rem; }
-.reception-controls { display: flex; flex-wrap: wrap; gap: 1rem; align-items: end; }
-.reception-controls label { display: grid; gap: .35rem; }
-.reception-table { overflow-x: auto; margin-block: 1rem; max-height: 32rem; }
-.reception-table table { width: 100%; border-collapse: collapse; }
-.reception-table th, .reception-table td { padding: .65rem; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
-.reception-table th { position: sticky; top: 0; background: var(--bg); }
-.reception-table input[type="search"] { min-width: 16rem; }
-.reception-table small { display: block; margin-top: .35rem; }
-.orari-reception { display: block; padding: .3rem .45rem; border: 1px solid currentColor; border-radius: .35rem; font-weight: 700; margin-block: .2rem; }
-
-.dis-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: .85rem; }
-.dis-table th, .dis-table td { padding: .45rem .3rem; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
-.dis-table th:first-child { width: 2.2rem; }
-.dis-table th { font-size: .75rem; }
-.dis-table .dis-name { display: inline; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
-.dis-table .dis-name:hover { text-decoration: underline; }
-.dis-table .assigned-name { text-decoration: line-through; }
-.dis-table .record-info { margin-left: .15rem; }
-.dis-table thead th:last-child { display: table-cell; }
 
 .account-identity { margin-left:auto; display:flex; align-items:center; gap:.65rem; flex-wrap:wrap; }
 .account-identity strong {overflow-wrap:anywhere;min-width:0;max-width:100%}
