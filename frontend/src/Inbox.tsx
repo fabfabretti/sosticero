@@ -115,18 +115,18 @@ export function SheetsSettings({ api, onSummary, revision }: { api: Api; onSumma
     } catch (e) { setError(String(e)); }
     finally { setBusy(false); }
   };
-  return <section className="sheets-settings">
+  return <section className="sheets-settings settings-subsection">
     <h2>Assenze da Google Forms</h2>
     <p className="sub">Controllo ogni 30 secondi. Le comunicazioni entrano in Inbox: il calendario cambia solo quando le accetti.</p>
-    <form onSubmit={e => { e.preventDefault(); void run(false); }}>
+    <form className="ui-form" onSubmit={e => { e.preventDefault(); void run(false); }}>
       <label>URL o ID del foglio<input required value={spreadsheet} onChange={e => setSpreadsheet(e.target.value)} disabled={busy} /></label>
       <label>Nome della scheda<input required maxLength={100} value={worksheet} onChange={e => setWorksheet(e.target.value)} disabled={busy} /></label>
       <label>Chiave JSON account di servizio<input ref={fileInput} type="file" accept=".json,application/json" disabled={busy} onChange={e => setFile(e.target.files?.[0])} /></label>
       <p className="sub">{status?.email ? `Account installato: ${status.email}` : "Nessuna chiave installata."} Condividi il foglio con questo account come Visualizzatore.</p>
-      <div className="inbox-actions"><button className="inbox-accept" disabled={busy} type="submit">{busy ? "Attendi…" : "Salva configurazione"}</button><button type="button" disabled={busy || !status?.configured} onClick={() => void run(true)}>Test connessione salvata</button></div>
+      <div className="ui-actions"><button className="ui-button ui-button-primary" disabled={busy} type="submit">{busy ? "Attendi…" : "Salva configurazione"}</button><button className="ui-button" type="button" disabled={busy || !status?.configured} onClick={() => void run(true)}>Test connessione salvata</button></div>
     </form>
-    {error && <p className="error" role="alert">{error}</p>}
-    {message && <p role="status">{message}</p>}
+    {error && <p className="ui-notice ui-notice-error" role="alert">{error}</p>}
+    {message && <p className="ui-notice" role="status">{message}</p>}
     <p className="sub">Ultima sincronizzazione: {timestamp(liveStatus?.lastSuccess || status?.lastSuccess)}{liveStatus?.error ? ` · ${liveStatus.error}` : ""}</p>
     <details><summary>Primo collegamento, righe di prova e backup</summary><p>Il primo collegamento carica tutte le risposte, anche passate. Ignora le righe di prova già caricate: eliminarle dal foglio non rimuove elementi da Inbox né assenze accettate. Correggi le assenze da Supplenze.</p><p>Usa il modulo per aggiungere risposte; non modificare le vecchie righe. La chiave resta sul server, esclusa da esportazioni e backup. Su un altro computer dovrai caricarla di nuovo. Ripristinare un backup può far tornare in Inbox comunicazioni successive al backup.</p></details>
   </section>;
@@ -160,12 +160,12 @@ export function AbsenceInbox({ api }: { api: Api }) {
     } catch (e) { await refresh(); setError(String(e)); }
     finally { setBusy(undefined); }
   };
-  return <main className="inbox-page">
-    <div className="inbox-heading"><div><h1>Inbox</h1><p className="sub">Comunicazioni di assenza da Google Forms</p></div><div className="inbox-actions"><button className={!history ? "on" : ""} aria-pressed={!history} onClick={() => setHistory(false)}>Da esaminare</button><button className={history ? "on" : ""} aria-pressed={history} onClick={() => setHistory(true)}>Cronologia</button></div></div>
+  return <main className="ui-page inbox-page">
+    <div className="inbox-heading"><div><h1>Inbox</h1><p className="sub">Comunicazioni di assenza da Google Forms</p></div><div className="inbox-actions"><button className={!history ? "ui-button on" : "ui-button"} aria-pressed={!history} onClick={() => setHistory(false)}>Da esaminare</button><button className={history ? "ui-button on" : "ui-button"} aria-pressed={history} onClick={() => setHistory(true)}>Cronologia</button></div></div>
     <p className="sub">Ultima sincronizzazione: {timestamp(status.lastSuccess)} · {!status.configured ? <Link to="/settings">Configura Google Sheets</Link> : "Controllo automatico ogni 30 secondi"}</p>
-    {status.error && <p className="error" role="status">{status.error}</p>}
-    {error && <p className="error" role="alert">{error}</p>}
-    {loading ? <p role="status">Caricamento…</p> : !items.length ? <section className="inbox-empty"><h2>{history ? "Nessuna comunicazione elaborata" : "Nessuna comunicazione da esaminare"}</h2><p className="sub">Le nuove risposte compariranno qui automaticamente.</p></section> : items.map(item => <article className="inbox-item" key={item.id}>
+    {status.error && <p className="ui-notice ui-notice-error" role="status">{status.error}</p>}
+    {error && <p className="ui-notice ui-notice-error" role="alert">{error}</p>}
+    {loading ? <p role="status">Caricamento…</p> : !items.length ? <section className="ui-surface inbox-empty"><h2>{history ? "Nessuna comunicazione elaborata" : "Nessuna comunicazione da esaminare"}</h2><p className="sub">Le nuove risposte compariranno qui automaticamente.</p></section> : items.map(item => <article className="ui-surface inbox-item" key={item.id}>
       <div className="inbox-person"><span className="inbox-name">{item.teacherName || item.name || item.raw[2] || "Docente da verificare"}</span>
         {item.status === "pending" && !!item.teachers?.length && (item.nameMatched === undefined ? item.teachers.filter(t => t.name === (item.name || item.raw[2])).length !== 1 : !item.nameMatched) && <><span aria-hidden="true">→</span><select className="inbox-teacher" aria-label={`Docente associato: ${item.name || item.raw[2]}`} value={item.teacher || ""} disabled={!!busy} onChange={e => void act(item, "preview", e.target.value)}><option value="">Seleziona docente…</option>{item.teachers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></>}
       </div>
@@ -183,13 +183,13 @@ export function AbsenceInbox({ api }: { api: Api }) {
           <p className="sub">Applicati a tutti i giorni della comunicazione. Le note si aggiungono a quelle già presenti.</p>
         </fieldset>
       </details>}
-      {item.status === "pending" ? <div className="inbox-actions"><button className="inbox-accept" disabled={!!busy || !!item.error} onClick={() => void act(item, "accept")}>{busy === item.id ? "Attendi…" : "Accetta"}</button><button disabled={!!busy} onClick={() => void act(item, "ignore")}>Ignora</button></div> : <span className="inbox-result">{item.status === "accepted" ? item.acceptedBy ? `Accettata da ${item.acceptedBy.name} (${item.acceptedBy.username})` : "Accettata · autore non disponibile" : "Ignorata"}</span>}
+      {item.status === "pending" ? <div className="inbox-actions"><button className="ui-button ui-button-primary inbox-accept" disabled={!!busy || !!item.error} onClick={() => void act(item, "accept")}>{busy === item.id ? "Attendi…" : "Accetta"}</button><button className="ui-button" disabled={!!busy} onClick={() => void act(item, "ignore")}>Ignora</button></div> : <span className="inbox-result">{item.status === "accepted" ? item.acceptedBy ? `Accettata da ${item.acceptedBy.name} (${item.acceptedBy.username})` : "Accettata · autore non disponibile" : "Ignorata"}</span>}
       <details className="inbox-details"><summary aria-label={`Dettagli comunicazione di ${item.name || item.raw[2] || "docente"}`}>⋯</summary>
         <p className="sub">Inviata: {item.raw[0] || timestamp(item.submitted)}{item.processed ? ` · Elaborata: ${timestamp(item.processed)}` : ""}</p>
         {item.days && <ul>{item.days.map(day => <li key={day}>{date(day)} · Ore {item.hours?.join(", ")}{item.overlaps?.find(o => o.day === day)?.hours.length ? ` · Già presenti: ${item.overlaps.find(o => o.day === day)!.hours.join(", ")}` : ""}</li>)}</ul>}
         {item.error && <dl>{item.raw.map((v, i) => <div key={i}><dt>{["Invio", "Caso", "Docente", "Data giornaliera", "Inizio", "Fine", "Data oraria", "Ore"][i] || "Campo"}</dt><dd>{v || "—"}</dd></div>)}</dl>}
       </details>
-      {item.error && <p className="error">{item.error}</p>}
+      {item.error && <p className="ui-notice ui-notice-error">{item.error}</p>}
     </article>)}
   </main>;
 }

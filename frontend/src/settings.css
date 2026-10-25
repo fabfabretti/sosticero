@@ -1,0 +1,59 @@
+.settings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-gap);
+  min-width: 0;
+  color: var(--ink);
+  font: inherit;
+}
+.settings .settings-intro { margin-bottom: var(--ui-gap); }
+.settings-muted, .settings .sub { color: var(--mute); font-size: 12px; }
+.settings-group-heading { display: flex; align-items: center; gap: var(--ui-padding); padding: var(--ui-padding); cursor: pointer; list-style: none; min-height: 60px; }
+.settings-group-heading::-webkit-details-marker { display: none; }
+.settings-group-copy { display: grid; gap: 2px; flex: 1; min-width: 0; }
+.settings-group-title { font-size: 15px; font-weight: 650; color: var(--ink); }
+.settings-group-status { color: var(--mute); font-size: 12px; text-align: right; max-width: 40%; overflow-wrap: anywhere; }
+.settings-group-chevron { border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; width: 7px; height: 7px; transform: rotate(-45deg); flex: 0 0 auto; margin-right: 3px; }
+.settings-group[open] > summary .settings-group-chevron { transform: rotate(45deg); }
+.settings-group-body { display: grid; gap: var(--ui-padding); padding: var(--ui-padding); border-top: 1px solid var(--ui-border); min-width: 0; }
+.settings-subsection { display: grid; gap: var(--ui-gap); min-width: 0; }
+.settings-subsection + .settings-subsection { padding-top: var(--ui-padding); border-top: 1px solid var(--ui-border); }
+.settings input[type="file"]::file-selector-button { font: inherit; color: var(--ink); background: var(--ui-surface); border: 1px solid var(--ui-border); border-radius: var(--ui-radius); padding: 4px 8px; margin-right: var(--ui-gap); cursor: pointer; }
+.settings-preview { display: grid; gap: var(--ui-gap); padding: var(--ui-padding); min-width: 0; overflow-wrap: anywhere; }
+.settings details:not(.settings-group) { min-width: 0; overflow-wrap: anywhere; }
+.settings details:not(.settings-group) > summary { cursor: pointer; padding-block: 6px; min-height: 32px; font-size: 13px; }
+.settings-pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
+.settings-table-scroll { min-width: 0; overflow: auto; max-height: 32rem; }
+.settings .settings-table th { position: sticky; top: 0; background: var(--ui-surface); }
+.settings .settings-table thead th:last-child { display: table-cell; }
+.settings-table input[type="search"] { min-width: 200px; }
+.settings-table td > small { display: block; color: var(--mute); }
+.settings-table td > label { display: flex; align-items: center; gap: var(--ui-gap); min-height: 44px; }
+.settings-list { list-style: none; margin: 0; padding: 0; }
+.settings-list li { display: flex; justify-content: space-between; align-items: center; gap: var(--ui-padding); padding-block: var(--ui-gap); border-top: 1px solid var(--ui-border); }
+.settings-list li > div { min-width: 0; overflow-wrap: anywhere; font-size: 13px; }
+.settings-list small { display: block; margin-top: 2px; }
+.settings fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
+.settings .hour-type-head, .settings .hour-type-row { display: grid; grid-template-columns: minmax(140px, 1.3fr) repeat(3, minmax(110px, 1fr)); align-items: center; gap: var(--ui-gap); padding-block: var(--ui-gap); }
+.settings .hour-type-head { font-size: 12px; color: var(--mute); }
+.settings .hour-type-row { border-top: 1px solid var(--ui-border); }
+.settings .hour-type-row small { display: block; font-size: 12px; color: var(--mute); }
+.settings .hour-type-row label { display: flex; align-items: center; gap: var(--ui-gap); min-height: 44px; cursor: pointer; }
+.settings .mobile-label { display: none; }
+@media (max-width: 650px) {
+  .settings { padding: 16px 12px; }
+  .settings-group-heading { flex-wrap: wrap; gap: var(--ui-gap); }
+  .settings-group-copy { flex-basis: calc(100% - 24px); }
+  .settings-group-status { order: 3; max-width: 100%; text-align: left; }
+  .settings .hour-type-head { display: none; }
+  .settings .hour-type-row { grid-template-columns: 1fr; gap: 0; }
+  .settings .mobile-label { display: inline; font-size: 13px; }
+  .settings details:not(.settings-group) > summary { min-height: var(--ui-control-height); }
+  .settings-list li { flex-wrap: wrap; }
+}
+
+.settings-table .reception-row-unresolved { background: var(--soft); }
+.settings-table .reception-row-unresolved td:first-child { border-left: 3px solid var(--ui-danger); }
+.reception-review-label { display: block; color: var(--ui-danger); margin-bottom: 4px; }
+
+.settings :is(label:has(> input:not([type="checkbox"])), label:has(> select), .ui-field, input:not([type="checkbox"]), select) { max-width: var(--ui-form-width); }

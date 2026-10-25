@@ -1,9 +1,9 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
 
 // Keep only the latest snapshot; active interactions retain their displayed baseline.
-export function useQuietRefresh<T>(load: () => Promise<T>, apply: (value: T) => void, active: boolean, scope: string) {
-  const latest = useRef({ load, apply, active });
-  latest.current = { load, apply, active };
+export function useQuietRefresh<T>(load: () => Promise<T>, apply: (value: T) => void, active: boolean, scope: string, paused = false) {
+  const latest = useRef({ load, apply, active, paused });
+  latest.current = { load, apply, active, paused };
   const generation = useRef(0), pending = useRef<{ value: T; generation: number } | undefined>(undefined);
   const running = useRef(false), alive = useRef(true);
   const scroll = useRef<[Element, number, number][]>([]);
@@ -26,7 +26,7 @@ export function useQuietRefresh<T>(load: () => Promise<T>, apply: (value: T) => 
     alive.current = true;
     invalidate();
     const poll = async () => {
-      if (running.current || document.visibilityState === 'hidden' || document.documentElement?.dataset.auth === 'locked') return;
+      if (latest.current.paused || running.current || document.visibilityState === 'hidden' || document.documentElement?.dataset.auth === 'locked') return;
       running.current = true;
       const n = generation.current;
       try {

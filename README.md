@@ -19,6 +19,10 @@ Dark mode, using fictional teachers and records created in an isolated demo data
 
 ## What you can do
 
+### Settings
+
+Settings is organized into five collapsible groups: **Orari e ricevimenti** (schedule imports), **Regole supplenze** (hour-type policies), **Collegamenti** (Google Forms), **Dati e backup** (JSON archives and database snapshots), and **Aspetto** (theme). Groups start closed and can stay open together. Closing a group preserves draft fields, selected files and previews for the current visit; it never saves changes. Import and restore operations still require explicit confirmation. Shared compact styles are documented in [Settings styling](docs/settings-styling.md).
+
 ### Import teacher receptions
 
 In **Settings → Ricevimenti**, choose an XLSX file and its effective date, then generate a preview. Required columns are `docente`, `giorno` (Lun–Ven), and `ora` (1–7); optional `orario` and `luogo` retain the original details. Booking counts and class lists are ignored. Files are limited to 6 MB and 2000 rows.
@@ -31,8 +35,8 @@ Reception versions and teacher mappings are included in database backups and por
 
 ### Plan the school day
 
-- Browse dates in a calendar and search for teachers or classes.
-- Select a teacher, review compact options, then add with **Aggiungi** or Enter. Record a whole-day absence or select individual periods; options stay set for the next entry.
+- Choose a calendar date, then click **+ Aggiungi** below the calendar to search for teachers or classes in the centered dialog.
+- Select a teacher, review compact options, then add with **Aggiungi** or Enter. Record a whole-day absence or select individual periods; the dialog stays open with a confirmation, and options stay set for the next entry. Close with ×, Escape or the backdrop to discard an unsaved draft.
 - Optionally mark absences **Programmata** or **Last minute**. The sidebar groups planned, unclassified and last-minute absences; a last-minute absence or permit takes precedence for that teacher and date.
 - Record classes that are away, making their teachers available where appropriate.
 - Add manual teacher availability and choose its campus.

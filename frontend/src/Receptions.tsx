@@ -46,15 +46,18 @@ export function ReceptionImport({ api, onSummary, onImported, revision }: { api:
       const result = await api<{ backup: { filename: string } }>('receptions', { ...body(), _generation: impact.generation, token: impact.token, confirm: true });
       setDocument(await api<Document>('receptions')); setImpact(undefined); setFile(undefined); setChoices({}); setReviewed(false);
       setSuccess('Ricevimenti importati. Backup precedente: ' + result.backup.filename);
+      onImported?.();
     } catch (e) { setError(String(e)); setReviewed(false); }
     finally { setBusy(false); }
   };
-  const unresolved = impact?.rows.filter(row => !row.skip && (!row.teacher || row.error)).length || 0;
-  return <section className="reception-import" aria-label="Ricevimenti">
+  const needsReview = (row: Row) => !row.skip && (!row.teacher || !!row.error);
+  const unresolved = impact?.rows.filter(needsReview).length || 0;
+  const previewRows = impact ? [...impact.rows].sort((a, b) => Number(needsReview(b)) - Number(needsReview(a))) : [];
+  return <section className="reception-import settings-subsection" aria-label="Ricevimenti">
     <h2>Ricevimenti</h2>
     <p>Importa l’Excel con docente, giorno e ora. R compare in Orari e non può essere usato come recupero permesso. Le sedi mancanti restano da verificare.</p>
     {!!document?.versions.length && <details><summary>Versioni ricevimenti ({document.versions.length})</summary>{document.versions.map(version => <p key={version.effective}>Dal {version.effective}: {version.rows.length} ricevimenti · {version.rows.filter(row => !row.site).length} sedi da verificare</p>)}</details>}
-    <div className="reception-controls">
+    <div className="ui-form">
       <label>Decorrenza<input type="date" value={effective} required disabled={busy} onChange={e => { invalidate(); setEffective(e.target.value); }} /></label>
       <label>File ricevimenti XLSX<input type="file" accept=".xlsx" disabled={busy} onChange={async e => {
         invalidate(); setImpact(undefined); setFile(undefined); setChoices({}); setTeacherQueries({});
@@ -69,23 +72,24 @@ export function ReceptionImport({ api, onSummary, onImported, revision }: { api:
         } catch (e) { if (current === request.current) setError(String(e)); }
         finally { setBusy(false); }
       }} /></label>
-      <button disabled={busy || !file || !effective} onClick={preview}>{busy ? 'Elaborazione…' : 'Mostra anteprima ricevimenti'}</button>
+      <button className="ui-button ui-button-primary" disabled={busy || !file || !effective} onClick={preview}>{busy ? 'Elaborazione…' : 'Mostra anteprima ricevimenti'}</button>
     </div>
     {file && <p>{file.name}</p>}
-    {error && <p role="alert">{error}</p>}
-    {success && <p role="status">{success}</p>}
-    {impact && <div className="reception-preview">
+    {error && !impact && <p className="ui-notice ui-notice-error" role="alert">{error}</p>}
+    {success && <p className="ui-notice" role="status">{success}</p>}
+    {impact && <div className="ui-surface settings-preview">
       <h3>Verifica abbinamenti</h3>
       <p>Dal {impact.effective}{impact.end ? ` fino al ${impact.end} escluso` : ' fino alla prossima versione'}. {impact.rows.length} righe · {unresolved} da risolvere nell’ultima anteprima.</p>
-      <p>Abbina ogni docente incerto oppure scegli Salta. La sede è facoltativa: “a distanza” non identifica una sede fisica. Dopo ogni modifica genera una nuova anteprima.</p>
+      <p className={`ui-notice${reviewed && unresolved ? ' ui-notice-error' : ''}`} role="status">{!reviewed ? 'Scelte modificate: clicca «Verifica abbinamenti» per controllare se puoi importare.' : unresolved ? `${unresolved} righe da risolvere: sono evidenziate e mostrate per prime.` : 'Tutti gli abbinamenti sono risolti.'}</p>
+      <p>Abbina ogni docente incerto oppure scegli Salta. La sede è facoltativa: “a distanza” non identifica una sede fisica. Quando hai finito, clicca «Verifica abbinamenti» qui sotto; poi potrai confermare l’importazione.</p>
       <label>Cerca nell’anteprima<input type="search" value={query} onChange={e => setQuery(e.target.value)} /></label>
-      <div className="reception-table"><table><thead><tr>{['Riga / docente nel file', 'Giorno / ora', 'Docente abbinato', 'Sede', 'Esito'].map(title => <th key={title}>{title}</th>)}</tr></thead><tbody>
-        {impact.rows.filter(row => row.name.toLocaleLowerCase().includes(query.toLocaleLowerCase())).map(row => {
+      <div className="settings-table-scroll"><table className="ui-table settings-table"><thead><tr>{['Riga / docente nel file', 'Giorno / ora', 'Docente abbinato', 'Sede', 'Esito'].map(title => <th key={title}>{title}</th>)}</tr></thead><tbody>
+        {previewRows.filter(row => row.name.toLocaleLowerCase().includes(query.toLocaleLowerCase())).map(row => {
           const choice = choices[row.row], teacher = choice?.teacher === undefined ? row.teacher : choice.teacher;
           const site = choice?.site === undefined ? row.site : choice.site;
           const skip = choice?.skip === undefined ? row.skip : choice.skip;
           const label = `Riga ${row.row} ${row.name}`;
-          return <tr key={row.row}>
+          return <tr key={row.row} className={needsReview(row) ? 'reception-row-unresolved' : undefined}>
             <td>{row.row} · {row.name}</td><td>{row.day} · {row.hour}ª<br />{row.time}</td>
             <td><input type="search" list={`reception-teachers-${row.row}`} aria-label={`Docente ${label}`} disabled={busy || skip} value={teacherQueries[row.row] ?? (teacher ? `${impact.teachers[teacher]} [${teacher}]` : '')} placeholder="Cerca e seleziona docente" onChange={e => {
               setTeacherQueries({ ...teacherQueries, [row.row]: e.target.value });
@@ -95,14 +99,19 @@ export function ReceptionImport({ api, onSummary, onImported, revision }: { api:
             }} /><datalist id={`reception-teachers-${row.row}`}>{[...new Set([...row.suggestions, ...Object.keys(impact.teachers)])].map(identifier => <option key={identifier} value={`${impact.teachers[identifier]} [${identifier}]`} />)}</datalist>
               <label><input type="checkbox" checked={skip} disabled={busy} onChange={e => choose(row.row, { skip: e.target.checked })} />Salta</label></td>
             <td><select aria-label={`Sede ${label}`} value={site || ''} disabled={busy || skip} onChange={e => choose(row.row, { site: e.target.value || null })}><option value="">Da verificare</option><option value="centrale">Centrale</option><option value="succursale">Succursale</option></select><small>{row.location || 'Nessuna sede nel file'}</small></td>
-            <td>{skip ? 'Saltata' : row.error || (!teacher ? 'Seleziona docente' : 'Abbinato')}</td>
+            <td>{needsReview(row) && reviewed && <strong className="reception-review-label">Da risolvere</strong>}{skip ? 'Saltata' : row.error || (!teacher ? 'Seleziona un docente dall’elenco dei suggerimenti' : reviewed ? 'Abbinato' : 'Modifica da verificare')}</td>
           </tr>;
         })}
       </tbody></table></div>
       {impact.days.filter(day => day.issues.length).map(day => <details key={day.day}><summary>{day.day}: {day.issues.length} assegnazioni da verificare</summary>{day.issues.map(issue => <p key={issue.key}>{issue.message}</p>)}</details>)}
-      {!reviewed && <p role="status">Scelte modificate: genera nuovamente l’anteprima.</p>}
-      <button disabled={busy || !reviewed || !impact.ready} onClick={apply}>Conferma ricevimenti</button>{' '}
-      <button disabled={busy} onClick={() => { invalidate(); setImpact(undefined); setFile(undefined); setChoices({}); }}>Annulla</button>
+      {error && <p className="ui-notice ui-notice-error" role="alert">Importazione non completata: {error} Le scelte sono conservate; clicca «Verifica abbinamenti» per riprovare.</p>}
+      {!reviewed && <p className="ui-notice" role="status">Scelte modificate. Clicca «Verifica abbinamenti» per controllarle, poi conferma l’importazione.</p>}
+      {reviewed && !impact.ready && <p className="ui-notice ui-notice-error" role="status">Importazione bloccata: risolvi o salta le {unresolved} righe evidenziate, poi clicca «Verifica abbinamenti».</p>}
+      {reviewed && impact.ready && <p className="ui-notice" role="status">Verifica completata. Clicca «Conferma ricevimenti» per importare.</p>}
+      <div className="ui-actions">
+      <button className="ui-button ui-button-primary" disabled={busy || (reviewed && !impact.ready)} onClick={reviewed ? apply : preview}>{busy ? 'Elaborazione…' : reviewed ? 'Conferma ricevimenti' : 'Verifica abbinamenti'}</button>
+      <button className="ui-button" disabled={busy} onClick={() => { invalidate(); setImpact(undefined); setFile(undefined); setChoices({}); }}>Annulla</button>
+      </div>
     </div>}
   </section>;
 }
