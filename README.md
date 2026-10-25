@@ -460,6 +460,17 @@ and daily trend. Availability hover panels pass pointer input through to nearby
 cells, with compact name/activity/C-S entries grouped as Disponibili and
 Reperibili (RP). Click or Enter pins a long list for scrolling; Escape closes it.
 
+Dalla pagina **Orari**, **Scarica PDF completo** esporta tutti i docenti, anche
+con una ricerca attiva, usando l'orario salvato valido alla data **Orario al**.
+Il PDF è A4 orizzontale, con due docenti per pagina e celle uniformi: comprende
+classe/attività, aula, sede, nomi delle compresenze e ricevimenti. La legenda è
+ripetuta in alto. I colori distinguono lezioni, altre attività e ricevimenti; il testo
+è selezionabile ed estraibile. Per le altre attività sono riportati solo i dati
+di luogo disponibili, senza segnaposto. Il PDF non mostra i flag di disponibilità
+per supplenze. Salvare o annullare le bozze prima di esportare. Se un testo
+non entra nelle celle neppure a 7 punti, viene indicato il docente e l'ora da
+verificare, senza scaricare un PDF con informazioni tagliate.
+
 ### Modifiche simultanee
 
 Supplenze e Permessi controllano gli aggiornamenti ogni 15 secondi e quando si

@@ -29,7 +29,7 @@ class CandidateOrderingTest(unittest.TestCase):
         self.ds['lessons']['dis|lun|2']['site'] = 'succursale'
         cs = self.choices()
         self.assertEqual([c['id'] for c in cs], ['co', 'ENTRA', 'ESCE', 'dis', 'PE', 'pot', 'DIR', 'utc', 'ALF', 'UTS', 'STAFF', 'support', 'UNCOVERED'])
-        self.assertEqual(next(c for c in cs if c['id'] == 'dis')['loc'], 'centrale')
+        self.assertEqual(next(c for c in cs if c['id'] == 'dis')['loc'], 'succursale')
         self.assertEqual(next(c for c in cs if c['id'] == 'UTS')['tier'], 6)
         self.assertTrue(next(c for c in cs if c['id'] == 'ESCE')['enable'])
         self.ds['lessons']['absent|lun|3'] = dict(self.ds['lessons']['absent|lun|2'])

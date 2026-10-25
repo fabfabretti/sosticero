@@ -8,9 +8,11 @@ function load(file, require, confirm = () => true) {
   const exports = {};
   runInNewContext(ts.transpileModule(readFileSync(file, 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
-  }).outputText, { exports, require: id => id === './useQuietRefresh' ? {useQuietRefresh:(load,apply)=>({refresh:async()=>{const v=await load();apply(v);return v;},invalidate(){}})} : require(id), URLSearchParams, setTimeout, clearTimeout, window: { confirm }, document: { elementFromPoint: () => null } });
+  }).outputText, { exports, require: id => id === './useQuietRefresh' ? {useQuietRefresh:(load,apply)=>({refresh:async()=>{const v=await load();apply(v);return v;},invalidate(){}})} : require(id), URLSearchParams, setTimeout, clearTimeout, requestAnimationFrame: fn => { fn(); return 1; }, cancelAnimationFrame() {}, window: { confirm, scrollBy: options => scrollsForTest.push(options) }, document: { elementFromPoint: () => null } });
   return exports;
 }
+const exportsForTest = [], downloadsForTest = [];
+const scrollsForTest = [];
 const timetables = load('src/timetables.ts');
 const tooltip = load('src/Tooltip.tsx', id => {
   if (id === 'react') return { useRef: i => ({ current: i }), useState: i => [i, () => {}] };
@@ -20,11 +22,12 @@ const tooltip = load('src/Tooltip.tsx', id => {
 
 // Run the real component with minimal hook storage and a fake api.
 function component(file, confirm) {
-  const slots = []; let cursor = 0; const effects = [];
+  const slots = []; let cursor = 0; const effects = [], layouts = [];
   const react = {
     useState(initial) { const i = cursor++; if (!(i in slots)) slots[i] = typeof initial === 'function' ? initial() : initial; return [slots[i], v => slots[i] = typeof v === 'function' ? v(slots[i]) : v]; },
     useRef(value) { const i = cursor++; if (!(i in slots)) slots[i] = { current: value }; return slots[i]; },
     useEffect(fn) { if (!effects.length) effects.push(fn); },
+    useLayoutEffect(fn) { layouts.push(fn); },
     useMemo(fn) { return fn(); },
   };
   const jsx = (type, props) => ({ type, props });
@@ -33,6 +36,7 @@ function component(file, confirm) {
     if (id === 'react') return react;
     if (id === 'react/jsx-runtime') return { jsx, jsxs: jsx };
     if (id === './timetables') return timetables;
+    if (id === './timetablePdf') return { projectTimetableExport: ds => { exportsForTest.push(ds); return ds; }, generateTimetablePdf: () => ({ save: filename => downloadsForTest.push(filename) }) };
     if (id === './Tooltip') return tooltip;
     throw Error(id);
   }, confirm);
@@ -40,6 +44,7 @@ function component(file, confirm) {
     cursor = 0;
     const nodes = [];
     (function walk(n) { if (Array.isArray(n)) return n.forEach(walk); if (!n || typeof n !== 'object') return; nodes.push(n); walk(n.props?.children); })(exports.TeacherTimetables(props));
+    layouts.splice(0).forEach(fn => fn());
     return nodes;
   }, start() { effects.splice(0).forEach(fn => fn()); } };
 }
@@ -69,6 +74,21 @@ async function loaded(handler, confirm) {
   return s;
 }
 const tables = s => s.nodes().filter(n => n.type === 'table');
+
+test('edit transitions compensate the timetable position after controls resize', async () => {
+  const s = await loaded();
+  let top = 200;
+  tables(s)[0].props.ref({ getBoundingClientRect: () => ({ top }) });
+  s.nodes().find(n => n.type === 'button' && n.props['aria-label'] === 'Modifica orario di Anna').props.onClick();
+  top = 420;
+  s.nodes();
+  assert.equal(scrollsForTest.at(-1).top, 220);
+  assert.equal(scrollsForTest.at(-1).behavior, 'instant');
+  s.nodes().find(n => n.type === 'button' && n.props.children === 'Annulla').props.onClick();
+  top = 200;
+  s.nodes();
+  assert.equal(scrollsForTest.at(-1).top, -220);
+});
 
 test('receptions overlay lessons with details and survive teaching edit mode', async () => {
   const data = { ...orari, dataset: { ...orari.dataset, receptions: [
@@ -157,6 +177,7 @@ test('campus chips expose separate color hooks', async () => {
 const helpers = load('src/TeacherTimetables.tsx', id => {
   if (id === 'react') return {};
   if (id === './timetables') return timetables;
+  if (id === './timetablePdf') return { projectTimetableExport: ds => { exportsForTest.push(ds); return ds; }, generateTimetablePdf: () => ({ save: filename => downloadsForTest.push(filename) }) };
   if (id === './Tooltip') return tooltip;
   if (id === 'react/jsx-runtime') return {};
   throw Error(id);
@@ -186,15 +207,19 @@ test('override precedence includes end date and reset suppresses earlier history
 });
 test('editor offers accessible movement, date boundaries and cancel without writes', async () => {
   const s = await loaded();
+  const exportHint = () => s.nodes().find(n => n.type === 'span' && n.props.children === 'Salva o annulla le modifiche prima di esportare.');
+  assert.ok(exportHint());
   s.nodes().find(n => n.props?.['aria-label'] === 'Modifica orario di Anna').props.onClick();
+  assert.ok(exportHint());
   const labels = s.nodes().filter(n => n.type === 'label');
   assert.ok(labels.some(n => n.props.children?.[0] === 'Dal'));
   assert.ok(!s.nodes().some(n => n.props?.children === 'Sposta'));
   assert.ok(s.nodes().some(n => n.props?.className === 'orari-edit-toolbar'));
   assert.ok(s.nodes().some(n => n.props?.children === 'Salva'));
+  assert.equal(s.nodes().find(n => n.type === 'button' && n.props?.['aria-label'] === 'Modifica orario di Anna').props.disabled, true);
   assert.ok(s.nodes().some(n => n.props?.['aria-label'] === 'Disabilita Mar 2ª POT'));
   s.nodes().find(n => n.type === 'button' && n.props.children === 'Annulla').props.onClick();
-  assert.ok(s.nodes().some(n => n.props?.['aria-label'] === 'Modifica orario di Anna'));
+  assert.equal(s.nodes().find(n => n.type === 'button' && n.props?.['aria-label'] === 'Modifica orario di Anna').props.disabled, false);
   assert.equal(s.calls.length, 1);
 });
 
@@ -415,23 +440,23 @@ test('future overrides are expanded and removable while editing', async () => {
   assert.ok(!s.nodes().some(n => n.props?.className === 'orari-history'));
 });
 
-test('ALF uses the class and campus editor on click and double click in edit mode', async () => {
+for (const code of ['ALF', 'PE', 'RIT', 'DIS']) test(`${code} uses the class and campus editor on click and double click in edit mode`, async () => {
   const alf = structuredClone(orari);
-  alf.dataset.lessons['a|mar|2'].activities = ['ALF'];
+  alf.dataset.lessons['a|mar|2'].activities = [code];
   const s = await loaded(async () => alf);
   assert.ok(!s.nodes().some(n => n.props?.onDoubleClick));
   s.nodes().find(n => n.props?.['aria-label'] === 'Modifica orario di Anna').props.onClick();
-  s.nodes().find(n => n.props?.['aria-label'] === 'Disabilita Mar 2ª ALF').props.onClick();
-  const cell = s.nodes().find(n => n.props?.['aria-label'] === 'Modifica ALF Mar 2ª ALF');
+  s.nodes().find(n => n.props?.['aria-label'] === `Disabilita Mar 2ª ${code}`).props.onClick();
+  const cell = s.nodes().find(n => n.props?.['aria-label'] === `Modifica ${code} Mar 2ª ${code}`);
   cell.props.onClick(); cell.props.onClick(); cell.props.onDoubleClick();
-  assert.ok(s.nodes().some(n => n.props?.['aria-label'] === 'Riattiva Mar 2ª ALF'));
-  s.nodes().find(n => n.props?.['aria-label'] === 'Classe ALF').props.onChange({ target: { value: '1A' } });
+  assert.ok(s.nodes().some(n => n.props?.['aria-label'] === `Riattiva Mar 2ª ${code}`));
+  s.nodes().find(n => n.props?.['aria-label'] === `Classe ${code}`).props.onChange({ target: { value: '1A' } });
   s.nodes().find(n => n.props?.role === 'option' && n.props.children[0] === '1A').props.onClick();
   s.nodes().find(n => n.type === 'button' && n.props.children === 'Centrale').props.onClick();
   s.nodes().find(n => n.props?.children === 'Applica').props.onClick();
-  assert.ok(s.nodes().some(n => n.props?.title === '1A · ALF · Centrale'));
-  s.nodes().find(n => n.props?.['aria-label'] === 'Riattiva Mar 2ª 1A · ALF').props.onClick();
-  assert.ok(s.nodes().some(n => n.props?.['aria-label'] === 'Disabilita Mar 2ª ALF'));
+  assert.ok(s.nodes().some(n => n.props?.title === `1A · ${code} · Centrale`));
+  s.nodes().find(n => n.props?.['aria-label'] === `Riattiva Mar 2ª 1A · ${code}`).props.onClick();
+  assert.ok(s.nodes().some(n => n.props?.['aria-label'] === `Disabilita Mar 2ª ${code}`));
 });
 
 
@@ -459,3 +484,37 @@ test('activity editor stays outside the grid with keyboard class suggestions and
   assert.ok(s.nodes().some(n => n.props?.['aria-label'] === 'Modifica POT Mar 2ª POT'));
   assert.equal(s.calls.length, 1);
 });
+
+test('teachers with only receptions still get a timetable and R markers', async () => {
+  const data = { ...orari, dataset: { ...orari.dataset,
+    teachers: { ...orari.dataset.teachers, only: { id: 'only', name: 'Only receptions' } },
+    receptions: [{ teacher: 'only', day: 'ven', hour: 3, time: '10:00', site: null, location: '' }],
+  } };
+  const s = await loaded(async () => data);
+  assert.ok(tables(s).some(node => node.props['aria-label'] === 'Orario di Only receptions'));
+  assert.equal(s.nodes().filter(node => node.type === tooltip.HourHelp && node.props.text.startsWith('Ricevimento')).length, 1);
+});
+
+ test('PDF exports all saved teachers despite search and blocks unsaved drafts', async () => {
+  const current = { ...orari, day: new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Rome' }).format(new Date()) };
+  const s = await loaded(async () => current);
+  s.nodes().find(n => n.props?.['aria-label'] === 'Cerca docente').props.onChange({ target: { value: 'Anna' } });
+  const button = () => s.nodes().find(n => n.type === 'button' && n.props.children === 'Scarica PDF completo');
+  button().props.onClick();
+  assert.equal(exportsForTest.at(-1), orari.dataset);
+  assert.equal(downloadsForTest.at(-1), `orari-${current.day}.pdf`);
+  s.nodes().find(n => n.props?.['aria-label'] === 'Modifica orario di Anna').props.onClick();
+  assert.equal(button().props.disabled, true);
+ });
+
+ test('PDF is disabled before loading, on empty schedules and during name edits', async () => {
+  const s = screen();
+  const button = () => s.nodes().find(n => n.type === 'button' && n.props.children === 'Scarica PDF completo');
+  assert.equal(button().props.disabled, true);
+  const current = { ...orari, day: new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Rome' }).format(new Date()) };
+  const loadedScreen = await loaded(async () => current);
+  loadedScreen.nodes().find(n => n.props?.['aria-label'] === 'Modifica nome di Anna').props.onClick();
+  assert.equal(loadedScreen.nodes().find(n => n.type === 'button' && n.props.children === 'Scarica PDF completo').props.disabled, true);
+  const empty = await loaded(async () => ({ ...current, dataset: { teachers: {}, lessons: {} } }));
+  assert.equal(empty.nodes().find(n => n.type === 'button' && n.props.children === 'Scarica PDF completo').props.disabled, true);
+ });
