@@ -1,0 +1,42 @@
+# Standalone Docker configuration; never combine with compose.yaml.
+name: sosticero
+services:
+  sosticero:
+    image: "${SOSTICERO_IMAGE:?Select a verified local image}"
+    platform: linux/amd64
+    pull_policy: never
+    user: "${LOCAL_UID:?Set your server user UID}:${LOCAL_GID:?Set your server group GID}"
+    environment:
+      APP_ENV: production
+      APP_ORIGIN: https://sosticero.iamfabs.dev
+      DATABASE_PATH: /data/supplenze.sqlite
+      PYTHONDONTWRITEBYTECODE: "1"
+    volumes:
+      - type: bind
+        source: ./data
+        target: /data
+        bind:
+          create_host_path: false
+    networks:
+      proxy:
+        aliases: [sosticero]
+    cpus: 1.0
+    mem_limit: 1g
+    memswap_limit: 1g
+    pids_limit: 128
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    stop_grace_period: 30s
+    restart: unless-stopped
+networks:
+  proxy:
+    external: true
+    name: npm_npm_proxy
