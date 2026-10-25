@@ -58,3 +58,7 @@
 - README documentation is written together with implementation, not during this proposal revision.
 - Ask whether to commit before committing; do not include unrelated existing changes.
 - Archive after implementation and verification are complete and reviewed.
+
+## Repository reconciliation — 2026-10-25
+
+Authentication code and README are now committed separately with the required gzip middleware. Main absence-inbox/data-backup requirements were extended, and campus-authorization/user-auth main specs were created. The isolated staged frontend passed 132 tests and its production build; the staged backend run passed 212 of 213 tests, with the sole missing-gzip test passing after middleware inclusion. The final combined tree passed all 214 backend tests. Windows executable and live Google integration were not rechecked.

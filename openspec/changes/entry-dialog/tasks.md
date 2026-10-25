@@ -28,7 +28,7 @@
 
 ## Workflow follow-up
 
-- Fold or archive `compact-absence-entry` before archiving this change, so the durable `absence-entry` spec describes the dialog rather than the inline sidebar form.
+- The compact-entry predecessor and dialog delta are folded into the durable absence-entry spec. Historical pending container checks on the predecessor are not claimed as passed.
 - Ask the user whether to commit before creating any commit.
 - Archive only when implementation and verification are complete and the user requests it.
 
@@ -41,4 +41,4 @@
 
 ## Repository reconciliation — 2026-10-25
 
-The dialog and its quiet-refresh pause support are included in the shared operational UI commit. The complete frontend test suite and production build pass. Task 4.3 remains pending: committing or pushing does not deploy the dialog to atlante. This change remains active; its documented compact-absence-entry predecessor must be reconciled before syncing/archiving its MODIFIED absence-entry requirement.
+The dialog and its quiet-refresh pause support are included in the shared operational UI commit. The complete frontend test suite and production build pass. Task 4.3 remains pending: committing or pushing does not deploy the dialog to atlante. This change remains active; the compact-absence-entry predecessor and dialog delta are now reconciled in the main absence-entry spec. Pending deployment verification is not marked complete.

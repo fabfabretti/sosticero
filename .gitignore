@@ -52,6 +52,8 @@ Thumbs.db
 # Local tooling and reference material
 /output/timetables/*.json
 /output/timetables/*.md
+/output/timetables/*/
+/outputs/
 .agents/
 .codex/
 .aws/
