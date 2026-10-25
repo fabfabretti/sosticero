@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
+import { useQuietRefresh } from './useQuietRefresh';
 import { todayInRome } from './StatsCalendar';
 
 export type Reception = { teacher: string; day: string; hour: number; name: string; time: string; location: string; site: string | null };
 type Row = Reception & { row: number; skip: boolean; suggestions: string[]; error: string };
 type Choice = { teacher?: string | null; site?: string | null; skip?: boolean };
-type Impact = { rows: Row[]; teachers: Record<string, string>; ready: boolean; token: string; effective: string; end: string | null; days: { day: string; issues: { key: string; message: string }[] }[] };
+type Impact = { generation?: number; rows: Row[]; teachers: Record<string, string>; ready: boolean; token: string; effective: string; end: string | null; days: { day: string; issues: { key: string; message: string }[] }[] };
 type Document = { versions: { effective: string; rows: Reception[] }[] };
 type Api = <T>(url: string, body?: unknown) => Promise<T>;
 
-export function ReceptionImport({ api }: { api: Api }) {
+export function ReceptionImport({ api, onSummary, onImported, revision }: { api: Api; onSummary?: (value: string) => void; onImported?: () => void; revision?: number }) {
   const [effective, setEffective] = useState(todayInRome());
   const [file, setFile] = useState<{ name: string; data: string }>();
   const [choices, setChoices] = useState<Record<string, Choice>>({});
@@ -21,7 +22,12 @@ export function ReceptionImport({ api }: { api: Api }) {
   const [query, setQuery] = useState('');
   const [teacherQueries, setTeacherQueries] = useState<Record<number, string>>({});
   const request = useRef(0);
-  useEffect(() => { let active = true; api<Document>('receptions').then(value => { if (active) setDocument(value); }).catch(e => { if (active) setError(String(e)); }); return () => { active = false; }; }, [api]);
+  useQuietRefresh(() => api<Document>('receptions'), setDocument, busy || !!file || !!impact, 'settings-receptions');
+  useEffect(() => { let active = true; api<Document>('receptions').then(value => { if (active) setDocument(value); }).catch(e => { if (active) setError(String(e)); }); return () => { active = false; }; }, [api, revision]);
+  useEffect(() => {
+    const selected = document?.versions.filter(version => version.effective <= todayInRome()).at(-1);
+    onSummary?.(error ? 'Ricevimenti: da verificare' : document ? `${selected?.rows.length || 0} ricevimenti` : 'Ricevimenti: caricamento…');
+  }, [document, error, onSummary]);
   const invalidate = () => { request.current++; setReviewed(false); setError(''); setSuccess(''); };
   const body = () => ({ file: file?.data, effective, choices });
   const preview = async () => {
@@ -37,7 +43,7 @@ export function ReceptionImport({ api }: { api: Api }) {
     if (!impact || !reviewed || !impact.ready || !window.confirm(`Importare i ricevimenti dal ${effective}? Il nuovo elenco sostituisce il precedente nell’intervallo indicato. Le assegnazioni restano conservate con eventuali conflitti da verificare.`)) return;
     setBusy(true); setError('');
     try {
-      const result = await api<{ backup: { filename: string } }>('receptions', { ...body(), token: impact.token, confirm: true });
+      const result = await api<{ backup: { filename: string } }>('receptions', { ...body(), _generation: impact.generation, token: impact.token, confirm: true });
       setDocument(await api<Document>('receptions')); setImpact(undefined); setFile(undefined); setChoices({}); setReviewed(false);
       setSuccess('Ricevimenti importati. Backup precedente: ' + result.backup.filename);
     } catch (e) { setError(String(e)); setReviewed(false); }

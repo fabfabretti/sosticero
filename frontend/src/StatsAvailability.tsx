@@ -1,3 +1,4 @@
+import { sessionFetch } from './session';
 import { useEffect, useState } from "react";
 import { campuses, weekdays, formatNumber as fmt } from "./stats-report";
 import { todayInRome } from "./StatsCalendar";
@@ -82,7 +83,7 @@ export function StatsAvailability({ campus, preview, onReady }: { campus: string
     setData(undefined); setError(""); onReady(false);
     if (!date) { setLoading(false); return; }
     setLoading(true);
-    fetch("/api/stats/availability?" + new URLSearchParams({ date, campus })).then(async response => {
+    sessionFetch("/api/stats/availability?" + new URLSearchParams({ date, campus })).then(async response => {
       const body = await response.json();
       if (!response.ok) throw Error(typeof body.detail === "string" ? body.detail : "Impossibile caricare le disponibilità.");
       if (active) { setData(body); onReady(true); }

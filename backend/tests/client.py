@@ -1,5 +1,5 @@
 """Legacy workflow clients read a baseline before each deliberate test action."""
-from fastapi.testclient import TestClient as RawClient
+from backend.tests.auth_client import AuthenticatedClient as RawClient
 from backend import concurrency
 from types import SimpleNamespace
 from datetime import date
@@ -27,4 +27,13 @@ class TestClient(RawClient):
                 else:
                     refs = [concurrency.key('manualPermits', '', body['id'])]
                 kwargs['json'] = dict(body, expected={k: tokens.get(k, 'absent') for k in refs})
+        if route == 'hour-types' and isinstance(body, dict) and 'expected' not in body:
+            versions = self.get('/api/hour-types').json().get('versions', {})
+            kwargs['json'] = dict(body, expected=versions.get(body.get('id')))
+        if str(url) == '/api/inbox/connection' and isinstance(body, dict) and 'expected' not in body:
+            kwargs['json'] = dict(body, expected=self.get('/api/inbox/connection').json()['version'])
+        if str(url) == '/api/inbox/credentials':
+            headers = dict(kwargs.get('headers', {}))
+            headers['X-Record-Version'] = self.get('/api/inbox/connection').json()['version']
+            kwargs['headers'] = headers
         return super().post(url, **kwargs)

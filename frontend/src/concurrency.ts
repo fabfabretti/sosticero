@@ -1,4 +1,4 @@
-export type Baseline = { records: Record<string, string>; dates: Record<string, string[]> };
+export type Baseline = { generation?: number; records: Record<string, string>; dates: Record<string, string[]> };
 type Mutation = { [field: string]: unknown; day?: string; group?: string; id?: string; key?: string; replace_key?: string; original_day?: string; original_id?: string; future?: boolean; until?: string };
 export function preconditions(baseline: Baseline | undefined, route: string, body: Mutation) {
   if (!baseline) throw Error('Ricarica la pagina prima di salvare.');
@@ -22,7 +22,7 @@ export function preconditions(baseline: Baseline | undefined, route: string, bod
     add('permessi', day, body.id!);
     if (body.original_day) add('permessi', body.original_day, body.original_id!);
   } else if (route === 'manual-permits') add('manualPermits', '', body.id!);
-  return Object.fromEntries(refs.map(ref => [ref, baseline.records[ref] || 'absent']));
+  return Object.fromEntries([...refs.map(ref => [ref, baseline.records[ref] || 'absent']), ...(baseline.generation === undefined ? [] : [['__generation__', String(baseline.generation)]])]);
 }
 export class ApiError extends Error {
   constructor(public status: number, detail: string | { message?: string }) {

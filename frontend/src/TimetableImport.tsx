@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { todayInRome } from './StatsCalendar';
 
-type Impact = {
+type Impact = { generation?: number;
   overrides?: { teacher: string; start: string; version: string; group: number; review: boolean }[];
   token: string; effective: string; end: string | null; initial: boolean;
   changedLessons: number; added: string[]; removed: string[]; changedTeachers: string[];
@@ -29,7 +29,7 @@ export function TimetableImport({ api, onImported }: { api: <T>(url: string, bod
     if (!window.confirm(`Importare ${file.name} con decorrenza ${effective}? Le registrazioni coinvolte saranno ricalcolate e le assegnazioni conservate, con eventuali conflitti da risolvere.`)) return;
     setBusy(true); setError('');
     try {
-      const result = await api<{backup: {filename: string}}>('timetable?' + new URLSearchParams({effective, token: impact.token, confirm: 'true'}), file.data);
+      const result = await api<{backup: {filename: string}}>('timetable?' + new URLSearchParams({effective, token: impact.token, confirm: 'true'}), { ...(file.data as object), _generation: impact.generation });
       setImpact(undefined); setFile(undefined); setSuccess('Orario importato. Backup precedente: ' + result.backup.filename); onImported();
     } catch (e) { setError(String(e)); setImpact(undefined); }
     finally { setBusy(false); }

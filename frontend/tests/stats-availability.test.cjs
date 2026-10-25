@@ -7,7 +7,7 @@ const jsx = (type, props) => ({ type, props });
 function load(file, imports = {}, globals = {}) {
   const exports = {};
   runInNewContext(ts.transpileModule(readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText,
-    { exports, require: id => imports[id], URLSearchParams, ...globals });
+    { exports, require: id => id === './session' ? {sessionFetch:(...args)=>globals.fetch(...args)} : imports[id], URLSearchParams, ...globals });
   return exports;
 }
 const reporting = load('src/stats-report.ts');

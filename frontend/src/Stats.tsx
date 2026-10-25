@@ -1,3 +1,4 @@
+import { sessionFetch } from './session';
 import { useEffect, useState } from "react";
 import { CartesianGrid, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, LineChart, Line, BarChart, Bar } from "recharts";
 import { campuses, periods, metricNames, outcomes, weekdays, typeNames, formatNumber as fmt, reportCsv } from "./stats-report";
@@ -63,7 +64,7 @@ export function Stats() {
     }
     setLoading(true);
     const query = new URLSearchParams({ campus, period, ...(period === "custom" ? { start, end } : {}) });
-    fetch("/api/stats?" + query).then(async response => {
+    sessionFetch("/api/stats?" + query).then(async response => {
       const body = await response.json();
       if (!response.ok) throw Error(typeof body.detail === "string" ? body.detail : "Impossibile caricare le statistiche.");
       if (active) {

@@ -1401,3 +1401,14 @@ select.inbox-teacher { width: 220px; padding: 5px 8px; height: 32px; }
 .dis-table .assigned-name { text-decoration: line-through; }
 .dis-table .record-info { margin-left: .15rem; }
 .dis-table thead th:last-child { display: table-cell; }
+
+.account-identity { margin-left:auto; display:flex; align-items:center; gap:.65rem; flex-wrap:wrap; }
+.account-identity strong {overflow-wrap:anywhere;min-width:0;max-width:100%}
+.account-identity span {font-size:.85em;opacity:.8}
+.auth-backdrop {position:fixed;inset:0;z-index:10000;background:var(--bg,#fff);display:grid;place-items:center;padding:1rem;}
+.auth-login {width:min(26rem,100%);padding:2rem}
+.auth-login form,.auth-login label {display:grid;gap:.75rem}.auth-login form{gap:1rem}
+button:disabled,select:disabled,[aria-disabled="true"] {cursor:not-allowed}
+@media(max-width:700px){.account-identity{width:100%;justify-content:flex-end}.bar{flex-wrap:wrap}}
+
+.settings-permissions{border:0;padding:0;margin:0;min-width:0}

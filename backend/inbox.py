@@ -1,7 +1,7 @@
 """Google Form discovery and review; importing this module performs no I/O."""
 import asyncio
 from collections import Counter
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, nullcontext
 from datetime import datetime, timedelta
 import json
 import os
@@ -89,8 +89,9 @@ def parse(row):
 
 
 class Inbox:
-    def __init__(self, store, database, load, save_state, fetcher=None):
+    def __init__(self, store, database, load, save_state, fetcher=None, identities=None):
         self.store, self.load, self.save_state = store, load, save_state
+        self.identities = identities
         self.key = Path(database).parent / 'keys' / 'google-service-account.json'
         self.fetcher = fetcher or fetch_sheet
         self.lock = threading.RLock()
@@ -102,6 +103,8 @@ class Inbox:
             db.execute('''CREATE TABLE IF NOT EXISTS inbox (
                 id TEXT PRIMARY KEY, source TEXT NOT NULL, raw TEXT NOT NULL,
                 status TEXT NOT NULL DEFAULT 'pending', processed TEXT, teacher TEXT)''')
+            if 'accepted_by' not in {row[1] for row in db.execute('PRAGMA table_info(inbox)')}:
+                db.execute('ALTER TABLE inbox ADD COLUMN accepted_by TEXT')
 
     def config(self, db):
         return self.store.read(db, 'googleSheets', {})
@@ -115,44 +118,57 @@ class Inbox:
                     email = json.loads(self.key.read_text())['client_email']
                 except (ValueError, KeyError, OSError):
                     pass
-            return dict(**config, email=email, configured=bool(config and email),
+            return dict(version=self.version(), **config, email=email, configured=bool(config and email),
                         pending=db.execute("SELECT COUNT(*) FROM inbox WHERE status='pending'").fetchone()[0],
                         received=db.execute("SELECT COUNT(*) FROM inbox").fetchone()[0],
                         **self.store.read(db, 'googleSheetsStatus', {}))
 
+    def version(self):
+        with self.store.connect() as db:
+            config = self.config(db)
+        key = self.key.read_bytes() if self.key.exists() else b''
+        from hashlib import sha256
+        return timetables.digest([config, sha256(key).hexdigest()])
+
+    def gate(self):
+        return self.identities.gate() if self.identities else nullcontext()
+
+    def check_version(self, expected):
+        if expected != self.version():
+            raise HTTPException(409, 'Collegamento modificato: ricarica la configurazione.')
+
     def sync(self):
-        with self.lock:
+        with self.gate(), self.lock:
             with self.store.connect() as db:
                 config = self.config(db)
-            if not config or not self.key.exists():
-                return True
-            try:
-                matrix = self.fetcher(config, self.key)
-                validate_matrix(matrix)
-                source = timetables.digest(config)
-                counts = Counter()
+            if not config or not self.key.exists(): return True
+            version = self.version()
+            generation = self.identities.generation() if self.identities else 0
+        try:
+            matrix = self.fetcher(config, self.key)
+            validate_matrix(matrix)
+            with self.gate(), self.lock:
+                if version != self.version() or (self.identities and generation != self.identities.generation()): return True
+                source, counts = timetables.digest(config), Counter()
                 with self.store.connect() as db:
                     db.execute('BEGIN IMMEDIATE')
                     for row in matrix[1:]:
-                        if not any(row):
-                            continue
+                        if not any(row): continue
                         raw = [str(v).strip() for v in row]
-                        raw += [''] * max(0, 8 - len(raw))
+                        raw += [''] * max(0, 8-len(raw))
                         fingerprint = timetables.digest(raw)
                         counts[fingerprint] += 1
                         identifier = timetables.digest([source, fingerprint, counts[fingerprint]])
-                        db.execute('INSERT OR IGNORE INTO inbox (id,source,raw) VALUES (?,?,?)',
-                                   (identifier, source, json.dumps(raw)))
+                        db.execute('INSERT OR IGNORE INTO inbox (id,source,raw) VALUES (?,?,?)', (identifier, source, json.dumps(raw)))
                     self.store.write(db, 'googleSheetsStatus', dict(lastSuccess=now(), error=''))
-                return True
-            except Exception as exc:
-                safe = {'Colonne del modulo non riconosciute: verifica nome del foglio e intestazioni.',
-                        'Impossibile leggere Google Sheets. Verifica chiave, API abilitata e condivisione come Visualizzatore.'}
-                error = str(exc) if str(exc) in safe else 'Sincronizzazione non disponibile. Riprova più tardi.'
-                with self.store.connect() as db:
-                    status = self.store.read(db, 'googleSheetsStatus', {})
-                    self.store.write(db, 'googleSheetsStatus', dict(status, error=error))
-                return False
+            return True
+        except Exception:
+            with self.gate(), self.lock:
+                if version == self.version() and (not self.identities or generation == self.identities.generation()):
+                    with self.store.connect() as db:
+                        status = self.store.read(db, 'googleSheetsStatus', {})
+                        self.store.write(db, 'googleSheetsStatus', dict(status, error='Sincronizzazione non disponibile. Riprova più tardi.'))
+            return False
 
     @asynccontextmanager
     async def lifespan(self, app):
@@ -179,10 +195,10 @@ class Inbox:
             self.wake = None
 
     def item(self, db, identifier):
-        row = db.execute('SELECT id,raw,status,processed,teacher FROM inbox WHERE id=?', (identifier,)).fetchone()
+        row = db.execute('SELECT id,raw,status,processed,teacher,accepted_by FROM inbox WHERE id=?', (identifier,)).fetchone()
         if row is None:
             raise HTTPException(404, 'Comunicazione non trovata.')
-        return dict(id=row[0], raw=json.loads(row[1]), status=row[2], processed=row[3], teacher=row[4])
+        return dict(id=row[0], raw=json.loads(row[1]), status=row[2], processed=row[3], teacher=row[4], acceptedBy=json.loads(row[5]) if row[5] else None)
 
     def preview(self, db, item, selected=None):
         result = dict(item, **parse(item['raw']))
@@ -227,6 +243,7 @@ class Inbox:
             source = match[1] if match else source.strip()
             if not re.fullmatch(r'[A-Za-z0-9_-]{10,200}', source) or not 0 < len(worksheet.strip()) <= 100:
                 raise ValueError('ID o URL del foglio e nome scheda non validi.')
+            self.check_version(data.get('expected'))
             def save():
                 with self.lock, self.store.connect() as db:
                     self.store.write(db, 'googleSheets', dict(spreadsheet=source, worksheet=worksheet.strip()))
@@ -238,6 +255,7 @@ class Inbox:
 
         @app.post('/api/inbox/credentials')
         async def upload(request: Request):
+            self.check_version(request.headers.get('x-record-version'))
             if request.headers.get('content-type', '').split(';')[0] != 'application/json':
                 raise HTTPException(415, 'Carica un file JSON.')
             raw = bytearray()
@@ -294,7 +312,7 @@ class Inbox:
                 return self.preview(db, self.item(db, identifier), data.get('teacher'))
 
         @app.post('/api/inbox/{identifier}/{action}')
-        def process(identifier: str, action: str, data: dict):
+        def process(identifier: str, action: str, data: dict, request: Request):
             if action not in ('accept', 'ignore'):
                 raise HTTPException(404)
             if data.get('teacher') is not None and not isinstance(data['teacher'], str):
@@ -304,7 +322,7 @@ class Inbox:
                 item = self.item(db, identifier)
                 if item['status'] != 'pending':
                     if item['status'] == ('accepted' if action == 'accept' else 'ignored'):
-                        return dict(ok=True, status=item['status'], alreadyProcessed=True)
+                        return dict(ok=True, status=item['status'], alreadyProcessed=True, acceptedBy=item.get('acceptedBy'))
                     raise HTTPException(409, 'Comunicazione già elaborata. Aggiorna Inbox.')
                 teacher = None
                 if action == 'accept':
@@ -343,5 +361,6 @@ class Inbox:
                     if changed:
                         self.save_state(db, ds, state, changed)
                 status = 'accepted' if action == 'accept' else 'ignored'
-                db.execute('UPDATE inbox SET status=?,processed=?,teacher=? WHERE id=?', (status, now(), teacher, identifier))
-                return dict(ok=True, status=status)
+                accepted_by = {k:request.state.account[k] for k in ('id','username','name')} if action == 'accept' else None
+                db.execute('UPDATE inbox SET status=?,processed=?,teacher=?,accepted_by=? WHERE id=?', (status, now(), teacher, json.dumps(accepted_by) if accepted_by else None, identifier))
+                return dict(ok=True, status=status, acceptedBy=accepted_by)

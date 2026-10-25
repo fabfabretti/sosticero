@@ -32,7 +32,7 @@ jobs:
           pyinstaller --noconfirm --onefile --name $name `
             --icon packaging/Sosticero.ico `
             --add-data "frontend/dist;frontend/dist" `
-            --collect-submodules backend --collect-all uvicorn --collect-all tzdata `
+            --collect-submodules backend --collect-all uvicorn --collect-all tzdata --collect-all argon2 --collect-all _argon2_cffi_bindings `
             launcher.py
           "EXE_NAME=$name" >> $env:GITHUB_ENV
 
@@ -50,8 +50,8 @@ jobs:
               } catch {}
             }
             if (-not $up) { throw "App non raggiungibile su 127.0.0.1:8000" }
-            $b = Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8000/api/backups -TimeoutSec 3
-            Write-Host "/api/backups -> $($b.StatusCode) $($b.Content)"
+            $b = Invoke-WebRequest -UseBasicParsing http://127.0.0.1:8000/api/environment -TimeoutSec 3
+            Write-Host "/api/environment -> $($b.StatusCode) $($b.Content)"
           } finally {
             Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
           }

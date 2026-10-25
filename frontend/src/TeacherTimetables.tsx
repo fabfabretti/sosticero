@@ -1,3 +1,4 @@
+import { useQuietRefresh } from './useQuietRefresh';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { buildTeacherTimetables, norm, teacherSearchText, DAYS, HOURS } from './timetables';
 import { HourHelp } from './Tooltip';
@@ -11,12 +12,12 @@ type Dataset = {
 };
 type Group = { before: Record<string, Lesson | null>; after: Record<string, Lesson | null>; conflicts: { id: string; effective: string | null }[] };
 type Override = { id: string; teacher: string; start: string; end: string | null; reset: boolean; groups: Group[] };
-type Orari = { effective: string | null; day: string; basis: string; version: string; imported: Dataset; dataset: Dataset; overrides: Override[] };
-type Draft = { teacher: string; start: string; end: string; cells: Record<string, Lesson | null>; basis: string; reset: boolean };
-type Impact = { token: string; days: { day: string; assignments: string[]; issues: { key: string; message: string }[] }[] };
+type Orari = { generation?: number; effective: string | null; day: string; basis: string; version: string; imported: Dataset; dataset: Dataset; overrides: Override[] };
+type Draft = { _generation?: number; teacher: string; start: string; end: string; cells: Record<string, Lesson | null>; basis: string; reset: boolean };
+type Impact = { generation?: number; token: string; days: { day: string; assignments: string[]; issues: { key: string; message: string }[] }[] };
 type Deletion = { record: Override; basis: string; impact: Impact };
 type NameOverride = { name: string; originalName: string };
-type NameDraft = NameOverride & { teacher: string; previous: NameOverride | null };
+type NameDraft = NameOverride & { _generation?: number; teacher: string; previous: NameOverride | null };
 const DAY_LABELS: Record<string, string> = { lun: 'Lun', mar: 'Mar', mer: 'Mer', gio: 'Gio', ven: 'Ven' };
 const today = () => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Rome' }).format(new Date());
 const dateLabel = (s: string) => s.split('-').reverse().join('/');
@@ -57,12 +58,13 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
   const baseline = useRef<Draft | undefined>(undefined);
   const dirty = !!draft || !!nameDraft;
   const endpoint = (day: string) => 'orari?' + new URLSearchParams({ day });
-  useEffect(() => {
-    let active = true;
-    setError('');
-    api<Orari>(endpoint(viewDay)).then(result => { if (active) setData(result); }).catch(e => { if (active) setError(String(e)); });
-    return () => { active = false; };
-  }, [api, viewDay]);
+  const { refresh: quietRefresh, invalidate: invalidateRefresh } = useQuietRefresh(
+    () => api<Orari>(endpoint(viewDay)),
+    next => setData(old => JSON.stringify(old) === JSON.stringify(next) && old?.generation === next.generation ? old : next),
+    dirty || busy || !!classEdit || !!impact || !!deletion || !!drag,
+    viewDay,
+  );
+  useEffect(() => { void quietRefresh().catch(e => setError(String(e))); }, [api, viewDay]);
   useEffect(() => {
     if (!dirty) return;
     const unload = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; };
@@ -94,13 +96,14 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
     if (!data || busy || (dirty && !window.confirm('Scartare la bozza corrente?'))) return;
     discard(); setNameStatus('');
     const previous = data.dataset.teachers[teacher].nameOverride || null;
-    setNameDraft({ teacher, previous, name: previous?.name || '', originalName: previous?.originalName || '' });
+    setNameDraft({ _generation: data.generation, teacher, previous, name: previous?.name || '', originalName: previous?.originalName || '' });
   };
   const saveName = async (remove = false) => {
     if (!nameDraft || busy) return;
     setBusy(true); setError(''); setNameStatus('');
     try {
-      await api('orari/name', { teacher: nameDraft.teacher, previous: nameDraft.previous,
+      invalidateRefresh();
+      await api('orari/name', { _generation: nameDraft._generation, teacher: nameDraft.teacher, previous: nameDraft.previous,
         value: remove ? null : { name: nameDraft.name, originalName: nameDraft.originalName } });
       setData(await api<Orari>(endpoint(viewDay)));
       setNameDraft(undefined);
@@ -113,7 +116,7 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
     setClassEdit(undefined);
     setNameDraft(undefined); setNameStatus('');
     const current = activeOverride(data.overrides || [], teacher, viewDay);
-    const next = { teacher, start: viewDay, end: current?.end || '', cells: week(data.dataset, teacher), basis: data.basis, reset: false };
+    const next = { _generation: data.generation, teacher, start: viewDay, end: current?.end || '', cells: week(data.dataset, teacher), basis: data.basis, reset: false };
     baseline.current = next;
     setDraft(next);
     setImpact(undefined); setDeletion(undefined); setDrag(undefined); setError('');
@@ -127,7 +130,7 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
     try {
       const result = await api<Orari>(endpoint(start));
       const current = activeOverride(result.overrides || [], draft.teacher, start);
-      const next = { teacher: draft.teacher, start, end: current?.end || '', cells: week(result.dataset, draft.teacher), basis: result.basis, reset: false };
+      const next = { _generation: result.generation, teacher: draft.teacher, start, end: current?.end || '', cells: week(result.dataset, draft.teacher), basis: result.basis, reset: false };
       setData(result); setViewDay(start);
       baseline.current = next;
       setDraft(next);
@@ -155,6 +158,7 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
   };
   const apply = async (result: Impact) => {
     if (!draft) return;
+    invalidateRefresh();
     await api('orari/override', { ...draft, end: draft.end || null, token: result.token });
     const updated = await api<Orari>(endpoint(viewDay)); setData(updated); discard();
   };
@@ -175,7 +179,7 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
     if (!confirmed && dirty) discard();
     const n = ++request.current;
     const basis = confirmed?.basis || data.basis;
-    const body = { delete: true, id: record.id, teacher: record.teacher, start: record.start, basis };
+    const body = { _generation: confirmed?.impact.generation ?? data.generation, delete: true, id: record.id, teacher: record.teacher, start: record.start, basis };
     setBusy(true); setError(''); if (!confirmed) setDeletion(undefined);
     try {
       const result = confirmed?.impact || await api<Impact>('orari/preview', body);

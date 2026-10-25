@@ -72,19 +72,26 @@ function app(localStorage = { getItem: () => null, setItem() {} }, confirm = () 
   const code = ts.transpileModule(readFileSync('src/main.tsx', 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
   }).outputText;
-  runInNewContext(code, {
-    exports: {}, URLSearchParams, Date, localStorage, setTimeout, clearTimeout,
-    setInterval: () => 1, clearInterval() {},
-    window: { innerWidth: 1024, innerHeight: 768, confirm },
-    document: { getElementById: () => ({ focus() {} }) },
-    fetch(url, options) {
+  let ApiErrorClass;
+  const fetcher = (url, options) => {
       if (url === '/api/environment') return Promise.resolve({ ok: true, json: async () => ({ testing: false }) });
       return new Promise(resolve => requests.push({
         url, options,
         resolve: (data, ok = true, status = ok ? 200 : 422) => resolve({ ok, status, json: async () => data && typeof data === "object" && !Array.isArray(data) ? { concurrency: { records: {}, dates: {} }, ...data } : data }),
       }));
-    },
+    };
+  runInNewContext(code, {
+    exports: {}, URLSearchParams, Date, localStorage, setTimeout, clearTimeout,
+    setInterval: () => 1, clearInterval() {},
+    window: { innerWidth: 1024, innerHeight: 768, confirm },
+    document: { documentElement: { dataset: {} }, getElementById: () => ({ focus() {} }) },
+    fetch: fetcher,
     require(id) {
+      if (id === './Auth') return { Auth: ({children}) => children, useAccount: () => ({ id:'test', username:'test', name:'Test', campus:'centrale' }) };
+      if (id === './session') return { requestApi: async (url, body) => {
+        const response = await fetcher('/api/'+url, body === undefined ? undefined : {method:'POST',body:JSON.stringify(body)});
+        const data = await response.json(); if (!response.ok) throw new ApiErrorClass(response.status,data.detail); return data;
+      }};
       if (id === './concurrency' || id === './useQuietRefresh') {
         const exports = {};
         runInNewContext(ts.transpileModule(readFileSync('src/' + id.slice(2) + '.ts', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, {
@@ -92,6 +99,7 @@ function app(localStorage = { getItem: () => null, setItem() {} }, confirm = () 
           document: { visibilityState: 'visible', querySelectorAll: () => [], addEventListener() {}, removeEventListener() {} },
           setInterval: () => 1, clearInterval() {},
         });
+        if (id === './concurrency') ApiErrorClass=exports.ApiError;
         return exports;
       }
       if (id === 'react') return { ...react, default: { Fragment: 'fragment' } };
@@ -106,7 +114,7 @@ function app(localStorage = { getItem: () => null, setItem() {} }, confirm = () 
       if (id === './ClassificationChoices') {
         const exports = {};
         runInNewContext(ts.transpileModule(readFileSync('src/ClassificationChoices.tsx', 'utf8'), {
-          compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
+          compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
         }).outputText, { exports, require: () => ({ jsx, jsxs: jsx }) });
         return exports;
       }

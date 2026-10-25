@@ -32,6 +32,12 @@ def main() -> None:
     except OSError as exc:
         sys.exit(f"Impossibile salvare i dati in {data}: {exc}\nMetti l'app in una cartella personale, non in Program Files.")
 
+    if len(sys.argv) > 1 and sys.argv[1] == '--accounts':
+        from backend.auth import main as accounts
+        sys.argv = [sys.argv[0], '--database', str(data / 'auth.sqlite'), *sys.argv[2:]]
+        accounts()
+        return
+
     bundle = Path(getattr(sys, '_MEIPASS', base))
     os.environ.setdefault('DATABASE_PATH', str(data / 'supplenze.sqlite'))
     os.environ.setdefault('STATIC_PATH', str(bundle / 'frontend' / 'dist'))

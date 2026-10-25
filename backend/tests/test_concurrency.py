@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
-from fastapi.testclient import TestClient as RawClient
+from backend.tests.auth_client import AuthenticatedClient as RawClient
 from backend.tests.client import TestClient
 from backend.tests.test_app import fixture, DAY
 from backend.main import create_app

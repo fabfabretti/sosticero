@@ -4,12 +4,13 @@ from datetime import date, timedelta, datetime
 from pathlib import Path
 from typing import Literal
 from uuid import uuid4
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel, StrictInt, StrictBool, StrictStr
 from .domain import normalize_dataset, rows, candidates, validate_assignment, default_availability, auto_availability, HOURS, SITES, lesson, validate_permit, CDC_NAMES
 from .storage import Store, EMPTY
-from . import backup, attachments, concurrency
+from . import backup, attachments, concurrency, auth
 from .hour_types import merge_types, validate_types
 from . import statistics, recovery, timetables, overrides, teacher_names, availability, receptions
 from zoneinfo import ZoneInfo
@@ -80,6 +81,7 @@ DEFAULT_DATABASE = Path(__file__).resolve().parent.parent / 'data' / 'supplenze.
 
 def create_app(path=None, seed=None):
     app = FastAPI(title='Sosticero')
+    app.add_middleware(GZipMiddleware, minimum_size=1000)
     testing = os.environ.get('APP_ENV') != 'production'
 
     @app.get('/api/environment')
@@ -104,6 +106,9 @@ def create_app(path=None, seed=None):
     retention_days = int(os.environ.get('BACKUP_RETENTION_DAYS', '7'))
     backup_on_startup = os.environ.get('BACKUP_ON_STARTUP', 'true').lower() == 'true'
     
+    identities = auth.Identities(os.environ.get('AUTH_DATABASE_PATH') or database.parent / 'auth.sqlite', testing=testing)
+    app.state.identities = identities
+    auth.install(app, identities)
     store = Store(str(database))
     with store.connect() as db:
         if store.read(db, 'dataset') is None and seed:
@@ -184,7 +189,7 @@ def create_app(path=None, seed=None):
             db.execute("BEGIN IMMEDIATE")
             history = read_history(db)
             ds = timetables.dataset(history, datetime.now(ZoneInfo("Europe/Rome")).date().isoformat()) if history else store.read(db, "dataset")
-            return dict(types=policies(db, ds), needsReimport=bool(ds and any("activities" not in l for l in ds["lessons"].values())))
+            return dict(versions={k:concurrency.digest(v) for k,v in policies(db, ds).items()}, types=policies(db, ds), needsReimport=bool(ds and any("activities" not in l for l in ds["lessons"].values())))
 
     @app.post("/api/hour-types")
     def update_type(data: dict):
@@ -192,6 +197,9 @@ def create_app(path=None, seed=None):
             db.execute("BEGIN IMMEDIATE")
             current = policies(db, store.read(db, "dataset"))
             key = data.get("id")
+            expected = data.pop('expected', None)
+            if isinstance(key, str) and key in current and expected != concurrency.digest(current[key]):
+                raise HTTPException(409, 'Regola modificata: ricarica i valori salvati.')
             if not isinstance(key, str) or key not in current or set(data) != {"id", "available", "visible", "school"}:
                 raise ValueError("Tipo di ora non valido.")
             value = dict(current[key], **{k: data[k] for k in ("available", "visible", "school")})
@@ -226,7 +234,7 @@ def create_app(path=None, seed=None):
         attachments.prune(db, state)
 
     from .inbox import Inbox
-    inbox = Inbox(store, database, load, save_state)
+    inbox = Inbox(store, database, load, save_state, identities=identities)
     inbox.register(app)
     app.state.inbox = inbox
 
@@ -324,7 +332,11 @@ def create_app(path=None, seed=None):
             changed = timetables.dataset(after, day)
             issues = timetables.issues(changed, state, day, merge_types(changed, rules))
             days.append(dict(day=day, issues=[item for item in issues if item not in before_issues]))
-        documents = db.execute('SELECT key, value FROM documents ORDER BY key').fetchall()
+        # Background Sheets polling must not expire a reviewed reception import.
+        documents = db.execute('''SELECT key, value FROM documents
+            WHERE key IN ('dataset', 'timetables', 'timetableOverrides', 'receptions',
+                          'teacherNameOverrides', 'hourTypes', 'state', 'statistics')
+            ORDER BY key''').fetchall()
         token = timetables.digest([documents, {k: v for k, v in data.items() if k not in ('token', 'confirm')}])
         teachers = {i: t['name'] for i, t in presented(db, ds)['teachers'].items() if not t.get('retired')}
         return proposed, after, state, facts, dict(rows=reviewed, ready=ready, teachers=teachers, token=token, days=days, effective=effective, end=next_date)
@@ -351,6 +363,7 @@ def create_app(path=None, seed=None):
                 raise ValueError('Backup prima dell’importazione fallito. Nessun dato modificato.') from exc
             affected = [item['day'] for item in impact['days']]
             updated = timetables.sync(history, state, facts, affected, revalidate=True)
+            identities.generation(advance=True)
             store.write(db, 'receptions', document)
             store.write(db, 'statistics', updated)
         return dict(ok=True, backup=snapshot)
@@ -435,7 +448,7 @@ def create_app(path=None, seed=None):
                         demand.update(eligible=False, valid=False, outcome='pending')
         if evidence is not None:
             document['evidence'].append(evidence)
-        documents = db.execute('SELECT key, value FROM documents ORDER BY key').fetchall()
+        documents = db.execute("SELECT key,value FROM documents WHERE key NOT IN ('googleSheetsStatus','googleSheets') ORDER BY key").fetchall()
         # UUIDs are evidence identities, not part of the preview fingerprint.
         token = timetables.digest([documents, {k: v for k, v in data.items() if k != 'token'}])
         return document, result, dict(token=token, days=days, overrides=report)
@@ -573,7 +586,7 @@ def create_app(path=None, seed=None):
         facts = store.read(db, 'statistics', statistics.empty())
         rules = merge_types(ds, store.read(db, 'hourTypes', {}))
         proposed, reconciled, impact = timetables.plan(history, ds, effective, state, facts, rules)
-        documents = db.execute('SELECT key, value FROM documents ORDER BY key').fetchall()
+        documents = db.execute("SELECT key,value FROM documents WHERE key NOT IN ('googleSheetsStatus','googleSheets') ORDER BY key").fetchall()
         images = [(i, media, sha256(content).hexdigest()) for i, media, content in db.execute('SELECT id, media_type, content FROM attachments ORDER BY id')]
         impact['token'] = timetables.digest([documents, images, ds, effective])
         impact['teachers'] = {i: t['name'] for i, t in presented(db, ds)['teachers'].items()}
@@ -605,6 +618,7 @@ def create_app(path=None, seed=None):
                 snapshot = backup.backup_database(str(database), str(backup_dir))
             except Exception as exc:
                 raise ValueError('Backup prima dell’importazione fallito. Nessun dato modificato: ' + str(exc)) from exc
+            identities.generation(advance=True)
             write_history(db, proposed)
             store.write(db, 'statistics', facts)
             # Legacy dataset is a preserved baseline, never the latest scheduled version.
@@ -683,10 +697,23 @@ def create_app(path=None, seed=None):
                 for c in candidates(ds, state, day.isoformat(), row, rules)]
 
     @app.post('/api/assignments')
-    def assign(e: Assignment):
+    def assign(e: Assignment, request: Request):
         with store.connect() as db:
             db.execute('BEGIN IMMEDIATE')
             ds, state = load(db, e.day.isoformat())
+            current_rows = {r['k']: r for r in rows(ds, state, e.day.isoformat())}
+            history = read_history(db)
+            facts = store.read(db, 'statistics', statistics.empty())
+            for key in filter(None, (e.key, e.replace_key)):
+                row = current_rows.get(key)
+                context = row and {'site': row['sede']}
+                old = state['asg'].get(e.day.isoformat(), {}).get(key)
+                if not context and old:
+                    context = timetables.conflict_context(history, e.day.isoformat(), key, old) or timetables.context(history, state, e.day.isoformat(), key, facts)
+                if not context and not old:
+                    raise ValueError('Supplenza non più presente nell’orario o nelle assenze.')
+                if not context or context.get('site') != request.state.account['campus']:
+                    raise HTTPException(403, 'Assegnazione riservata alla sede della riga; verifica anche la sede delle assegnazioni da risolvere.')
             references = [concurrency.key('asg', e.day.isoformat(), e.key)]
             if e.replace_key:
                 references.append(concurrency.key('asg', e.day.isoformat(), e.replace_key))
@@ -804,6 +831,7 @@ def create_app(path=None, seed=None):
             facts = statistics.validate(data['statistics'], lambda day: timetables.dataset(history, day), state) if 'statistics' in data else timetables.sync(history, state, statistics.empty(), reconstructed=True)
             if preview:
                 return dict(overrides=restore_review)
+            identities.generation(advance=True)
             attachments.import_images(db, state, data, data['schema'])
             if data['schema'] in (4, 5, 6, 7):
                 write_history(db, history)
@@ -850,16 +878,23 @@ def create_app(path=None, seed=None):
                     break
             if not backup_path:
                 raise ValueError('Backup non trovato')
+            safety = backup.backup_database(str(database), str(backup_dir))
+            identities.generation(advance=True)
+            identities.revoke()
             with inbox.lock:
-                backup.restore_backup(str(database), backup_path)
-                Store(str(database))
-                inbox.initialize()
-            with store.connect() as db:
-                db.execute('BEGIN IMMEDIATE')
-                state = store.read(db, 'state', EMPTY)
-                if recovery.migrate(state):
-                    store.write(db, 'state', state)
-            initialize_statistics()
+                try:
+                    backup.restore_backup(str(database), backup_path)
+                    Store(str(database))
+                    inbox.initialize()
+                    with store.connect() as db:
+                        db.execute('BEGIN IMMEDIATE')
+                        state = store.read(db, 'state', EMPTY)
+                        if recovery.migrate(state):
+                            store.write(db, 'state', state)
+                    initialize_statistics()
+                except Exception:
+                    backup.restore_backup(str(database), safety['path'])
+                    raise
             return {'ok': True}
         except Exception as e:
             raise ValueError(str(e))
