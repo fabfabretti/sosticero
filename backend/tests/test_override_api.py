@@ -390,3 +390,31 @@ class OverrideApiTest(unittest.TestCase):
         self.client.post('/api/import', json=archive).raise_for_status()
         self.client.post('/api/entries', json=dict(day=day, group='cf', id='1A', hours=[2])).raise_for_status()
         self.assertIn('2', self.client.get('/api/day/'+day).json()['autoDis'][day]['pot'])
+
+    def test_pe_rit_dis_class_campus_and_availability_edits(self):
+        for code, day in [('PE', '2026-10-19'), ('RIT', '2026-10-26'), ('DIS', '2026-11-02')]:
+            with self.subTest(code=code):
+                raw = fixture(); raw['orario'][3]['attivita_originale'] = code
+                import_version(self.client, raw, day).raise_for_status()
+                self.client.post('/api/hour-types', json=dict(id='code:'+code, available=True, visible=True, school=True)).raise_for_status()
+                self.entry(day)
+                data = self.draft(start=day)
+                data['cells']['lun|2'].update(classes=['1A'], disabled=True, site='centrale')
+                self.save(data)
+                choice = next(c for c in self.candidates(day) if c['id'] == 'pot')
+                self.assertEqual(choice['typeLabel'], 'Compresenza - '+code)
+                self.assertFalse(choice['exceptional'])
+                data = self.draft(start=day)
+                data['cells']['lun|2'].update(classes=[], disabled=False, site='succursale')
+                self.save(data)
+                saved = self.orari(day)['dataset']['lessons']['pot|lun|2']
+                self.assertEqual((saved['classes'], saved['disabled'], saved['site']), ([], False, 'succursale'))
+                choice = next(c for c in self.candidates(day) if c['id'] == 'pot')
+                self.assertEqual(choice['loc'], 'succursale')
+                archive = self.client.get('/api/export').json()
+                self.client.post('/api/import', json=archive).raise_for_status()
+                self.assertEqual(self.orari(day)['dataset']['lessons']['pot|lun|2'], saved)
+                for invalid in [dict(site='invalid'), dict(classes=['missing'], disabled=True), dict(classes=['1A'], disabled=False)]:
+                    data = self.draft(start=day)
+                    data['cells']['lun|2'].update(invalid)
+                    self.assertEqual(self.client.post('/api/orari/preview', json=data).status_code, 422)

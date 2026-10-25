@@ -3,7 +3,7 @@ from collections import Counter
 from copy import deepcopy
 from datetime import date
 from uuid import uuid4
-from .domain import DAYS as WEEKDAYS, HOURS, activity_codes, class_commitment, SITES
+from .domain import DAYS as WEEKDAYS, HOURS, activity_codes, class_commitment, SITES, CLASS_ACTIVITIES
 
 DAYS = WEEKDAYS[:5]
 
@@ -26,7 +26,7 @@ def clean(value):
     if not value:
         return None
     result = {k: v for k, v in value.items() if k != 'disabled'}
-    if activity_codes(value) in (['POT'], ['ALF']):
+    if activity_codes(value) in ([code] for code in CLASS_ACTIVITIES):
         result.pop('site', None)
     if class_commitment(value):
         result['classes'] = []
@@ -53,7 +53,7 @@ def groups(base, target, classes=None):
             raise ValueError('Le lezioni con classi non possono essere modificate.')
         if value and 'disabled' in value and type(value['disabled']) is not bool:
             raise ValueError('Stato ora non valido.')
-        if value and activity_codes(value) in (['POT'], ['ALF']) and value.get('site') not in (*SITES, None):
+        if value and activity_codes(value) in ([code] for code in CLASS_ACTIVITIES) and value.get('site') not in (*SITES, None):
             raise ValueError('Sede attività non valida.')
         if value and value.get('classes'):
             cs = value['classes']

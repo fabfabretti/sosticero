@@ -10,13 +10,14 @@ export const norm = (s: string) =>
     .normalize("NFD")
     .replace(/[\u0300-\u036f.\s]/g, "");
 
-type Lesson = { classes?: string[]; activities?: string[]; special?: string; site?: string | null };
-type Dataset = {
+export type Lesson = { room?: string | null; disabled?: boolean; classes?: string[]; activities?: string[]; special?: string; site?: string | null };
+export type Dataset = {
   teachers: Record<string, { name: string; importedName?: string; code?: string; classe_concorso?: string; cdcName?: string; retired?: boolean }>;
   lessons: Record<string, Lesson>;
+  receptions?: { teacher: string }[];
 };
 
-export type TimetableCell = { classes: string[]; codes: string[]; partners: string[]; site: string | null };
+export type TimetableCell = { classes: string[]; codes: string[]; partners: string[]; site: string | null; room: string | null; disabled: boolean };
 export type TeacherTimetable = {
   id: string;
   name: string;
@@ -35,6 +36,7 @@ export function buildTeacherTimetables(dataset: Dataset): TeacherTimetable[] {
     for (const c of l.classes || []) (byClass[`${day}|${hour}|${c}`] ||= []).push(id);
   }
   const scheduled = new Set(Object.keys(dataset.lessons || {}).map(k => k.split("|")[0]));
+  for (const reception of dataset.receptions || []) scheduled.add(reception.teacher);
   return Object.entries(dataset.teachers || {})
     .filter(([id, t]) => !t.retired && scheduled.has(id))
     .map(([id, t]) => ({
@@ -55,6 +57,8 @@ export function buildTeacherTimetables(dataset: Dataset): TeacherTimetable[] {
           return {
             classes,
             site: l.site || null,
+            room: l.room || null,
+            disabled: !!l.disabled,
             codes: l.activities?.length ? l.activities : l.special ? [l.special] : [],
             partners: [...partners],
           };
