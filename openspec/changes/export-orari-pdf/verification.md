@@ -30,3 +30,7 @@ Six PDF tests and related Orari/timetable tests pass. New tests cover location o
 The corrected image built in unique test project `sosticero-orari-colors-1792601273`, with `/data` mounted from `/tmp/sosticero-orari-colors-6GTIvb`, allocated port 40781 and testing=true confirmed before teardown. The previously documented browser-localhost restriction remains. No commit requested or made, per the user's instruction.
 
 Corrected normal deployment was rebuilt and force-recreated. Read-only checks confirmed the operational data mount and new served bundle `index-DUQ4UfR9.js`, with testing=false.
+
+## Repository reconciliation — 2026-10-25
+
+Timetable editing, full PDF export and the matching main timetable-printing specification are committed together. The complete final frontend passes all 16 test files and its TypeScript/Vite build. All 214 backend tests pass after updating the old forced-Centrale DIS assertion to the implemented explicit campus behavior. The pending browser-download check remains unverified; this reconciliation does not claim a new server deployment.
