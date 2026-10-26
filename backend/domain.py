@@ -261,7 +261,7 @@ def rp_context(ds, state, day, row, teacher):
         if l['classes'] and all(class_out(state, day, c, period, row['k']) for c in l['classes']):
             continue
         commitments[period] = l['site']
-        if l['classes'] and not activity_codes(l):
+        if (l['classes'] and not activity_codes(l)) or set(activity_codes(l)).intersection(('PE', 'POT', 'ALF', 'RIT', 'UTS', 'UTC')):
             teaching[period] = l['site']
     for key, a in state['asg'].get(day, {}).items():
         if key != row['k'] and a['v'] == teacher:
