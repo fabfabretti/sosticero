@@ -178,6 +178,28 @@ class RecoveryTest(unittest.TestCase):
         self.assign(2).raise_for_status()
         self.assertEqual(self.register()['recoveries']['2026-10-05']['rp']['recovered'], 0)
 
+    def test_activity_hours_make_recovery_convenient(self):
+        for activity in ('PE', 'POT', 'ALF', 'RIT', 'UTS', 'UTC'):
+            with self.subTest(activity=activity):
+                raw = copy.deepcopy(self.raw)
+                raw['orario'] = [l for l in raw['orario'] if l['docente'] != 'rp']
+                raw['orario'].extend(dict(docente='rp', giorno='lun', ora=h, classi=[],
+                                         sede='centrale', attivita_originale=activity) for h in (2, 5))
+                ds = normalize_dataset(raw)
+                state = self.client.get('/api/export').json()
+                def candidate(h):
+                    row = next(r for r in rows(ds, state, DAY) if r['h'] == h)
+                    return next(c for c in candidates(ds, state, DAY, row) if c['id'] == 'rp')
+                for h in (1, 3, 4, 6):
+                    self.assertTrue(candidate(h)['convenient'])
+                self.assertFalse(candidate(7)['convenient'])
+                ds['lessons']['rp|lun|2']['site'] = None
+                self.assertFalse(candidate(1)['convenient'])
+                ds['lessons']['rp|lun|2']['site'] = 'succursale'
+                self.assertEqual(candidate(1)['why'], 'Cambio sede senza intervallo')
+                state['abs'][DAY]['rp'] = [2]
+                self.assertFalse(candidate(1)['convenient'])
+
     def test_two_sided_travel_unknown_site_and_gaps(self):
         ds = normalize_dataset(self.raw)
         state = copy.deepcopy(EMPTY)
