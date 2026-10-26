@@ -24,7 +24,7 @@
 
 - [x] 4.1 Run the frontend test suite and build together and confirm no `.daily-entry` selector or stale sidebar-form reference remains. Verify both commands succeed.
 - [x] 4.2 Verify behavior in a container against an isolated database per the project testing rules: consecutive entries, Escape and backdrop dismissal, campus default and a forced conflict, with the TESTING ribbon visible. Verify each scenario in the browser without touching operational data.
-- [x] 4.3 Verify the operator-deployed dialog is live on atlante and the operational mount is correct. The operator confirmed the live + Aggiungi dialog on 2026-10-26; the earlier read-only container inspection confirmed `/data` mounts the server project data directory. Keep the old local operational app stopped. Exact current source-snapshot/Git-revision equivalence is not independently verified.
+- [x] 4.3 Verify the operator-deployed dialog is live on atlante and the operational mount is correct. The operator confirmed the live + Aggiungi dialog on 2026-10-26; the earlier read-only container inspection confirmed `/data` mounts the server project data directory. Keep the old local operational app stopped. A read-only HTTPS source-marker comparison on 2026-10-26 independently confirmed matching local and deployed application build inputs.
 
 ## Workflow follow-up
 
@@ -41,4 +41,4 @@
 
 ## Repository reconciliation — 2026-10-25
 
-The dialog and its quiet-refresh pause support are included in the shared operational UI commit. The complete frontend test suite and production build pass. The operator subsequently confirmed the dialog is live on atlante (2026-10-26); the earlier pending-deployment statement was stale. Committing or pushing alone does not establish what is deployed. This change remains active; the compact-absence-entry predecessor and dialog delta are now reconciled in the main absence-entry spec. Feature deployment is accepted from operator observation plus the existing mount inspection; full revision equivalence remains unverified.
+The dialog and its quiet-refresh pause support are included in the shared operational UI commit. The complete frontend test suite and production build pass. The operator subsequently confirmed the dialog is live on atlante (2026-10-26); the earlier pending-deployment statement was stale. Committing or pushing alone does not establish what is deployed. This change remains active; the compact-absence-entry predecessor and dialog delta are now reconciled in the main absence-entry spec. Feature deployment is accepted from operator observation plus the existing mount inspection; application build-input identity was independently verified over HTTPS on 2026-10-26 (see docs/server-deployment.md).
