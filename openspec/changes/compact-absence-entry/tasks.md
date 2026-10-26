@@ -32,4 +32,4 @@
 
 ## Repository reconciliation — 2026-10-25
 
-Classification requirements were synchronized into the main permessi/absence-entry specs, then the implemented entry-dialog delta replaced the inline form contract. Earlier unchecked container tasks remain historical and are not claimed as passed; their Compose override instructions are superseded by current AGENTS.md. Keep the old local operational app stopped. The successor dialog has isolated test evidence and awaits server deployment.
+Classification requirements were synchronized into the main permessi/absence-entry specs, then the implemented entry-dialog delta replaced the inline form contract. Earlier unchecked container tasks remain historical and are not claimed as passed; their Compose override instructions are superseded by current AGENTS.md. Keep the old local operational app stopped. The successor dialog has isolated test evidence and was confirmed live on atlante by the operator on 2026-10-26. Full equivalence between the running snapshot and the current Git revision remains unverified.
