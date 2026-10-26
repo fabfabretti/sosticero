@@ -24,7 +24,7 @@
 
 - [x] 4.1 Run the frontend test suite and build together and confirm no `.daily-entry` selector or stale sidebar-form reference remains. Verify both commands succeed.
 - [x] 4.2 Verify behavior in a container against an isolated database per the project testing rules: consecutive entries, Escape and backdrop dismissal, campus default and a forced conflict, with the TESTING ribbon visible. Verify each scenario in the browser without touching operational data.
-- [ ] 4.3 Deploy with `./scripts/deploy.sh` to atlante and confirm the rebuilt release is served and `/data` still mounts the server project data directory using read-only checks. Keep the old local operational app stopped.
+- [x] 4.3 Verify the operator-deployed dialog is live on atlante and the operational mount is correct. The operator confirmed the live + Aggiungi dialog on 2026-10-26; the earlier read-only container inspection confirmed `/data` mounts the server project data directory. Keep the old local operational app stopped. Exact current source-snapshot/Git-revision equivalence is not independently verified.
 
 ## Workflow follow-up
 
@@ -37,8 +37,8 @@
 - All 156 frontend tests passed (`node --test --test-isolation=none`); production frontend build passed. All 10 deployment-script checks passed, as did shell syntax and `git diff --check`.
 - Isolated Podman project `entry-dialog-1792966326` used `/tmp/sosticero-entry-WFOQyn`, with its mount inspected and `/api/environment` confirmed as `{"testing":true}` before creating synthetic records. Browser verified the TESTING indicator, centered desktop/narrow layouts, account campus default, consecutive entries (click and Enter), Escape/backdrop dismissal and focus restoration, a genuine 409 showing saved hours/note with reload inside the dialog, and Tab wrapping from the attachment paste area on the final rebuilt image. The isolated project was stopped and removed afterward; operational databases were untouched by behavioral tests.
 - AGENTS.md and this change's deployment step now follow the established atlante workflow and keep the old local operational service stopped.
-- Deployment was attempted with `./scripts/deploy.sh`, but SSH required the operator password. The waiting connection was cancelled before upload or server changes. Task 4.3 remains pending operator authentication/deployment and read-only release verification. No commit or archive was created.
+- Deployment was attempted with `./scripts/deploy.sh`, but SSH required the operator password. The waiting connection was cancelled before upload or server changes. That attempt did not establish deployment. This historical result is superseded by the operator’s live-dialog confirmation below. No commit or archive was created during that attempt.
 
 ## Repository reconciliation — 2026-10-25
 
-The dialog and its quiet-refresh pause support are included in the shared operational UI commit. The complete frontend test suite and production build pass. Task 4.3 remains pending: committing or pushing does not deploy the dialog to atlante. This change remains active; the compact-absence-entry predecessor and dialog delta are now reconciled in the main absence-entry spec. Pending deployment verification is not marked complete.
+The dialog and its quiet-refresh pause support are included in the shared operational UI commit. The complete frontend test suite and production build pass. The operator subsequently confirmed the dialog is live on atlante (2026-10-26); the earlier pending-deployment statement was stale. Committing or pushing alone does not establish what is deployed. This change remains active; the compact-absence-entry predecessor and dialog delta are now reconciled in the main absence-entry spec. Feature deployment is accepted from operator observation plus the existing mount inspection; full revision equivalence remains unverified.
