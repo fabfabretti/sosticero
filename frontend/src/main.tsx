@@ -50,6 +50,12 @@ const entryExitCellLabel = (key: string, assignments: Record<string, Assignment>
 };
 const localDate = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const schoolDate = (date: Date, offset = 0) => {
+  const d = new Date(date);
+  d.setDate(d.getDate() + offset);
+  while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);
+  return localDate(d);
+};
 const italianDate = (value: string) => value.split("-").reverse().join("/");
 const parseItalianDate = (value: string) => {
   if (!/^\d{2}\/\d{2}\/\d{4}$/.test(value)) return "";
@@ -437,9 +443,9 @@ function App() {
 function Supplenze() {
   const account = useAccount();
   const canAssign = (site: string | null | undefined) => !!account && site === account.campus;
-  const [day, setDay] = useState(localDate(new Date())),
+  const [day, setDay] = useState(() => schoolDate(new Date())),
     [month, setMonth] = useState(
-      new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+      () => new Date(Number(day.slice(0, 4)), Number(day.slice(5, 7)) - 1, 1),
     );
   const [data, setData] = useState<Data>(),
     [error, setError] = useState(""),
@@ -895,7 +901,10 @@ function Supplenze() {
   const rs =
       data?.rows.filter((r) => filter === "all" || r.sede === filter) || [],
     assigned = data?.state.asg[day] || {};
-  const nextDay = localDate(new Date(new Date(day + "T12:00").getTime() + 864e5));
+  const nextDay = schoolDate(new Date(day + "T12:00"), 1);
+  const pendingReminders = Object.entries(assigned)
+    .filter(([key, a]) => !a.communicated && entryExitBoundary(key, assigned))
+    .map(([key, a]) => `${a.c} ${(entryExitLabel(a.v, Number(key.split("|")[1])) || name(a.v)).toLowerCase()}`);
   const reminders = Object.entries(data?.state.asg[nextDay] || {})
     .map(([key, a]) => a.v === "ENTRA" || a.v === "ESCE" ? `${a.c} ${(entryExitLabel(a.v, Number(key.split("|")[1])) || name(a.v)).toLowerCase()}` : "")
     .filter(Boolean);
@@ -982,10 +991,15 @@ function Supplenze() {
           {conflict && conflictSummary && <p className="ui-notice" role="status">{conflictSummary}</p>}
           {conflict && <button className="ui-button" onClick={async () => { try { await refresh(); setEditingKind(undefined); setEditingDis(undefined); setDisTeacher(undefined); setEditAttachment(undefined); setQuery(""); setChosen(undefined); setEntryNote(""); setEntryAttachment(undefined); setConflict(false); setError(""); } catch (e) { setError(String(e)); } }}>Ricarica valori salvati</button>}
           </>}
+          {!!pendingReminders.length && (
+            <p className="reminder" role="status">
+              {day === localDate(new Date()) ? "Oggi" : italianDate(day)}: {pendingReminders.join(", ")}. Da comunicare alle classi.
+            </p>
+          )}
           {!!reminders.length && (
             <p className="reminder" role="status">
               <svg className="warning-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 22 21H2Z" fill="none" stroke="currentColor" strokeWidth="2"/><path d="M12 9v5m0 3v1" stroke="currentColor" strokeWidth="2"/></svg>
-              Domani ({nextDay.split("-").reverse().join("/")}): {reminders.join(", ")}. Avvisa le classi.
+              Prossimo giorno di scuola ({nextDay.split("-").reverse().join("/")}): {reminders.join(", ")}. Avvisa le classi.
             </p>
           )}
           <h1>
