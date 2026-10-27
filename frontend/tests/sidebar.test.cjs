@@ -1017,6 +1017,9 @@ test('entry and exit blocks show one boundary time and persist Comunicato', asyn
   const labels = () => a.render().filter(n => n.type === 'button' && n.props.className === 'fill ').map(n => n.props.children[0]);
   assert.deepEqual(labels(), ['Non entrata', 'Non entrata', 'Entra h 10:35', 'Esce prima alle 11:30', 'Uscita', 'Uscita']);
   const checks = () => a.render().filter(n => n.type === 'button' && n.props['aria-label']?.startsWith('Comunicato '));
+  const reminder = () => a.render().find(n => n.props?.className === 'reminder');
+  assert.ok(JSON.stringify(reminder()).includes('1A entra dopo alle 10:35, 2A esce prima alle 11:30'));
+  assert.ok(JSON.stringify(reminder()).includes('Da comunicare alle classi'));
   assert.equal(checks().length, 2);
   assert.equal(checks()[0].props['aria-pressed'], false);
   checks()[0].props.onClick();
@@ -1026,9 +1029,22 @@ test('entry and exit blocks show one boundary time and persist Comunicato', asyn
   a.requests.shift().resolve(updated); await settle();
   assert.equal(checks()[0].props['aria-pressed'], true);
   assert.equal(checks()[0].props.className, 'on');
+  assert.ok(!JSON.stringify(reminder()).includes('1A entra dopo'));
+  assert.ok(JSON.stringify(reminder()).includes('2A esce prima alle 11:30'));
   checks()[0].props.onClick();
   a.requests.shift().resolve({ detail: 'failure' }, false); await settle();
   assert.equal(checks()[0].props['aria-pressed'], true, 'failed save retains the saved status');
+});
+
+test('no current-day notice when all entry and exit boundaries are communicated', async () => {
+  const asg = {
+    't|1|1A': { v: 'ENTRA', t: 'SPECIAL', c: '1A' },
+    't|2|1A': { v: 'ENTRA', t: 'SPECIAL', c: '1A', communicated: true },
+    't|6|2A': { v: 'ESCE', t: 'SPECIAL', c: '2A', communicated: true },
+    't|7|2A': { v: 'ESCE', t: 'SPECIAL', c: '2A' },
+  };
+  const a = await loaded({ ...data, state: { ...data.state, asg: { [todayYmd]: asg } } });
+  assert.equal(a.render().find(n => n.props?.className === 'reminder'), undefined);
 });
 
 
