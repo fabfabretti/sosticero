@@ -25,6 +25,7 @@ import { ReceptionImport } from './Receptions';
 import { norm, teacherSearchText } from "./timetables";
 import { HourHelp } from "./Tooltip";
 import { SubstitutionExport } from "./SubstitutionExportPanel";
+import { RecoveryActions } from "./RecoveryActions";
 import { HashRouter, Link, useLocation } from "react-router";
 const hours = [1, 2, 3, 4, 5, 6, 7];
 const entryExitLabel = (id: string, hour: number) => {
@@ -1129,6 +1130,9 @@ function Supplenze() {
                               : "Scegli il supplente"}
                             <small>{assigned[r.k]?.v === "UNCOVERED" ? "Nessun supplente trovato" : (assigned[r.k]?.t === "SPECIAL" ? "" : (assigned[r.k]?.t === "CP" ? "Compresenza - POT" : assigned[r.k]?.t === "CA" ? "Compresenza - ALF" : assigned[r.k]?.t))}</small>
                           </button>
+                          {assigned[r.k]?.t === "RP" && <RecoveryActions key={`${day}|${r.k}|${assigned[r.k].v}|${assigned[r.k].permitId}`} day={day} row={r}
+                            assignment={assigned[r.k]} permit={data?.recoveryRequests?.[r.k]} busy={busy} canAssign={canAssign(r.sede)}
+                            onAccept={() => void mutate("assignments", { day, key: r.k, accepted: !assigned[r.k].accepted })} />}
                           {entryExitBoundary(r.k, assigned) && <span className="opt communicated">
                             <button type="button" className={assigned[r.k].communicated ? "on" : ""}
                               aria-pressed={assigned[r.k].communicated === true} disabled={busy || !canAssign(r.sede)}

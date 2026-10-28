@@ -44,8 +44,9 @@ export type Candidate = {
   info?: string;
 };
 export type PermitRecovery = { id: string; deadline: string; recovered: number; remaining: number; expired: boolean; recoveries: { date: string; h: number; key: string }[] };
-export type Assignment = { v: string; t: string; c: string; permitId?: string; communicated?: boolean };
+export type Assignment = { v: string; t: string; c: string; permitId?: string; communicated?: boolean; accepted?: boolean };
 export type Data = {
+  recoveryRequests?: Record<string, import("./RecoveryActions").RecoveryRequest>;
   concurrency: import("./concurrency").Baseline;
   timetable?: { id: string; effective: string | null };
   references?: { group: string; id: string; message: string }[];

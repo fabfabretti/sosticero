@@ -133,6 +133,7 @@ class AuthenticationTest(unittest.TestCase):
         current=self.central.get('/api/day/'+DAY).json()['concurrency']['records'][ref]
         self.assertEqual(self.post(self.succ,'assignments',dict(body,value=None,expected={ref:current})).status_code,403)
         self.assertEqual(self.post(self.succ,'assignments',dict(day=DAY,key=body['key'],communicated=True,expected={ref:current})).status_code,403)
+        self.assertEqual(self.post(self.succ,'assignments',dict(day=DAY,key=body['key'],accepted=True,expected={ref:current})).status_code,403)
 
     def test_succursale_assignment_and_cross_campus_move(self):
         self.entry(self.central,'absent').raise_for_status()
