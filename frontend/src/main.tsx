@@ -28,6 +28,7 @@ import { SubstitutionExport } from "./SubstitutionExportPanel";
 import { RecoveryActions } from "./RecoveryActions";
 import { HashRouter, Link, useLocation } from "react-router";
 const hours = [1, 2, 3, 4, 5, 6, 7];
+const campusTag = (site: string) => <span key={site} className={`permit-campus campus-${site}`} aria-label={site === 'centrale' ? 'Centrale' : 'Succursale'} title={site === 'centrale' ? 'Centrale' : 'Succursale'}>{site === 'centrale' ? 'C' : 'S'}</span>;
 const entryExitLabel = (id: string, hour: number) => {
   const time = (id === "ENTRA"
     ? ["", "08:35", "09:40", "10:35", "11:40", "12:35", "12:35", "13:25"]
@@ -132,7 +133,7 @@ function Permessi() {
   const [manualHours, setManualHours] = useState("");
   const [editingManual, setEditingManual] = useState(false);
   const [sort, setSort] = useState<{ field: "date" | "requested"; ascending: boolean }>({ field: "date", ascending: false });
-  const [data, setData] = useState<{ generation?: number; concurrency: Baseline; timetableVersions?: { effective: string | null; dataset: Data["dataset"] }[]; dataset: Data["dataset"]; permitAttachments?: AttachmentMap; permessi: Record<string, Record<string, number[]>>; permitRequests?: Record<string, Record<string, string>>; permitNotes?: Record<string, Record<string, string>>; manualPermitNotes?: Record<string, string>; permitKinds?: Record<string, Record<string, AbsenceKind>>; recoveries?: Record<string, Record<string, import("./types").PermitRecovery>>; balances?: Record<string, { remaining: number; expired: number; eligible: number }>; manualPermits?: Record<string, { id: string; hours: number; recovered: number; remaining: number; recoveries: { date: string; h: number; key: string }[] }> }>();
+  const [data, setData] = useState<{ generation?: number; concurrency: Baseline; timetableVersions?: { effective: string | null; dataset: Data["dataset"] }[]; dataset: Data["dataset"]; permitAttachments?: AttachmentMap; permessi: Record<string, Record<string, number[]>>; permitRequests?: Record<string, Record<string, string>>; permitNotes?: Record<string, Record<string, string>>; manualPermitNotes?: Record<string, string>; permitKinds?: Record<string, Record<string, AbsenceKind>>; permitCreators?: Record<string, Record<string, string>>; recoveries?: Record<string, Record<string, import("./types").PermitRecovery>>; balances?: Record<string, { remaining: number; expired: number; eligible: number }>; manualPermits?: Record<string, { id: string; hours: number; recovered: number; remaining: number; recoveries: { date: string; h: number; key: string }[] }> }>();
   const [dayInput, setDayInput] = useState(italianDate(localDate(new Date())));
   const [requestedInput, setRequestedInput] = useState(italianDate(localDate(new Date())));
   const day = parseItalianDate(dayInput);
@@ -160,6 +161,8 @@ function Permessi() {
   useEffect(() => { void refresh().catch(e => setError(String(e))); }, []);
   useEffect(() => { editBaseline.current = data?.concurrency; }, [original, editingManual]);
   const permitDataset = (date: string) => data?.timetableVersions?.filter(v => !v.effective || v.effective <= date).at(-1)?.dataset || data?.dataset;
+  const teachingSites = (id: string, date: string) => ['centrale', 'succursale'].filter(site =>
+    Object.entries(permitDataset(date)?.lessons || {}).some(([key, lesson]) => key.split('|')[0] === id && lesson.site === site));
   const scheduled = (id: string, date: string, h: number) => {
     const weekday = ["dom", "lun", "mar", "mer", "gio", "ven", "sab"][new Date(date + "T12:00").getDay()];
     return !!permitDataset(date)?.lessons[`${id}|${weekday}|${h}`];
@@ -269,13 +272,13 @@ function Permessi() {
     <h1>Permessi</h1>
     <p className="sub">Per i permessi con data, recupero entro un mese dal permesso, scadenza inclusa. Le assegnazioni RP future riservano già le ore e sono elencate per data.</p>
     {!data && !error && <p role="status">Caricamento…</p>}
-    <div className="ui-surface permit-table"><table className="ui-table"><thead><tr><th>Docente</th>{([ ["date", "Data permesso"], ["requested", "Data richiesta"] ] as const).map(([field, title]) => <th key={field} aria-sort={sort.field === field ? (sort.ascending ? "ascending" : "descending") : "none"}><button className="lk" onClick={() => setSort({ field, ascending: sort.field === field ? !sort.ascending : false })}>{title}{sort.field === field ? (sort.ascending ? " ↑" : " ↓") : " ↕"}</button></th>)}{["Ore di permesso", "Scadenza recupero", "Ore recuperate", "Dettaglio recuperi", "Ore da recuperare", "Azioni"].map(title => <th key={title}>{title}</th>)}</tr></thead>
-      <tbody>{records.map(r => <tr key={r.date + r.id} className={(data?.balances?.[r.id]?.remaining ?? r.periods.length) > 0 ? "permit-outstanding" : undefined}>
-        <td><span className="permit-name">{data?.dataset.teachers[r.id]?.name || r.id}</span><RecordInfo text={data?.permitNotes?.[r.date]?.[r.id]} links={[{ label: "Apri allegato permesso", id: data?.permitAttachments?.[r.date]?.[r.id] }]} /></td><td>{r.date.split("-").reverse().join("/")}</td>
+    <div className="ui-surface permit-table"><table className="ui-table"><thead><tr><th>Docente</th><th>Sede lezioni</th><th>Inserito da</th>{([ ["date", "Data permesso"], ["requested", "Data richiesta"] ] as const).map(([field, title]) => <th key={field} aria-sort={sort.field === field ? (sort.ascending ? "ascending" : "descending") : "none"}><button className="lk" onClick={() => setSort({ field, ascending: sort.field === field ? !sort.ascending : false })}>{title}{sort.field === field ? (sort.ascending ? " ↑" : " ↓") : " ↕"}</button></th>)}{["Ore di permesso", "Dettaglio recuperi", "Ore da recuperare", "Azioni"].map(title => <th key={title}>{title}</th>)}</tr></thead>
+      <tbody>{records.map(r => <tr key={r.date + r.id} className={(r.recovery?.remaining ?? r.periods.length) === 0 ? "permit-complete" : "permit-outstanding"}>
+        <td><span className="permit-name">{data?.dataset.teachers[r.id]?.name || r.id}</span><RecordInfo text={data?.permitNotes?.[r.date]?.[r.id]} links={[{ label: "Apri allegato permesso", id: data?.permitAttachments?.[r.date]?.[r.id] }]} /></td>
+        <td>{teachingSites(r.id, r.date).length ? teachingSites(r.id, r.date).map(campusTag) : '—'}</td>
+        <td>{data?.permitCreators?.[r.date]?.[r.id] ? campusTag(data.permitCreators[r.date][r.id]) : '—'}</td><td>{r.date.split("-").reverse().join("/")}</td>
         <td>{data?.permitRequests?.[r.date]?.[r.id]?.split("-").reverse().join("/") || "—"}</td>
         <td>{r.periods.map(h => <span className="permit-period" key={h}>{h}ª{(r.periods.length > dailyMaximum(r.id, r.date) || !scheduled(r.id, r.date, h)) && warning([r.periods.length > dailyMaximum(r.id, r.date) ? "Superato il massimo giornaliero di ore di permesso." : "", !scheduled(r.id, r.date, h) ? `${h}ª ora: nessuna attività prevista nell’orario per questa ora` : ""].filter(Boolean).join(" "))}</span>)}</td>
-        <td>{r.recovery?.deadline.split("-").reverse().join("/") || "—"}</td>
-        <td>{r.recovery?.recovered ?? 0}</td>
         <td>{r.recovery?.recoveries.length ? <ul className="recovery-details">{r.recovery.recoveries.map(item => <li key={item.date + item.key}>{item.date.split("-").reverse().join("/")} · {item.h}ª ora</li>)}</ul> : "—"}</td>
         <td><span className="permit-remaining">{r.recovery?.remaining ?? r.periods.length}</span>{r.recovery?.expired && <strong className="permit-expired">Scadute</strong>}</td>
         <td className="permit-actions"><button className="lk" aria-label={`Modifica permesso di ${data?.dataset.teachers[r.id]?.name || r.id}`} title="Modifica permesso" disabled={busy} onClick={() => { setAttachment(undefined); setManual(false); setEditingManual(false); setDayInput(italianDate(r.date)); setRequestedInput(italianDate(data?.permitRequests?.[r.date]?.[r.id] || "")); selectTeacher(r.id); setSelected(r.periods); setNote(data?.permitNotes?.[r.date]?.[r.id] || ""); setEditClassification(data?.permitKinds?.[r.date]?.[r.id] || null); setOriginal({ day: r.date, id: r.id }); setError(""); }}><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15Z" fill="none" stroke="currentColor" strokeWidth="1.6"/></svg></button>

@@ -659,12 +659,28 @@ test('permit recovery register shows dated links, expiry, totals and refreshes o
   const nodes = a.render();
   assert.ok(nodes.some(n => n.type === 'tr' && n.props.className === 'permit-outstanding'));
   assert.ok(nodes.some(n => n.props.className === 'permit-expired' && n.props.children === 'Scadute'));
-  assert.ok(nodes.some(n => n.type === 'td' && n.props.children === '12/11/2026'));
+  assert.ok(!nodes.some(n => n.type === 'td' && n.props.children === '12/11/2026'));
+  assert.ok(!nodes.some(n => n.type === 'th' && ['Scadenza recupero', 'Ore recuperate'].includes(n.props.children)));
   assert.ok(nodes.some(n => n.type === 'li' && n.props.children.join('').includes('19/10/2026 · 4ª ora')));
   a.go('/'); a.render();
   a.requests.shift().resolve(data); await settle();
   a.go('/permessi'); a.render();
   assert.equal(a.requests.shift().url, '/api/permessi');
+});
+
+test('completed permit is struck independently of the teacher balance and keeps actions', async () => {
+  const a = app(); a.go('/permessi'); a.render();
+  a.requests.shift().resolve({ ...permitData,
+    permessi: { '2026-10-12': { t: [2] }, '2026-10-19': { t: [2] } },
+    permitCreators: { '2026-10-19': { t: 'succursale' } },
+    balances: { t: { remaining: 1 } },
+    recoveries: { '2026-10-12': { t: { remaining: 0, recoveries: [] } }, '2026-10-19': { t: { remaining: 1, recoveries: [] } } },
+  }); await settle();
+  const nodes = a.render();
+  assert.equal(nodes.filter(n => n.type === 'tr' && n.props.className === 'permit-complete').length, 1);
+  assert.equal(nodes.filter(n => n.type === 'tr' && n.props.className === 'permit-outstanding').length, 1);
+  assert.equal(nodes.filter(n => n.props?.['aria-label'] === 'Modifica permesso di Contartase' && !n.props.disabled).length, 2);
+  assert.ok(nodes.some(n => n.props?.className === 'permit-campus campus-succursale' && n.props['aria-label'] === 'Succursale'));
 });
 
 const entryData = { ...data, dataset: { ...data.dataset, teachers: {
