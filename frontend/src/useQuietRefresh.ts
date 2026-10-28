@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 // Keep only the latest snapshot; active interactions retain their displayed baseline.
 export function useQuietRefresh<T>(load: () => Promise<T>, apply: (value: T) => void, active: boolean, scope: string, paused = false) {
@@ -7,9 +7,12 @@ export function useQuietRefresh<T>(load: () => Promise<T>, apply: (value: T) => 
   const generation = useRef(0), pending = useRef<{ value: T; generation: number } | undefined>(undefined);
   const running = useRef(false), alive = useRef(true);
   const scroll = useRef<[Element, number, number][]>([]);
+  const [, commitRefresh] = useState(0);
   const accept = (value: T) => {
     scroll.current = Array.from(document.querySelectorAll('*')).filter(e => e.scrollTop || e.scrollLeft).map(e => [e, e.scrollTop, e.scrollLeft]);
     latest.current.apply(value);
+    // Clear the snapshot in this refresh's commit even when apply keeps the same data.
+    commitRefresh(revision => revision + 1);
   };
   useLayoutEffect(() => {
     for (const [element, top, left] of scroll.current) { element.scrollTop = top; element.scrollLeft = left; }
