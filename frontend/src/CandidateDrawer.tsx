@@ -36,18 +36,23 @@ export function CandidateDrawer({
   onClose,
   onAssign,
   readOnlyReason,
+  returnFocus,
 }: {
-  open: Row;
+  open: Row | { h: number; sede: string | null; c?: never; ids?: never };
   cands: Candidate[];
   current?: string;
   busy: boolean;
   readOnlyReason?: string;
+  returnFocus?: HTMLElement | null;
   name: (id: string) => string;
   onClose: () => void;
   onAssign: (id: string, exceptional?: boolean) => void;
 }) {
   const close = useRef<HTMLButtonElement>(null);
+  const consultation = !open.ids;
+  const reason = consultation ? "Solo consultazione" : readOnlyReason;
   useEffect(() => {
+    const trigger = returnFocus || document.activeElement as HTMLElement | null;
     close.current?.focus();
     const key = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -69,7 +74,7 @@ export function CandidateDrawer({
       }
     };
     document.addEventListener("keydown", key);
-    return () => document.removeEventListener("keydown", key);
+    return () => { document.removeEventListener("keydown", key); trigger?.focus(); };
   }, []);
 
   return (
@@ -79,33 +84,35 @@ export function CandidateDrawer({
         className="dr"
         role="dialog"
         aria-modal="true"
-        aria-label="Scegli il supplente"
+        aria-label={consultation ? "Consulta disponibilità" : "Scegli il supplente"}
       >
         <header>
           <div>
             <b>
-              {open.h}ª ora, classe {open.c}
+              {open.h}ª ora{consultation ? " · Disponibilità" : `, classe ${open.c}`}
             </b>
             <p>
-              Sostituisce {open.ids.map(name).join(" / ")} · {open.sede || "sede non indicata"}
+              {open.ids && <>Sostituisce {open.ids.map(name).join(" / ")} · </>}{open.sede || (consultation ? "Entrambe le sedi" : "sede non indicata")}
             </p>
           </div>
           <button ref={close} className="x" aria-label="Chiudi" onClick={onClose}>
             ×
           </button>
         </header>
-        {readOnlyReason && <p role="status" className="ui-notice" id="candidate-permission">{readOnlyReason}</p>}
+        {reason && <p role="status" className="ui-notice" id="candidate-permission">{reason}</p>}
         <div className="lst">
+          {consultation && !cands.length && <p role="status">Nessun docente disponibile per questa ora e sede.</p>}
           {cands.map((c, index) => {
             const cross = !!(c.loc && open.sede && c.loc !== open.sede);
             return (
-              <div key={c.id}>
+              <div key={consultation ? `${c.campus || 'unknown'}-${c.id}` : c.id}>
+              {consultation && (index === 0 || cands[index - 1]?.campus !== c.campus) && <h3 className="fallback-title">{c.campus || "Sede non indicata"}</h3>}
               {c.ty === "RP" && (cands[index - 1]?.ty !== "RP" || cands[index - 1]?.convenient !== c.convenient) && <h3 className="fallback-title">{c.convenient ? "Recuperi permesso · ore favorevoli" : "Altri recuperi permesso"}</h3>}
               {c.exceptional && !cands[index - 1]?.exceptional && <h3 className="fallback-title">Solo in caso di necessità</h3>}
               <button
-                aria-disabled={!!readOnlyReason || undefined}
-                aria-describedby={readOnlyReason ? "candidate-permission" : undefined}
-                style={readOnlyReason ? {cursor:"not-allowed"} : undefined}
+                aria-disabled={!!reason || undefined}
+                aria-describedby={reason ? "candidate-permission" : undefined}
+                style={reason ? {cursor:"not-allowed"} : undefined}
                 disabled={!!c.why || busy || c.enable === false}
                 className={
                   "c1" +
@@ -113,7 +120,7 @@ export function CandidateDrawer({
                   (cross ? " cross-site" : "") +
                   (current === c.id ? " sel" : "")
                 }
-                onClick={() => { if (readOnlyReason) return; if (!c.exceptional || window.confirm(`Usare comunque ${c.name} alla ${open.h}ª ora? Tipo occupato: ${c.typeLabel || c.ty}.`)) onAssign(c.id, !!c.exceptional); }}
+                onClick={() => { if (reason) return; if (!c.exceptional || window.confirm(`Usare comunque ${c.name} alla ${open.h}ª ora? Tipo occupato: ${c.typeLabel || c.ty}.`)) onAssign(c.id, !!c.exceptional); }}
               >
                 <span className="m">
                   <b>{c.name}</b>

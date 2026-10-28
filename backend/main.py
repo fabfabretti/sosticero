@@ -8,7 +8,7 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel, StrictInt, StrictBool, StrictStr
-from .domain import normalize_dataset, rows, candidates, validate_assignment, default_availability, auto_availability, HOURS, SITES, lesson, validate_permit, CDC_NAMES
+from .domain import normalize_dataset, rows, candidates, consultation, validate_assignment, default_availability, auto_availability, HOURS, SITES, lesson, validate_permit, CDC_NAMES
 from .storage import Store, EMPTY
 from . import backup, attachments, concurrency, auth
 from .hour_types import merge_types, validate_types
@@ -683,6 +683,15 @@ def create_app(path=None, seed=None):
                         state['disSites'].setdefault(d, {})[e.id] = e.site or None
             save_state(db, ds, state, days if e.group != 'dis' else [])
         return {'ok': True, 'concurrency': concurrency.snapshot(state, ds, e.day.isoformat())}
+
+    @app.get('/api/availability')
+    def get_availability(day: date, hour: int = Query(ge=1, le=7), campus: Literal['centrale', 'succursale', 'all'] = 'all'):
+        with store.connect() as db:
+            ds, state = load(db, day.isoformat())
+            rules = policies(db, ds)
+            labels = teacher_names.teachers(ds['teachers'], name_overrides(db))
+        return [dict(c, name=labels[c['id']]['name'])
+                for c in consultation(ds, state, day.isoformat(), hour, campus, rules)]
 
     @app.get('/api/candidates')
     def get_candidates(day: date, key: str):

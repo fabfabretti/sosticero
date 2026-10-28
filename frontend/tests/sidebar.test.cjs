@@ -192,6 +192,55 @@ async function loaded(over = {}, campus) {
 const slot = a => a.render().find(n => n.props?.className === 'fill ph');
 const drawer = a => a.render().find(n => n.type === 'drawer');
 
+test('empty-hour consultation follows campus tabs and leaves real rows/counts unchanged', async () => {
+  const a = await loaded();
+  const actions = () => a.render().filter(n => n.props?.['aria-label']?.startsWith('Consulta disponibilità '));
+  assert.equal(actions().length, 6);
+  const count = a.render().find(n => n.type === 'p' && n.props.className === 'sub').props.children;
+  a.render().find(n => n.type === 'button' && n.props.children === 'Succursale').props.onClick(); a.render();
+  assert.equal(actions().length, 7);
+  actions()[0].props.onClick({ currentTarget: null });
+  assert.match(a.requests[0].url, /availability\?.*hour=1&campus=succursale/);
+  a.requests.shift().resolve([{ id: 'pot', campus: 'succursale' }]); await settle();
+  assert.equal(drawer(a).props.readOnlyReason, 'Solo consultazione');
+  assert.equal(drawer(a).props.open.sede, 'succursale');
+  drawer(a).props.onAssign('pot'); assert.equal(a.requests.length, 0);
+  drawer(a).props.onClose(); assert.equal(drawer(a), undefined);
+  a.render().find(n => n.type === 'button' && n.props.children === 'Centrale').props.onClick(); a.render();
+  assert.equal(actions().length, 6);
+  actions()[0].props.onClick({ currentTarget: null });
+  assert.match(a.requests[0].url, /hour=2&campus=centrale/);
+  a.requests.shift().resolve([]); await settle();
+  assert.equal(drawer(a).props.open.sede, 'centrale');
+  drawer(a).props.onClose();
+  assert.deepEqual(a.render().find(n => n.type === 'p' && n.props.className === 'sub').props.children, count);
+  assert.ok(slot(a));
+});
+
+test('all seven empty hours consult both campuses and discard late responses after tab/day changes', async () => {
+  const a = await loaded({ rows: [] });
+  const actions = () => a.render().filter(n => n.props?.['aria-label']?.startsWith('Consulta disponibilità '));
+  assert.equal(actions().length, 7);
+  actions()[0].props.onClick({ currentTarget: null }); assert.match(a.requests[0].url, /campus=all/);
+  a.render().find(n => n.type === 'button' && n.props.children === 'Centrale').props.onClick(); a.render();
+  a.requests.shift().resolve([{ id: 'stale' }]); await settle();
+  assert.equal(drawer(a), undefined);
+  actions()[0].props.onClick({ currentTarget: null }); const late = a.requests.shift();
+  a.render().find(n => n.props?.className === 'd').props.onClick(); a.render();
+  late.resolve([{ id: 'old-day' }]); await settle();
+  assert.equal(drawer(a), undefined);
+});
+
+test('consultation errors allow retry and successful empty results still open the drawer', async () => {
+  const a = await loaded({ rows: [] });
+  const action = () => a.render().find(n => n.props?.['aria-label'] === 'Consulta disponibilità 1ª ora');
+  action().props.onClick({ currentTarget: null }); assert.equal(action().props.disabled, true);
+  a.requests.shift().resolve({ detail: 'availability failed' }, false); await settle();
+  assert.equal(action().props.disabled, false); assert.equal(drawer(a), undefined);
+  action().props.onClick({ currentTarget: null }); a.requests.shift().resolve([]); await settle();
+  assert.equal(drawer(a).props.cands.length, 0);
+});
+
 test('only the latest slot response opens the drawer', async () => {
   const a = await loaded();
   slot(a).props.onClick();

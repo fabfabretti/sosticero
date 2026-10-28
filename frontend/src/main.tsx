@@ -513,6 +513,14 @@ function Supplenze() {
   const candidateRequest = useRef(0);
   const candidateBaseline = useRef<Baseline | undefined>(undefined);
   const [loadingCandidates, setLoadingCandidates] = useState(false);
+  const [consultation, setConsultation] = useState<{ h: number; sede: string | null }>();
+  const consultationTrigger = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    ++candidateRequest.current;
+    setConsultation(undefined);
+    setOpen(undefined);
+    setLoadingCandidates(false);
+  }, [day, filter]);
   useEffect(() => {
     try { localStorage.setItem("supplenze-campus", filter); } catch { /* Browser storage may be unavailable. */ }
   }, [filter]);
@@ -523,7 +531,7 @@ function Supplenze() {
   const { refresh, invalidate } = useQuietRefresh(
     () => api<Data>("day/" + day),
     next => { setData(old => JSON.stringify(old) === JSON.stringify(next) ? old : next); setLoadedDay(day); },
-    entryOpen || busy || loadingCandidates || !!open || !!editingKind || !!editingDis || !!disTeacher || !!query || !!chosen || !!entryNote || !!entryAttachment,
+    entryOpen || busy || loadingCandidates || !!open || !!consultation || !!editingKind || !!editingDis || !!disTeacher || !!query || !!chosen || !!entryNote || !!entryAttachment,
     day,
     entryOpen,
   );
@@ -549,6 +557,7 @@ function Supplenze() {
     ++candidateRequest.current;
     setLoadingCandidates(false);
     setOpen(undefined);
+    setConsultation(undefined);
     setBusy(true);
     setError("");
     try {
@@ -587,6 +596,7 @@ function Supplenze() {
   };
   const choose = async (r: Row) => {
     if (busy) return;
+    setConsultation(undefined);
     closeEntry();
     const n = ++candidateRequest.current;
     invalidate();
@@ -600,6 +610,25 @@ function Supplenze() {
       if (n === candidateRequest.current) {
         setCands(c);
         setOpen(r);
+      }
+    } catch (e) {
+      if (n === candidateRequest.current) setError(String(e));
+    } finally { if (n === candidateRequest.current) setLoadingCandidates(false); }
+  };
+  const consult = async (h: number, trigger: HTMLButtonElement) => {
+    if (busy || loadingCandidates) return;
+    consultationTrigger.current = trigger;
+    closeEntry();
+    setOpen(undefined);
+    const n = ++candidateRequest.current;
+    invalidate();
+    setLoadingCandidates(true);
+    setError("");
+    try {
+      const c = await api<Candidate[]>("availability?" + new URLSearchParams({ day, hour: String(h), campus: filter }));
+      if (n === candidateRequest.current) {
+        setCands(c);
+        setConsultation({ h, sede: filter === "all" ? null : filter });
       }
     } catch (e) {
       if (n === candidateRequest.current) setError(String(e));
@@ -1073,6 +1102,7 @@ function Supplenze() {
                     <tr>
                       <td colSpan={5} className="none">
                         Nessuna supplenza da coprire
+                        {" "}<button className="lk" disabled={busy || loadingCandidates} onClick={e => void consult(h, e.currentTarget)} aria-label={`Consulta disponibilità ${h}ª ora`}>Consulta disponibilità</button>
                       </td>
                     </tr>
                   )}
@@ -1249,6 +1279,8 @@ function Supplenze() {
           </form>
         </div>
       </div>}
+      {loadingCandidates && <p role="status">Caricamento disponibilità…</p>}
+      {consultation && <CandidateDrawer open={consultation} cands={cands} busy={busy} name={name} readOnlyReason="Solo consultazione" returnFocus={consultationTrigger.current} onAssign={() => {}} onClose={() => { ++candidateRequest.current; setConsultation(undefined); setLoadingCandidates(false); }} />}
       {open && (
         <CandidateDrawer
           open={open}
