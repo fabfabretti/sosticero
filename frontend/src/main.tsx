@@ -1,4 +1,5 @@
 import { PaidHours } from "./PaidHours";
+import { BuildWarning, builtAt } from './BuildInfo';
 import { PaidActions } from "./PaidActions";
 import { Auth, useAccount } from "./Auth";
 import { requestApi } from "./session";
@@ -99,6 +100,7 @@ function TopBar({ current, pending = 0 }: { current: string; pending?: number })
       <span className="brand">
         <Glasses /> Sosticero
       </span>
+      <BuildWarning />
       <nav className="tabs">
         {TABS.map((t) => (
           <Link
@@ -389,6 +391,7 @@ function Settings() {
     <SettingsGroup title="Aspetto" description="Scegli il tema dell’interfaccia." status={theme === 'dark' ? 'Scuro' : 'Chiaro'}>
       <div className="ui-actions"><button className="ui-button" aria-pressed={theme === 'dark'} onClick={() => { const next = theme === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = next; setTheme(next); }}>Chiaro / scuro</button></div>
     </SettingsGroup>
+    <p className="settings-muted">Build dell’interfaccia in uso: <time dateTime={builtAt}>{new Date(builtAt).toLocaleString('it-IT', { timeZone: 'Europe/Rome', timeZoneName: 'short' })}</time></p>
   </section>;
 }
 function Shell() {

@@ -1000,9 +1000,15 @@ def create_app(path=None, seed=None):
 
     static = Path(os.environ.get('STATIC_PATH', 'frontend/dist'))
     if static.exists():
+        @app.get('/', include_in_schema=False)
+        @app.get('/index.html', include_in_schema=False)
         @app.get('/display', include_in_schema=False)
         def display_page():
             return FileResponse(static / 'index.html', headers={'Cache-Control': 'no-store'})
+
+        @app.get('/build-info.json', include_in_schema=False)
+        def build_info():
+            return FileResponse(static / 'build-info.json', headers={'Cache-Control': 'no-store'})
 
         app.mount('/', StaticFiles(directory=static, html=True), name='frontend')
     return app
