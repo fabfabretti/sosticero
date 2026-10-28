@@ -31,11 +31,11 @@ test('CSV preserves totals, filters, denominators and safely quotes spreadsheet 
   assert.ok(csv.includes('Solo giorni con assenze registrate'));
 });
 
-function screen() {
+function screen(storage) {
   let cursor = 0;
   const slots = [], effects = [], requests = [];
   const react = {
-    useState(initial) { const i = cursor++; if (!(i in slots)) slots[i] = initial; return [slots[i], value => { slots[i] = value; }]; },
+    useState(initial) { const i = cursor++; if (!(i in slots)) slots[i] = typeof initial === 'function' ? initial() : initial; return [slots[i], value => { slots[i] = value; }]; },
     useEffect(fn, deps) {
       const i = cursor++;
       if (!slots[i] || deps.some((v, j) => slots[i].deps[j] !== v)) {
@@ -47,6 +47,7 @@ function screen() {
   };
   const jsx = (type, props) => ({ type, props });
   const { Stats } = load('src/Stats.tsx', { react, 'react/jsx-runtime': { jsx, jsxs: jsx }, './stats-report': reporting, './StatsAvailability': { StatsAvailability: 'stats-availability', absenceExplanation: 'Le ore dei docenti assenti includono anche attività senza una classe da sostituire.' }, './StatsCalendar': calendar, './HeatCell': { HeatCell: 'heat-cell' }, recharts: new Proxy({}, { get: (_, name) => name }) }, {
+    localStorage: storage,
     fetch(url) { return new Promise(resolve => requests.push({ url, resolve: body => resolve({ ok: true, json: async () => body }) })); },
   });
   return {
@@ -188,4 +189,16 @@ test('summary omits incomplete coverage and heatmap keeps only demand and absent
   const css = readFileSync('src/style.css', 'utf8');
   assert.match(css, /\.stats-heatmap\s*\{[^}]*table-layout: fixed/s);
   assert.match(css, /\.stats-scroll \.stats-heatmap thead th:last-child\s*\{[^}]*display: table-cell/s);
+});
+
+test('campus survives remounts and invalid or unavailable storage falls back to total', () => {
+  let saved='succursale';
+  const storage={getItem:()=>saved,setItem:(key,value)=>{assert.equal(key,'stats-campus');saved=value;}};
+  let s=screen(storage); let nodes=s.render();
+  assert.match(s.requests[0].url,/campus=succursale/);
+  nodes.find(n=>n.type==='button' && n.props.children==='Centrale').props.onClick();s.render();
+  s=screen(storage);s.render();assert.match(s.requests[0].url,/campus=centrale/);
+  saved='invalid';s=screen(storage);s.render();assert.match(s.requests[0].url,/campus=total/);
+  s=screen({getItem(){throw Error('blocked');},setItem(){throw Error('blocked');}});
+  s.render();assert.match(s.requests[0].url,/campus=total/);
 });
