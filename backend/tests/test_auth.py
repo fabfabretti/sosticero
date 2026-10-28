@@ -63,6 +63,7 @@ class AuthenticationTest(unittest.TestCase):
             if not path.startswith('/api/') or path=='/api/environment' or path.startswith('/api/auth/'): continue
             path=path.replace('{day}',DAY).replace('{identifier}','unknown').replace('{action}','accept')
             for method in route.methods & {'GET','POST'}:
+                if path == '/api/display' and method == 'GET': continue
                 with self.subTest(path=path,method=method):
                     res=anonymous.request(method,path,json={} if method=='POST' else None)
                     self.assertEqual(res.status_code,401,res.text)

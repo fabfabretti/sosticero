@@ -29,7 +29,7 @@ const tooltip = (() => {
 })();
 
 // Run the actual App handlers with deferred HTTP responses and minimal hook storage.
-function app(localStorage = { getItem: () => null, setItem() {} }, confirm = () => false, campus = 'centrale') {
+function app(localStorage = { getItem: () => null, setItem() {} }, confirm = () => false, campus = 'centrale', entryPath = '/') {
   const effects = [], requests = [], comps = new Map(), timers = [];
   const listeners = new Map();
   const document = { documentElement: { dataset: {} }, activeElement: null, visibilityState: 'visible',
@@ -89,7 +89,7 @@ function app(localStorage = { getItem: () => null, setItem() {} }, confirm = () 
   runInNewContext(code, {
     exports: {}, URLSearchParams, Date, localStorage, setTimeout, clearTimeout,
     setInterval: () => 1, clearInterval() {},
-    window: { innerWidth: 1024, innerHeight: 768, confirm },
+    window: { innerWidth: 1024, innerHeight: 768, confirm, location: { pathname: entryPath } },
     document,
     fetch: fetcher,
     require(id) {
@@ -133,6 +133,7 @@ function app(localStorage = { getItem: () => null, setItem() {} }, confirm = () 
       if (id === './Inbox') return { AbsenceInbox: 'absence-inbox', SheetsSettings: 'sheets-settings', InboxNotice: () => null, useInboxStatus: () => inboxStatus };
       if (id === './Stats') return { Stats: 'stats' };
       if (id === './TeacherTimetables') return { TeacherTimetables: 'teacher-timetables' };
+      if (id === './Display') return { Display: 'public-display' };
       if (id === './Tooltip') return tooltip;
       if (id === './SubstitutionExportPanel') return { SubstitutionExport: 'substitution-export' };
       if (id === './RecoveryActions') return { RecoveryActions: 'recovery-actions' };
@@ -175,6 +176,13 @@ function app(localStorage = { getItem: () => null, setItem() {} }, confirm = () 
   } };
 }
 const settle = () => new Promise(resolve => setImmediate(resolve));
+test('direct display bypasses operational shell, Inbox and day loading without adding a tab', () => {
+  const a = app(undefined, undefined, undefined, '/display');
+  const nodes = a.render();
+  assert.ok(nodes.some(n => n.type === 'public-display'));
+  assert.ok(!nodes.some(n => n.type === 'nav' || n.type === 'teacher-timetables'));
+  assert.equal(a.requests.length, 0);
+});
 const row = { k: 'r', id: 't', ids: ['t'], h: 1, c: '1A', aula: null, sede: 'centrale' };
 const data = {
   dataset: { teachers: {}, classes: [], warnings: [] },

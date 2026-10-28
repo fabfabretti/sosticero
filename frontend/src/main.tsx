@@ -20,23 +20,16 @@ import { CandidateDrawer } from "./CandidateDrawer";
 import { AttachmentField, RecordInfo, type ImageDraft, type AttachmentMap } from "./Attachments";
 import { Stats } from "./Stats";
 import { TeacherTimetables } from "./TeacherTimetables";
+import { Display } from './Display';
 import { AbsenceInbox, SheetsSettings, InboxNotice, useInboxStatus } from "./Inbox";
 import { ReceptionImport } from './Receptions';
-import { norm, teacherSearchText } from "./timetables";
+import { norm, teacherSearchText, entryExitLabel } from "./timetables";
 import { HourHelp } from "./Tooltip";
 import { SubstitutionExport } from "./SubstitutionExportPanel";
 import { RecoveryActions } from "./RecoveryActions";
 import { HashRouter, Link, useLocation } from "react-router";
 const hours = [1, 2, 3, 4, 5, 6, 7];
 const campusTag = (site: string) => <span key={site} className={`permit-campus campus-${site}`} aria-label={site === 'centrale' ? 'Centrale' : 'Succursale'} title={site === 'centrale' ? 'Centrale' : 'Succursale'}>{site === 'centrale' ? 'C' : 'S'}</span>;
-const entryExitLabel = (id: string, hour: number) => {
-  const time = (id === "ENTRA"
-    ? ["", "08:35", "09:40", "10:35", "11:40", "12:35", "12:35", "13:25"]
-    : id === "ESCE"
-      ? ["", "", "08:35", "09:30", "10:35", "11:30", "12:35", "13:25"]
-      : [])[hour];
-  return time ? `${id === "ENTRA" ? "Entra dopo" : "Esce prima"} alle ${time}` : undefined;
-};
 const entryExitBoundary = (key: string, assignments: Record<string, Assignment>) => {
   const a = assignments[key];
   if (!a || !["ENTRA", "ESCE"].includes(a.v)) return false;
@@ -440,7 +433,7 @@ function App() {
   return (
     <HashRouter>
       {testing && <div className="testing-ribbon" role="status">TESTING</div>}
-      <Auth><Shell /></Auth>
+      {window.location.pathname === '/display' ? <Display /> : <Auth><Shell /></Auth>}
     </HashRouter>
   );
 }

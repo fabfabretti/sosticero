@@ -1,6 +1,7 @@
 # AGENTS.md
 
 ## After finishing a feature
+After implementing and verifying a feature, always deploy it to atlante with `./scripts/deploy.sh` and verify the deployed release using read-only checks.
 Always ask the user whether they want to commit the work before committing it.
 
 ## Development database and normal deployment
