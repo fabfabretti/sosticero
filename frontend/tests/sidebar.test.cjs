@@ -93,6 +93,7 @@ function app(localStorage = { getItem: () => null, setItem() {} }, confirm = () 
     document,
     fetch: fetcher,
     require(id) {
+      if (id === './BuildInfo') return { BuildWarning: () => null, builtAt: '2026-10-28T12:00:00.000Z' };
       if (id === './Auth') return { Auth: ({children}) => children, useAccount: () => ({ id:'test', username:'test', name:'Test', campus }) };
       if (id === './session') return { requestApi: async (url, body) => {
         const response = await fetcher('/api/'+url, body === undefined ? undefined : {method:'POST',body:JSON.stringify(body)});
