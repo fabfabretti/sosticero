@@ -220,6 +220,7 @@ def create_app(path=None, seed=None):
         state.setdefault('permitIds', {})
         state.setdefault('absenceKinds', {})
         state.setdefault('permitKinds', {})
+        state.setdefault('permitCreators', {})
         state.setdefault('absenceNotes', {})
         state.setdefault('permitNotes', {})
         state.setdefault('manualPermitNotes', {})
@@ -484,7 +485,7 @@ def create_app(path=None, seed=None):
             versions = [dict(v, dataset=presented(db, v['dataset'])) for v in versions]
         summaries, balances = recovery.summary(state)
         manual = {p['teacher']: p for p in recovery.ledger(state).values() if p['date'] is None}
-        return dict(concurrency=concurrency.snapshot(state), dataset=ds, timetableVersions=[dict(effective=v['effective'], dataset=v['dataset']) for v in versions], permitAttachments=state['permitAttachments'], permessi=state['permessi'], permitRequests=state['permitRequests'], permitNotes=state['permitNotes'], permitKinds=state['permitKinds'], recoveries=summaries, balances=balances, manualPermits=manual, manualPermitNotes=state['manualPermitNotes'])
+        return dict(concurrency=concurrency.snapshot(state), dataset=ds, timetableVersions=[dict(effective=v['effective'], dataset=v['dataset']) for v in versions], permitAttachments=state['permitAttachments'], permessi=state['permessi'], permitRequests=state['permitRequests'], permitNotes=state['permitNotes'], permitKinds=state['permitKinds'], permitCreators=state['permitCreators'], recoveries=summaries, balances=balances, manualPermits=manual, manualPermitNotes=state['manualPermitNotes'])
 
     @app.post('/api/manual-permits')
     def save_manual_permit(e: ManualPermit):
@@ -515,7 +516,7 @@ def create_app(path=None, seed=None):
         return {'ok': True, 'concurrency': concurrency.snapshot(state)}
 
     @app.post('/api/permessi')
-    def save_permit(e: Permit):
+    def save_permit(e: Permit, request: Request):
         if (e.original_day is None) != (e.original_id is None):
             raise ValueError('Riferimento originale incompleto.')
         d = e.day.isoformat()
@@ -531,6 +532,7 @@ def create_app(path=None, seed=None):
             if source and source[1] not in permits.get(source[0], {}):
                 raise ValueError('Permesso originale non più presente.')
             old_day, old_teacher = source or (d, e.id)
+            creator = state['permitCreators'].get(old_day, {}).get(old_teacher) if source else request.state.account['campus']
             classification = e.classification if 'classification' in e.model_fields_set else state['permitKinds'].get(old_day, {}).get(old_teacher)
             note = (e.note or '').strip() if 'note' in e.model_fields_set else state['permitNotes'].get(old_day, {}).get(old_teacher)
             attachment = state['permitAttachments'].get(old_day, {}).get(old_teacher)
@@ -545,6 +547,7 @@ def create_app(path=None, seed=None):
                 state['permitRequests'].get(d, {}).pop(e.id, None)
                 state['permitNotes'].get(d, {}).pop(e.id, None)
                 state['permitKinds'].get(d, {}).pop(e.id, None)
+                state['permitCreators'].get(d, {}).pop(e.id, None)
                 state['permitAttachments'].get(d, {}).pop(e.id, None)
             else:
                 validate_permit(ds, e.id, e.hours)
@@ -558,6 +561,7 @@ def create_app(path=None, seed=None):
                     state['permitRequests'].get(source[0], {}).pop(source[1], None)
                     state['permitNotes'].get(source[0], {}).pop(source[1], None)
                     state['permitKinds'].get(source[0], {}).pop(source[1], None)
+                    state['permitCreators'].get(source[0], {}).pop(source[1], None)
                     state['permitAttachments'].get(source[0], {}).pop(source[1], None)
                 permits.setdefault(d, {})[e.id] = sorted(e.hours)
                 state['permitAttachments'].get(d, {}).pop(e.id, None)
@@ -565,8 +569,11 @@ def create_app(path=None, seed=None):
                     state['permitAttachments'].setdefault(d, {})[e.id] = attachment
                 state['permitNotes'].get(d, {}).pop(e.id, None)
                 state['permitKinds'].get(d, {}).pop(e.id, None)
+                state['permitCreators'].get(d, {}).pop(e.id, None)
                 if note:
                     state['permitNotes'].setdefault(d, {})[e.id] = note
+                if creator:
+                    state['permitCreators'].setdefault(d, {})[e.id] = creator
                 if classification:
                     state['permitKinds'].setdefault(d, {})[e.id] = classification
                 state['permitRequests'].get(d, {}).pop(e.id, None)
@@ -824,6 +831,9 @@ def create_app(path=None, seed=None):
                             source = 'abs' if group == 'absenceKinds' else 'permessi'
                             if i not in state[source].get(d, {}) or i not in ds['teachers'] or not isinstance(value, str) or value not in ('planned', 'last_minute', 'trip', 'strike'):
                                 raise ValueError('Classificazione assenza non valida.')
+                        elif group == 'permitCreators':
+                            if i not in state['permessi'].get(d, {}) or not isinstance(value, str) or value not in SITES:
+                                raise ValueError('Sede inserimento permesso non valida.')
                         elif group == 'permitIds':
                             if i not in state['permessi'].get(d, {}) or not isinstance(value, str):
                                 raise ValueError('Identità permesso non valida.')

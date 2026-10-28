@@ -34,3 +34,6 @@
 @media (max-width: 650px), (pointer: coarse) {
   .permit-hours button, .permit-actions button { width: 44px; }
 }
+
+.permit-campus { display: inline-block; padding: 2px 6px; margin-right: 4px; border: 1px solid var(--campus-edge); border-radius: var(--ui-radius); background: var(--campus-fill); color: var(--campus-ink); font-weight: 650; }
+.permit-complete td:not(:last-child) { text-decoration: line-through; }

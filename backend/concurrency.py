@@ -9,7 +9,7 @@ METADATA = {
     'abs': ('absenceNotes', 'absenceKinds', 'absenceAttachments'),
     'cf': (),
     'dis': ('disSites', 'disAttachments'),
-    'permessi': ('permitIds', 'permitRequests', 'permitNotes', 'permitKinds', 'permitAttachments'),
+    'permessi': ('permitIds', 'permitRequests', 'permitNotes', 'permitKinds', 'permitCreators', 'permitAttachments'),
 }
 
 
