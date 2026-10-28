@@ -314,6 +314,31 @@ def rp_candidate(ds, state, day, row, teacher, permits):
                 convenient=convenient, potential=explanation.startswith('Potenzialmente'), rpHours=balance, permitId=available[0]['id'])
 
 
+def consultation(ds, state, day, hour, campus, policies):
+    permits = recovery.ledger(state)
+    daily_load = Counter(a['v'] for a in state['asg'].get(day, {}).values())
+    total_load = Counter(a['v'] for assignments in state['asg'].values() for a in assignments.values())
+    weekly = {}
+    for key, l in ds['lessons'].items():
+        weekly.setdefault(key.split('|')[0], set()).update(l['classes'])
+    result = []
+    for site in SITES if campus == 'all' else (campus,):
+        row = dict(h=hour, sede=site, ids=[], c='', aula=None, k='')
+        for i, teacher in ds['teachers'].items():
+            c = eligibility(ds, state, day, row, teacher, policies) or rp_candidate(ds, state, day, row, teacher, permits)
+            if not c or c['why'] or c.get('exceptional'):
+                continue
+            if c['ty'] != 'RP' and c['loc'] != site:
+                if campus != 'all' or c['loc'] or site != SITES[0]:
+                    continue
+            cdc = teacher.get('classe_concorso', '')
+            result.append(dict(c, campus=site if c['ty'] == 'RP' else c['loc'],
+                               role=teacher['role'], cdc=cdc, cdcName=CDC_NAMES.get(cdc, cdc),
+                               clsWeek=sorted(weekly.get(i, set())), today=daily_load[i], total=total_load[i],
+                               tier=rank_candidate(c, row)))
+    return sorted(result, key=lambda c: (c['campus'] or 'unknown', *candidate_order(c)))
+
+
 def candidates(ds, state, day, row, policies=None, selected=None):
     weekly = {}
     for k, l in ds['lessons'].items():

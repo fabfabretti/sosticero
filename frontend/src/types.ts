@@ -19,6 +19,7 @@ export type Row = {
   sede: string | null;
 };
 export type Candidate = {
+  campus?: string | null;
   tier?: number;
   sameCdc?: boolean;
   convenient?: boolean;
