@@ -17,11 +17,15 @@ test('preconditions select only affected records and cover range, future and mov
   assert.equal(Object.keys(preconditions(b, 'permessi', { day: '2026-10-13', id: 'b', original_day: '2026-10-12', original_id: 'a' })).length, 2);
 });
 function harness() {
-  let index = 0, active = false, scope = 'day1';
+  let index = 0, active = false, scope = 'day1', renderRequested = false;
   const slots = [], effects = [], timers = new Map(), listeners = new Map(), requests = [], applied = [];
   const element = { scrollTop: 123, scrollLeft: 8 };
   const react = {
     useRef(value) { const i = index++; return slots[i] ||= { current: value }; },
+    useState(initial) {
+      const i = index++; slots[i] ??= initial;
+      return [slots[i], update => { slots[i] = update(slots[i]); renderRequested = true; }];
+    },
     useEffect(fn, deps) {
       const i = index++, previous = slots[i];
       if (!previous || !deps || deps.some((v, n) => v !== previous.deps?.[n])) effects.push(() => { previous?.cleanup?.(); slots[i] = { deps, cleanup: fn() }; });
@@ -31,14 +35,25 @@ function harness() {
   const doc = { visibilityState: 'visible', querySelectorAll: () => [element], addEventListener: (e, fn) => listeners.set(e, fn), removeEventListener: e => listeners.delete(e) };
   const { useQuietRefresh } = load('useQuietRefresh', { require: () => react, document: doc, setInterval: fn => { timers.set(fn, fn); return fn; }, clearInterval: id => timers.delete(id) });
   const render = () => {
+    renderRequested = false;
     index = 0;
     const result = useQuietRefresh(() => new Promise((resolve, reject) => requests.push({ resolve, reject })), value => applied.push(value), active, scope);
     effects.splice(0).forEach(f => f());
     return result;
   };
-  return { render, requests, applied, element, listeners, timers, active: value => { active = value; }, scope: value => { scope = value; }, poll: async () => { [...timers.values()][0](); await settle(); }, unmount: () => slots.forEach(s => s?.cleanup?.()) };
+  return { render, flush: () => { if (renderRequested) render(); }, requests, applied, element, listeners, timers, active: value => { active = value; }, scope: value => { scope = value; }, poll: async () => { [...timers.values()][0](); await settle(); }, unmount: () => slots.forEach(s => s?.cleanup?.()) };
 }
 const settle = () => new Promise(resolve => setImmediate(resolve));
+test('unchanged refresh clears its scroll snapshot before a later interaction', async () => {
+  const h = harness(); h.render();
+  const poll = h.poll(); h.requests.shift().resolve('unchanged'); await poll;
+  // apply does not request a render in this harness, matching an unchanged state update.
+  h.flush();
+  h.element.scrollTop = 600;
+  h.render();
+  assert.equal(h.element.scrollTop, 600);
+  h.unmount();
+});
 test('quiet refresh defers active work, retains only latest snapshot and restores scroll', async () => {
   const h = harness(); h.active(true); h.render();
   const first = h.poll(); h.requests.shift().resolve('first'); await first;
