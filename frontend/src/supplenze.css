@@ -420,6 +420,8 @@
 .supplenze .entry-note textarea { width: 100%; box-sizing: border-box; min-height: 54px; resize: vertical; font: inherit; padding: 6px; border: 1px solid var(--line); border-radius: 4px; background: var(--pan); color: var(--ink); }
 
 .supplenze .communicated { display: inline-flex; margin: 4px 0 0; }
+.supplenze .recovery-actions { display: block; }
+.supplenze .recovery-actions small[role="status"] { display: block; }
 
 .supplenze .substitution-export { margin: 16px 0; padding: 10px 14px; }
 .supplenze .substitution-export summary { cursor: pointer; font-weight: 600; min-height: 24px; }

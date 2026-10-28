@@ -135,6 +135,7 @@ function app(localStorage = { getItem: () => null, setItem() {} }, confirm = () 
       if (id === './TeacherTimetables') return { TeacherTimetables: 'teacher-timetables' };
       if (id === './Tooltip') return tooltip;
       if (id === './SubstitutionExportPanel') return { SubstitutionExport: 'substitution-export' };
+      if (id === './RecoveryActions') return { RecoveryActions: 'recovery-actions' };
       if (id === './timetables') return timetables;
       if (id === 'react-router') return router;
       if (id.endsWith('.css')) return {};
@@ -1260,4 +1261,21 @@ test('recorded classes also explain duplicate prevention', async () => {
   search(a).props.onChange({ target: { value: '1A' } }); suggestion(a, '1A').props.onClick();
   assert.equal(entrySubmit(a).props.disabled, true); submitEntry(a); assert.equal(a.requests.length, 0);
   assert.ok(descendants(entryDialog(a)).some(n => n.props?.role === 'status' && JSON.stringify(n.props.children).includes('già registrato')));
+});
+
+test('RP row wires acceptance mutation and refreshed shared metadata', async () => {
+  const assignment = { v: 'rp', t: 'RP', c: row.c, permitId: 'permit' };
+  const response = { ...data, recoveryRequests: { [row.k]: { date: '2026-10-12', periods: [2] } }, state: { ...data.state, asg: { [todayYmd]: { [row.k]: assignment } } } };
+  const a = await loaded(response);
+  const actions = () => a.render().find(n => n.type === 'recovery-actions');
+  assert.equal(actions().props.canAssign, true);
+  assert.deepEqual(actions().props.permit, response.recoveryRequests[row.k]);
+  actions().props.onAccept();
+  assert.deepEqual(JSON.parse(a.requests[0].options.body), { day: todayYmd, key: row.k, accepted: true, expected: { [`asg|${todayYmd}|${row.k}`]: 'absent' } });
+  a.requests.shift().resolve({ ok: true }); await settle();
+  const updated = { ...response, state: { ...response.state, asg: { [todayYmd]: { [row.k]: { ...assignment, accepted: true } } } } };
+  a.requests.shift().resolve(updated); await settle();
+  assert.equal(actions().props.assignment.accepted, true);
+  const other = await loaded(updated, 'succursale');
+  assert.equal(other.render().find(n => n.type === 'recovery-actions').props.canAssign, false);
 });

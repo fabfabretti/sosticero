@@ -55,6 +55,7 @@ class Permit(ConditionalWrite):
 
 
 class Assignment(ConditionalWrite):
+    accepted: StrictBool | None = None
     communicated: StrictBool | None = None
     replace_key: str | None = None
     exceptional: StrictBool = False
@@ -283,6 +284,7 @@ def create_app(path=None, seed=None):
             item['context'] = timetables.conflict_context(history, d, item['key'], state['asg'][d][item['key']]) or timetables.context(history, state, d, item['key'], facts)
         selected = timetables.version(history, d)
         return dict(concurrency=concurrency.snapshot(state, ds, d), dataset=display, state=state, rows=rs, issues=problems, references=timetables.reference_issues(history, state, d),
+                    recoveryRequests=recovery.request_details(state, d),
                     timetable=dict(id=selected['id'], effective=selected['effective']), autoDis={d: auto_availability(ds, state, d)})
 
     @app.get('/api/orari')
@@ -728,6 +730,13 @@ def create_app(path=None, seed=None):
                 references.append(concurrency.key('asg', e.day.isoformat(), e.replace_key))
             concurrency.check(e.expected, concurrency.snapshot(state, ds, e.day.isoformat()), references)
             assignments = state['asg'].setdefault(e.day.isoformat(), {})
+            if 'accepted' in e.model_fields_set:
+                old = assignments.get(e.key)
+                if e.accepted is None or e.value is not None or e.replace_key or e.communicated is not None or e.exceptional or not old or old.get('t') != 'RP':
+                    raise ValueError('Accettata disponibile solo per recuperi permesso già registrati, senza altre modifiche.')
+                old['accepted'] = e.accepted
+                save_state(db, ds, state, [e.day.isoformat()])
+                return {'ok': True, 'concurrency': concurrency.snapshot(state, ds, e.day.isoformat())}
             if e.communicated is not None:
                 old = assignments.get(e.key)
                 if e.value is not None or e.replace_key or not old or old['v'] not in ('ENTRA', 'ESCE'):

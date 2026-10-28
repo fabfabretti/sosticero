@@ -47,6 +47,17 @@ def ledger(state, exclude=None):
     return permits
 
 
+def request_details(state, day):
+    permits = ledger(state)
+    result = {}
+    for key, assignment in state['asg'].get(day, {}).items():
+        p = permits.get(assignment.get('permitId'))
+        if assignment.get('t') != 'RP' or not p or p['teacher'] != assignment['v']:
+            continue
+        result[key] = dict(date=p['date'], periods=state['permessi'][p['date']][p['teacher']]) if p['date'] else dict(date=None)
+    return result
+
+
 def usable(p, day):
     return p['date'] is None or p['date'] <= day <= p['deadline']
 
@@ -89,6 +100,8 @@ def validate(state):
         permits = ledger(state)
         for day, assignments in state['asg'].items():
             for a in assignments.values():
+                if 'accepted' in a and (type(a['accepted']) is not bool or a.get('t') != 'RP'):
+                    raise ValueError()
                 if a.get('t') != 'RP':
                     if 'permitId' in a:
                         raise ValueError()
