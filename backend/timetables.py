@@ -39,7 +39,7 @@ def dataset(history, day):
 
 
 def dates(state, facts):
-    return sorted(set(facts['days']).union(*(set(v) for k, v in state.items() if k not in ('manualPermits', 'manualPermitNotes'))))
+    return sorted(set(facts['days']).union(*(set(v) for k, v in state.items() if k not in ('manualPermits', 'manualPermitNotes', 'paidAvailability'))))
 
 
 def sync(history, state, facts, days=None, reconstructed=False, revalidate=False):
@@ -66,7 +66,7 @@ def context(history, state, day, key, facts, ds=None):
     slot = facts['days'].get(day, {}).get('absences', {}).get(f'{teacher}|{h}', {})
     a = state['asg'][day][key]
     return dict(teacher=teacher, teacherName=ds['teachers'][teacher]['name'], h=int(h), c=cls,
-                site=slot.get('site', l.get('site')), substitute=a['v'],
+                site=slot.get('site', l.get('site')) or a.get('paidContext', {}).get('site'), substitute=a['v'],
                 substituteName=ds['teachers'].get(a['v'], {}).get('name', a['v']), assignment=deepcopy(a))
 
 

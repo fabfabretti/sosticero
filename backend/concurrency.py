@@ -27,6 +27,9 @@ def snapshot(state, ds=None, day=None):
         for d, entries in state[group].items():
             for identifier, value in entries.items():
                 records[key(group, d, identifier)] = digest([value, *[state.get(m, {}).get(d, {}).get(identifier) for m in metadata]])
+    for weekday, entries in state.get('paidAvailability', {}).items():
+        for identifier, value in entries.items():
+            records[key('paidAvailability', weekday, identifier)] = digest(value)
     for identifier, value in state['manualPermits'].items():
         records[key('manualPermits', '', identifier)] = digest([value, state['manualPermitNotes'].get(identifier)])
     if ds is not None:

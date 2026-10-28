@@ -125,6 +125,7 @@ class PermessiTest(unittest.TestCase):
         archive['schema'] = 1
         del archive['permitIds']
         del archive['permessi']
+        del archive['permitCreators']  # Legacy archives also predate permit attribution.
         del archive['statistics']  # Simulate an archive from before permits and statistical facts.
         self.assertEqual(self.client.post('/api/import', json=archive).status_code, 200)
         self.assertEqual(self.register(), {})

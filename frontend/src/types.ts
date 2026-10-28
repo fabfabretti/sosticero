@@ -24,6 +24,7 @@ export type Candidate = {
   sameCdc?: boolean;
   convenient?: boolean;
   rpHours?: number;
+  paidCount?: number;
   exceptional?: boolean;
   typeLabel?: string;
   color?: string;
@@ -44,7 +45,7 @@ export type Candidate = {
   info?: string;
 };
 export type PermitRecovery = { id: string; deadline: string; recovered: number; remaining: number; expired: boolean; recoveries: { date: string; h: number; key: string }[] };
-export type Assignment = { v: string; t: string; c: string; permitId?: string; communicated?: boolean; accepted?: boolean };
+export type Assignment = { v: string; t: string; c: string; notified?: boolean; assignedBy?: string; permitId?: string; communicated?: boolean; accepted?: boolean };
 export type Data = {
   recoveryRequests?: Record<string, import("./RecoveryActions").RecoveryRequest>;
   concurrency: import("./concurrency").Baseline;

@@ -62,7 +62,7 @@ export function projectExport(data: Data, day: string, choice: CampusChoice,
       const a = assignments[r.k];
       return { period: r.h, absent: r.ids.map(name).join(' / '), classe: r.c,
         room: [r.aula, campusLabel(campus)].filter(Boolean).join(' / '),
-        substitute: a ? specialLabel(r.k) || name(a.v) : '', type: a && a.t !== 'SPECIAL' ? (a.t === 'CP' ? 'Compresenza - POT' : a.t === 'CA' ? 'Compresenza - ALF' : a.t) : '' };
+        substitute: a ? specialLabel(r.k) || name(a.v) : '', type: a && a.t !== 'SPECIAL' ? (a.t === 'PAID' ? 'A pagamento' : a.t === 'CP' ? 'Compresenza - POT' : a.t === 'CA' ? 'Compresenza - ALF' : a.t) : '' };
     }).sort((a, b) => a.period - b.period || a.classe.localeCompare(b.classe, 'it'));
     return { campus, rows, classes, companions, available };
   });

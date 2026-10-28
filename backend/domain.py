@@ -171,7 +171,7 @@ def rank_candidate(candidate, row):
         return CandidateTier.AVAILABLE
     if ty == 'DIR':
         return CandidateTier.OFFICE
-    if ty == 'RP':
+    if ty in ('RP', 'PAID'):
         return CandidateTier.RECOVERY
     loc = candidate['loc']
     if not loc or not row['sede']:
@@ -182,8 +182,10 @@ def rank_candidate(candidate, row):
 
 
 def candidate_order(candidate):
+    if candidate['ty'] == 'PAID':
+        return (candidate['tier'], 1, candidate['paidCount'], candidate['name'].casefold(), candidate['id'])
     return (candidate['tier'],
-            not candidate.get('convenient', False) if candidate['ty'] == 'RP' else False,
+            (0 if candidate.get('convenient') else 2) if candidate['ty'] == 'RP' else 0,
             not (candidate.get('inClass') or candidate.get('sameCdc')),
             candidate['today'], candidate['total'], candidate['name'].casefold(), candidate['id'])
 
@@ -250,7 +252,7 @@ def eligibility(ds, state, day, row, teacher, policies=None):
                 typeLabel=label, color=policy[0]['color'] if policy else None, exceptional=exceptional)
 
 
-def rp_context(ds, state, day, row, teacher):
+def rp_context(ds, state, day, row, teacher, details=False):
     h, site = row['h'], row['sede']
     commitments, teaching = {}, {}
     absent = absences(state, day).get(teacher, [])
@@ -286,13 +288,14 @@ def rp_context(ds, state, day, row, teacher):
     for period in sides:
         for other in travel[period]:
             if site and other and site != other and not any(min(h, period) <= b < max(h, period) for b in (2, 4)):
-                return False, 'Cambio sede senza intervallo', ''
+                return (False, 'Cambio sede senza intervallo', '', False) if details else (False, 'Cambio sede senza intervallo', '')
     reception_near = h - 1 in reception_hours or h + 1 in reception_hours
     near = reception_near or h - 1 in teaching or h + 1 in teaching or (any(p < h for p in teaching) and any(p > h for p in teaching))
     known = bool(site) and all(teaching[p] for p in teaching if p == h - 1 or p == h + 1)
     known = known and all(all(travel[p]) for p in sides)
     explanation = ('Potenzialmente favorevole · sede da verificare' if reception_near else 'Sede da verificare') if near and not known else 'Ora favorevole' if near else 'Fuori dalle ore favorevoli'
-    return bool(near and known), '', explanation
+    unknown = any(not campus for period in sides for campus in travel[period])
+    return (bool(near and known), '', explanation, unknown) if details else (bool(near and known), '', explanation)
 
 
 def rp_candidate(ds, state, day, row, teacher, permits):
@@ -325,17 +328,20 @@ def consultation(ds, state, day, hour, campus, policies):
     for site in SITES if campus == 'all' else (campus,):
         row = dict(h=hour, sede=site, ids=[], c='', aula=None, k='')
         for i, teacher in ds['teachers'].items():
-            c = eligibility(ds, state, day, row, teacher, policies) or rp_candidate(ds, state, day, row, teacher, permits)
-            if not c or c['why'] or c.get('exceptional'):
-                continue
-            if c['ty'] != 'RP' and c['loc'] != site:
-                if campus != 'all' or c['loc'] or site != SITES[0]:
+            from . import paid
+            options = [eligibility(ds, state, day, row, teacher, policies) or rp_candidate(ds, state, day, row, teacher, permits),
+                       paid.candidate(ds, state, day, row, teacher)]
+            for c in options:
+                if not c or c['why'] or c.get('exceptional'):
                     continue
-            cdc = teacher.get('classe_concorso', '')
-            result.append(dict(c, campus=site if c['ty'] == 'RP' else c['loc'],
-                               role=teacher['role'], cdc=cdc, cdcName=CDC_NAMES.get(cdc, cdc),
-                               clsWeek=sorted(weekly.get(i, set())), today=daily_load[i], total=total_load[i],
-                               tier=rank_candidate(c, row)))
+                if c['ty'] not in ('RP', 'PAID') and c['loc'] != site:
+                    if campus != 'all' or c['loc'] or site != SITES[0]:
+                        continue
+                cdc = teacher.get('classe_concorso', '')
+                result.append(dict(c, campus=site if c['ty'] in ('RP', 'PAID') else c['loc'],
+                                   role=teacher['role'], cdc=cdc, cdcName=CDC_NAMES.get(cdc, cdc),
+                                   clsWeek=sorted(weekly.get(i, set())), today=daily_load[i], total=total_load[i],
+                                   tier=rank_candidate(c, row)))
     return sorted(result, key=lambda c: (c['campus'] or 'unknown', *candidate_order(c)))
 
 
@@ -359,6 +365,16 @@ def candidates(ds, state, day, row, policies=None, selected=None):
         cdc = t.get('classe_concorso', '')
         result.append(dict(c, role=t['role'], cdc=cdc, cdcName=CDC_NAMES.get(cdc, cdc),
                            clsWeek=cls, inClass=row['c'] in cls, sameCdc=bool(cdc and cdc == target_cdc)))
+    from . import paid
+    for t in ds['teachers'].values():
+        if selected is not None and t['id'] != selected:
+            continue
+        c = paid.candidate(ds, state, day, row, t)
+        if c:
+            cdc = t.get('classe_concorso', '')
+            cls = sorted(weekly.get(t['id'], set()))
+            result.append(dict(c, role=t['role'], cdc=cdc, cdcName=CDC_NAMES.get(cdc, cdc),
+                               clsWeek=cls, inClass=row['c'] in cls, sameCdc=bool(cdc and cdc == target_cdc)))
     if selected in (None, 'DIR'):
         result.append(dict(id='DIR', name='Dirigente', ty='DIR', loc='centrale', why='', tag='Opzione manuale, da verificare'))
     if selected in (None, 'UNCOVERED'):
@@ -377,12 +393,18 @@ def candidates(ds, state, day, row, policies=None, selected=None):
     return sorted(result, key=candidate_order)
 
 
-def validate_assignment(ds, state, day, key, value, policies=None, exceptional=False, saved=False):
+def validate_assignment(ds, state, day, key, value, policies=None, exceptional=False, saved=False, category=None):
     from .receptions import at
     row = next((r for r in rows(ds, state, day) if r['k'] == key), None)
     if not row:
         raise ValueError('Supplenza non più presente nell’orario o nelle assenze.')
     old = state['asg'].get(day, {}).get(key)
+    if saved and old and old.get('t') == 'PAID' and old['v'] == value:
+        from . import paid
+        info = paid.slot(ds, state, day, row['h'], value, key, declared=False)
+        if info['why'] or row['sede'] and row['sede'] not in info['sites']:
+            raise ValueError(info['why'] or 'Cambio sede senza intervallo')
+        return dict(old)
     if saved and old and old.get('t') == 'RP' and old['v'] == value:
         recovery.validate(state)
         if value not in ds['teachers'] or ds['teachers'][value].get('retired') or lesson(ds, value, day, row['h']) or at(ds, value, day, row['h']) or row['h'] in state['dis'].get(day, {}).get(value, []):
@@ -395,7 +417,7 @@ def validate_assignment(ds, state, day, key, value, policies=None, exceptional=F
         if any(k != key and int(k.split('|')[1]) == row['h'] and a['v'] == value for k, a in state['asg'].get(day, {}).items()):
             raise ValueError('Già assegnato in questa ora')
         return dict(old)
-    c = next((c for c in candidates(ds, state, day, row, policies, selected=value) if c['id'] == value), None)
+    c = next((c for c in candidates(ds, state, day, row, policies, selected=value) if c['id'] == value and (c['ty'] == category if category else c['ty'] != 'PAID')), None)
     if not c or c['why']:
         raise ValueError(c['why'] if c else 'Candidato non disponibile.')
     if c.get('exceptional') and not exceptional:

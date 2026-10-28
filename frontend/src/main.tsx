@@ -1,3 +1,5 @@
+import { PaidHours } from "./PaidHours";
+import { PaidActions } from "./PaidActions";
 import { Auth, useAccount } from "./Auth";
 import { requestApi } from "./session";
 import { preconditions, ApiError, type Baseline } from "./concurrency";
@@ -401,6 +403,8 @@ function Shell() {
         <Supplenze />
       ) : tab.path === "/permessi" ? (
         <Permessi />
+      ) : tab.path === "/banca-ore" ? (
+        <PaidHours api={api} />
       ) : tab.path === "/orari" ? (
         <TeacherTimetables api={api} />
       ) : tab.path === "/inbox" ? (
@@ -1124,11 +1128,12 @@ function Supplenze() {
                             {assigned[r.k]
                               ? entryExitCellLabel(r.k, assigned) || name(assigned[r.k].v)
                               : "Scegli il supplente"}
-                            <small>{assigned[r.k]?.v === "UNCOVERED" ? "Nessun supplente trovato" : (assigned[r.k]?.t === "SPECIAL" ? "" : (assigned[r.k]?.t === "CP" ? "Compresenza - POT" : assigned[r.k]?.t === "CA" ? "Compresenza - ALF" : assigned[r.k]?.t))}</small>
+                            <small>{assigned[r.k]?.v === "UNCOVERED" ? "Nessun supplente trovato" : (assigned[r.k]?.t === "SPECIAL" ? "" : (assigned[r.k]?.t === "PAID" ? "A pagamento" : assigned[r.k]?.t === "CP" ? "Compresenza - POT" : assigned[r.k]?.t === "CA" ? "Compresenza - ALF" : assigned[r.k]?.t))}</small>
                           </button>
                           {assigned[r.k]?.t === "RP" && <RecoveryActions key={`${day}|${r.k}|${assigned[r.k].v}|${assigned[r.k].permitId}`} day={day} row={r}
                             assignment={assigned[r.k]} permit={data?.recoveryRequests?.[r.k]} busy={busy} canAssign={canAssign(r.sede)}
                             onAccept={() => void mutate("assignments", { day, key: r.k, accepted: !assigned[r.k].accepted })} />}
+                          {assigned[r.k]?.t === "PAID" && <PaidActions key={`${day}|${r.k}|${assigned[r.k].v}`} day={day} row={r} assignment={assigned[r.k]} busy={busy} canAssign={canAssign(r.sede)} onNotify={() => void mutate("assignments", { day, key: r.k, notified: !assigned[r.k].notified })} />}
                           {entryExitBoundary(r.k, assigned) && <span className="opt communicated">
                             <button type="button" className={assigned[r.k].communicated ? "on" : ""}
                               aria-pressed={assigned[r.k].communicated === true} disabled={busy || !canAssign(r.sede)}
@@ -1165,7 +1170,7 @@ function Supplenze() {
             A disposizione ha priorità su POT anche da altra sede.
             Priorità: compresenze nella classe; ingresso/uscita; disponibilità e DI.S;
             POT e altri tipi disponibili nella stessa sede; dirigente e UTC/UTS nella stessa sede;
-            tipi disponibili in altra sede; sede da verificare; recuperi permesso (prima le ore favorevoli);
+            tipi disponibili in altra sede; sede da verificare; recuperi permesso favorevoli; disponibilità a pagamento (meno ore a pagamento prima); altri recuperi permesso;
             impegni presso questa scuola utilizzabili solo in caso di necessità; scoperta.
             A parità di priorità: insegna nella classe o la stessa CDC, meno ore oggi, meno ore totali.
             Le opzioni manuali e gli spostamenti richiedono verifica.
@@ -1286,6 +1291,7 @@ function Supplenze() {
           open={open}
           cands={cands.map(c => ({ ...c, name: entryExitLabel(c.id, open.h) || c.name }))}
           current={assigned[open.k]?.v}
+          currentCategory={assigned[open.k]?.t}
           busy={busy}
           readOnlyReason={!canAssign(open.sede) ? `Assegnazione riservata alla sede ${open.sede || "non indicata"}` : undefined}
           name={name}
@@ -1294,14 +1300,14 @@ function Supplenze() {
             setLoadingCandidates(false);
             setOpen(undefined);
           }}
-          onAssign={async (value, exceptional) => {
+          onAssign={async (value, exceptional, category) => {
             if (!canAssign(open.sede)) return;
             const selectedRow = open;
             invalidate();
             ++candidateRequest.current; setLoadingCandidates(false); setOpen(undefined);
             setBusy(true); setError("");
             try {
-              await api("assignments", { day, key: selectedRow.k, value, exceptional, expected: preconditions(candidateBaseline.current, "assignments", { day, key: selectedRow.k }) });
+              await api("assignments", { day, key: selectedRow.k, value, exceptional, category, expected: preconditions(candidateBaseline.current, "assignments", { day, key: selectedRow.k }) });
               ++candidateRequest.current; setLoadingCandidates(false); setOpen(undefined); await refresh();
             } catch (e) {
               setError(String(e));

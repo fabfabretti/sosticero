@@ -68,3 +68,17 @@ test('empty consultation explains the result; real-row cross-campus read-only an
   }
   assert.equal(assigned, 1);
 });
+
+test('duplicate teacher entries select explicit recovery or paid category and mark only the saved choice', () => {
+  const calls = [];
+  const c = render({ open: { h: 1, sede: 'centrale', c: '1A', ids: ['absent'] },
+    cands: [{ ...candidate, ty: 'RP', convenient: true }, { ...candidate, ty: 'PAID', typeLabel: 'A pagamento', paidCount: 2 }],
+    current: 'pot', currentCategory: 'PAID', busy: false, name: id => id, onClose() {}, onAssign: (...args) => calls.push(args) });
+  const buttons = c.nodes.filter(n => n.type === 'button' && n.props.className?.startsWith('c1'));
+  assert.equal(buttons.length, 2);
+  assert.equal(buttons[0].props.className.includes('sel'), false);
+  assert.equal(buttons[1].props.className.includes('sel'), true);
+  buttons.forEach(b => b.props.onClick());
+  assert.deepEqual(calls, [['pot', false, 'RP'], ['pot', false, 'PAID']]);
+  assert.ok(c.nodes.some(n => n.type === 'h3' && n.props.children === 'Disponibile a pagamento'));
+});
