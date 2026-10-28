@@ -20,8 +20,8 @@ from fastapi import HTTPException
 HASHER = PasswordHasher(time_cost=2, memory_cost=19456, parallelism=1)
 COOKIE = 'sosticero_session'
 CENTRALE_WRITES = {'hour-types', 'receptions', 'receptions/preview', 'timetable', 'timetable/preview', 'import', 'import/preview', 'backups', 'backups/restore', 'inbox/connection', 'inbox/credentials', 'inbox/test'}
-SHARED_WRITES = {'entries', 'assignments', 'permessi', 'manual-permits', 'orari/name', 'orari/preview', 'orari/override'}
-READS = {'hour-types', 'stats', 'stats/availability', 'orari', 'receptions', 'permessi', 'candidates', 'availability', 'export', 'backups', 'inbox', 'inbox/connection', 'inbox/summary'}
+SHARED_WRITES = {'paid-availability', 'entries', 'assignments', 'permessi', 'manual-permits', 'orari/name', 'orari/preview', 'orari/override'}
+READS = {'paid-availability', 'hour-types', 'stats', 'stats/availability', 'orari', 'receptions', 'permessi', 'candidates', 'availability', 'export', 'backups', 'inbox', 'inbox/connection', 'inbox/summary'}
 PUBLICATIONS = {'timetable', 'receptions', 'import', 'backups/restore'}
 
 

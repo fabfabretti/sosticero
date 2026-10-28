@@ -154,7 +154,7 @@ test('availability refreshes by shared campus and future date and discards stale
 test('print includes both grids and separate week with the family ratio; empty totals have no fake percent', async () => {
   const s = screen(); s.render(); s.requests[0].resolve(data); await settle();
   let nodes = s.render('total', true);
-  assert.equal(nodes.filter(n => n.type === s.AvailabilityTable).length, 2);
+  assert.equal(nodes.filter(n => n.type === s.AvailabilityTable).length, 3);
   assert.ok(nodes.some(n => n.props.className === 'availability-ratio'));
   const text = JSON.stringify(nodes);
   assert.match(text, /18/); assert.match(text, /50/); assert.match(text, /36/); assert.match(text, /40/);
@@ -190,4 +190,14 @@ test('shared Orari tooltip supports keyboard focus, Escape and constrained long 
   const css = readFileSync('src/style.css', 'utf8');
   assert.match(css, /\.tip[^}]*overflow-y: auto/s);
   assert.match(css, /hour-help:focus-visible/);
+});
+
+test('paid mode unions overlapping teacher opportunities and shows a third printable table', async () => {
+  const s = screen();
+  const paid = { ...rp, activities:['PAID'], uncertain:true };
+  const mixed = {...data, cells:[{...data.cells[0],paid:[paid,{...paid,id:'d',name:'Delta'}]}]};
+  const nodes = flatten(s.AvailabilityCell({cell:mixed.cells[0], mode:'paid', max:4, activeCell:null,onActivate(){}}));
+  assert.equal(nodes.find(n=>n.type==='td').props.children[0],4);
+  const fresh = screen(); fresh.render(); fresh.requests[0].resolve(mixed); await settle();
+  const view=fresh.render(); assert.ok(view.some(n=>n.type==='button' && n.props.children==='Reperibili + Pagamento'));
 });

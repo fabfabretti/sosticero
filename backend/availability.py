@@ -1,7 +1,7 @@
 """On-paper timetable capacity; daily scheduling state only supplies the RP ledger."""
 from datetime import timedelta
 
-from . import recovery, timetables, receptions
+from . import recovery, timetables, receptions, paid
 from .domain import HOURS, SITES, lesson, rp_context
 from .hour_types import activity_codes, merge_types
 
@@ -35,7 +35,7 @@ def report(history, state, policies, selected, campus='total'):
         active = {i: t for i, t in ds['teachers'].items() if not t.get('retired')}
         debt = {i for i in active if recovery.eligible(permits, i, d)}
         for h in HOURS:
-            ordinary, rp = [], []
+            ordinary, rp, payment = [], [], []
             for i, teacher in active.items():
                 l = lesson(ds, i, d, h)
                 if l:
@@ -60,9 +60,15 @@ def report(history, state, policies, selected, campus='total'):
                              rp_context(ds, neutral, d, dict(h=h, sede=s, k=''), i)[0]]
                     if sites:
                         rp.append(dict(id=i, name=teacher['name'], activities=['RP'], sites=sites))
+            theoretical = dict(neutral, paidAvailability=state.get('paidAvailability', {}))
+            for i, teacher in active.items():
+                info = paid.slot(ds, theoretical, d, h, i)
+                sites = [s for s in info['sites'] if campus == 'total' or s == campus]
+                if not info['why'] and sites:
+                    payment.append(dict(id=i, name=teacher['name'], activities=['PAID'], sites=sites, uncertain=info['uncertain']))
             by_name = lambda t: (t['name'].casefold(), t['id'])
             cells.append(dict(date=d, weekday=weekday,
-                              hour=h, available=sorted(ordinary, key=by_name), recovery=sorted(rp, key=by_name)))
+                              hour=h, available=sorted(ordinary, key=by_name), recovery=sorted(rp, key=by_name), paid=sorted(payment, key=by_name)))
     return dict(campus=campus, start=dates[0], end=dates[-1], dates=dates, versions=versions,
                 cells=cells, pot=dict(enabled=enabled, total=total, percentage=100 * enabled / total if total else None, reference=40),
                 unknown=dict(hours=unknown, pot=unknown_pot))

@@ -136,6 +136,8 @@ function app(localStorage = { getItem: () => null, setItem() {} }, confirm = () 
       if (id === './Display') return { Display: 'public-display' };
       if (id === './Tooltip') return tooltip;
       if (id === './SubstitutionExportPanel') return { SubstitutionExport: 'substitution-export' };
+      if (id === './PaidHours') return { PaidHours: 'paid-hours' };
+      if (id === './PaidActions') return { PaidActions: 'paid-actions' };
       if (id === './RecoveryActions') return { RecoveryActions: 'recovery-actions' };
       if (id === './timetables') return timetables;
       if (id === 'react-router') return router;
@@ -473,15 +475,14 @@ test('unknown route falls back to Supplenze', async () => {
   assert.equal(currentTab(a).props.href, '#/');
 });
 
-test('future tabs show placeholder screens and mark their tab current', () => {
+test('Banca ore renders its feature page and marks its tab current', () => {
   const a = app();
   a.render();
   for (const [route, label] of [
     ['/banca-ore', 'Banca ore'],
   ]) {
     a.go(route);
-    assert.ok(a.render().find(n => n.props?.className === 'stub'), route + ' shows a placeholder');
-    assert.equal(a.render().find(n => n.type === 'h1').props.children, label);
+    assert.ok(a.render().find(n => n.type === 'paid-hours'), route + ' shows the paid-hours page');
     assert.equal(currentTab(a).props.href, '#' + route, route + ' tab is current');
   }
   a.go('/settings');

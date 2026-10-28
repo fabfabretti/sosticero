@@ -31,6 +31,7 @@ export function CandidateDrawer({
   open,
   cands,
   current,
+  currentCategory,
   busy,
   name,
   onClose,
@@ -41,12 +42,13 @@ export function CandidateDrawer({
   open: Row | { h: number; sede: string | null; c?: never; ids?: never };
   cands: Candidate[];
   current?: string;
+  currentCategory?: string;
   busy: boolean;
   readOnlyReason?: string;
   returnFocus?: HTMLElement | null;
   name: (id: string) => string;
   onClose: () => void;
-  onAssign: (id: string, exceptional?: boolean) => void;
+  onAssign: (id: string, exceptional?: boolean, category?: string) => void;
 }) {
   const close = useRef<HTMLButtonElement>(null);
   const consultation = !open.ids;
@@ -105,9 +107,10 @@ export function CandidateDrawer({
           {cands.map((c, index) => {
             const cross = !!(c.loc && open.sede && c.loc !== open.sede);
             return (
-              <div key={consultation ? `${c.campus || 'unknown'}-${c.id}` : c.id}>
+              <div key={`${c.campus || 'unknown'}-${c.id}-${c.ty}`}>
               {consultation && (index === 0 || cands[index - 1]?.campus !== c.campus) && <h3 className="fallback-title">{c.campus || "Sede non indicata"}</h3>}
               {c.ty === "RP" && (cands[index - 1]?.ty !== "RP" || cands[index - 1]?.convenient !== c.convenient) && <h3 className="fallback-title">{c.convenient ? "Recuperi permesso · ore favorevoli" : "Altri recuperi permesso"}</h3>}
+              {c.ty === "PAID" && cands[index - 1]?.ty !== "PAID" && <h3 className="fallback-title">Disponibile a pagamento</h3>}
               {c.exceptional && !cands[index - 1]?.exceptional && <h3 className="fallback-title">Solo in caso di necessità</h3>}
               <button
                 aria-disabled={!!reason || undefined}
@@ -118,9 +121,9 @@ export function CandidateDrawer({
                   "c1" +
                   (c.enable === false ? " off" : "") +
                   (cross ? " cross-site" : "") +
-                  (current === c.id ? " sel" : "")
+                  (current === c.id && (!currentCategory || currentCategory === c.ty) ? " sel" : "")
                 }
-                onClick={() => { if (reason) return; if (!c.exceptional || window.confirm(`Usare comunque ${c.name} alla ${open.h}ª ora? Tipo occupato: ${c.typeLabel || c.ty}.`)) onAssign(c.id, !!c.exceptional); }}
+                onClick={() => { if (reason) return; if (!c.exceptional || window.confirm(`Usare comunque ${c.name} alla ${open.h}ª ora? Tipo occupato: ${c.typeLabel || c.ty}.`)) onAssign(c.id, !!c.exceptional, c.ty); }}
               >
                 <span className="m">
                   <b>{c.name}</b>
@@ -178,7 +181,7 @@ export function CandidateDrawer({
                   )}
                 </span>
                 {!["UNCOVERED", "ENTRA", "ESCE", "DIR"].includes(c.id) && <span className="ct">
-                  <b>{c.total}</b> h assegnate
+                  <b>{c.ty === "PAID" ? c.paidCount : c.total}</b> h {c.ty === "PAID" ? "a pagamento" : "assegnate"}
                   <br />
                   <b>{c.today}</b> h oggi
                 </span>}
