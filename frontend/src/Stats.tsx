@@ -40,7 +40,15 @@ function Values({ headings, rows, caption }: { headings: string[]; rows: (string
 
 export function Stats() {
   const today = todayInRome();
-  const [campus, setCampus] = useState("total");
+  const [campus, setCampus] = useState(() => {
+    try {
+      const saved = localStorage.getItem("stats-campus");
+      return saved === "centrale" || saved === "succursale" ? saved : "total";
+    } catch { return "total"; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("stats-campus", campus); } catch { /* Browser storage may be unavailable. */ }
+  }, [campus]);
   const [period, setPeriod] = useState("all");
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");

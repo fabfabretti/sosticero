@@ -55,22 +55,22 @@ function screen() {
 const settle = () => new Promise(resolve => setImmediate(resolve));
 test('grid cell reuses the heatmap pattern: counts, dedup, tooltip on hover/focus, Escape', () => {
   const s = screen();
-  let nodes = flatten(s.AvailabilityTable({ data, recovery: false }));
+  let nodes = flatten(s.AvailabilityTable({ data, selected: ['available'] }));
   let cell = nodes.find(n => n.type === s.AvailabilityCell);
   assert.equal(cell.props.cell.hour, 2);
-  assert.equal(cell.props.recovery, false);
+  assert.deepEqual(Array.from(cell.props.selected), ['available']);
   assert.equal(cell.props.max, 2);
 
   let pos = null;
   const react = { useState: () => [pos, value => { pos = value; }] };
   const mod = load('src/StatsAvailability.tsx', { react, 'react/jsx-runtime': { jsx, jsxs: jsx },
     './StatsCalendar': { todayInRome: () => '2026-10-20' }, './stats-report': reporting }, { window: { innerWidth: 1280, innerHeight: 800 } });
-  const render = recovery => flatten(mod.AvailabilityCell({ cell: data.cells[0], recovery, activeCell: 'availability-2026-10-12-2', onActivate() {}, max: recovery ? 3 : 2 })).find(n => n.type === 'td');
+  const render = recovery => flatten(mod.AvailabilityCell({ cell: data.cells[0], selected: recovery ? ['available', 'recovery'] : ['available'], activeCell: 'availability-2026-10-12-2', onActivate() {}, max: recovery ? 3 : 2 })).find(n => n.type === 'td');
 
   let td = render(false);
   assert.equal(td.props.children[0], 2);
   assert.equal(td.props.tabIndex, 0);
-  assert.match(td.props['aria-label'], /Lunedì 2026-10-12, 2ª ora: 2 disponibili/);
+  assert.match(td.props['aria-label'], /Lunedì 2026-10-12, 2ª ora: 2 docenti/);
   assert.match(td.props.style.background, /color-mix\(in srgb, var\(--acc\) 24%, var\(--pan\)\)/);
   assert.ok(!td.props.children.some(n => n && n.props && n.props.role === 'tooltip'));
 
@@ -81,7 +81,7 @@ test('grid cell reuses the heatmap pattern: counts, dedup, tooltip on hover/focu
   assert.deepEqual(lines, ['Alfa - POT - C', 'Beta - DIS - C']);
   assert.ok(tip.props.style.left <= 1280 - 328 && tip.props.style.left >= 8, 'tooltip stays in the viewport');
   assert.equal(td.props['aria-describedby'], tip.props.id);
-  assert.ok(!flatten(mod.AvailabilityCell({ cell: data.cells[0], recovery: false, max: 2, activeCell: 'another-cell', onActivate() {} })).some(n => n.props.role === 'tooltip'), 'only the table’s active cell renders its panel');
+  assert.ok(!flatten(mod.AvailabilityCell({ cell: data.cells[0], selected: ['available'], max: 2, activeCell: 'another-cell', onActivate() {} })).some(n => n.props.role === 'tooltip'), 'only the table’s active cell renders its panel');
 
   assert.equal(pos.pinned, false);
   assert.ok(tip.props.className.includes('availability-tooltip'));
@@ -117,14 +117,14 @@ test('grid cell reuses the heatmap pattern: counts, dedup, tooltip on hover/focu
   const recoveryLines = flatten(tip).filter(n => n.type === 'li').map(n => n.props.children);
   assert.equal(recoveryLines.filter(l => String(l).includes('Alfa')).length, 1, 'Alfa appears once even in recovery view');
   assert.match(recoveryLines.at(-1), /^Gamma - RP - C\/S/);
-  assert.deepEqual(flatten(tip).filter(n => n.type === 'h3').map(n => n.props.children), ['Disponibili', 'Reperibili (RP)']);
+  assert.deepEqual(flatten(tip).filter(n => n.type === 'h3').map(n => n.props.children), ['Potenziamenti disponibili', 'Recuperi permesso']);
   const css = readFileSync('src/style.css', 'utf8');
   assert.match(css, /\.availability-tooltip\s*\{[^}]*pointer-events: none/s);
   assert.match(css, /\.availability-tooltip\.is-pinned\s*\{[^}]*pointer-events: auto/s);
 
 
   pos = null;
-  const empty = mod.AvailabilityCell({ cell: { ...data.cells[0], available: [], recovery: [] }, recovery: false, max: 3, activeCell: null, onActivate() {} });
+  const empty = mod.AvailabilityCell({ cell: { ...data.cells[0], available: [], recovery: [] }, selected: ['available'], max: 3, activeCell: null, onActivate() {} });
   const emptyTd = flatten(empty).find(n => n.type === 'td');
   assert.equal(emptyTd.props.children[0], 0);
   assert.equal(emptyTd.props.tabIndex, undefined, 'empty cells are not focusable');
@@ -151,10 +151,10 @@ test('availability refreshes by shared campus and future date and discards stale
   s.render('succursale');
   assert.equal(s.requests.length, count + 1);
 });
-test('print includes both grids and separate week with the family ratio; empty totals have no fake percent', async () => {
+test('print keeps the selected grid and week with the family ratio; empty totals have no fake percent', async () => {
   const s = screen(); s.render(); s.requests[0].resolve(data); await settle();
   let nodes = s.render('total', true);
-  assert.equal(nodes.filter(n => n.type === s.AvailabilityTable).length, 3);
+  assert.equal(nodes.filter(n => n.type === s.AvailabilityTable).length, 1);
   assert.ok(nodes.some(n => n.props.className === 'availability-ratio'));
   const text = JSON.stringify(nodes);
   assert.match(text, /18/); assert.match(text, /50/); assert.match(text, /36/); assert.match(text, /40/);
@@ -192,12 +192,31 @@ test('shared Orari tooltip supports keyboard focus, Escape and constrained long 
   assert.match(css, /hour-help:focus-visible/);
 });
 
-test('paid mode unions overlapping teacher opportunities and shows a third printable table', async () => {
+test('paid category unions overlapping teacher opportunities and has its own toggle', async () => {
   const s = screen();
   const paid = { ...rp, activities:['PAID'], uncertain:true };
   const mixed = {...data, cells:[{...data.cells[0],paid:[paid,{...paid,id:'d',name:'Delta'}]}]};
-  const nodes = flatten(s.AvailabilityCell({cell:mixed.cells[0], mode:'paid', max:4, activeCell:null,onActivate(){}}));
+  const nodes = flatten(s.AvailabilityCell({cell:mixed.cells[0], selected:['available','recovery','paid'], max:4, activeCell:null,onActivate(){}}));
   assert.equal(nodes.find(n=>n.type==='td').props.children[0],4);
   const fresh = screen(); fresh.render(); fresh.requests[0].resolve(mixed); await settle();
-  const view=fresh.render(); assert.ok(view.some(n=>n.type==='button' && n.props.children==='Reperibili + Pagamento'));
+  const view=fresh.render(); assert.ok(view.some(n=>n.type==='button' && n.props.children==='A pagamento'));
+});
+
+test('category toggles independently filter counts, including none and all combinations', async () => {
+  const s = screen(); s.render();
+  const mixed = {...data, cells:[{...data.cells[0], paid:[rp,{...rp,id:'d'}]}]};
+  s.requests[0].resolve(mixed); await settle();
+  for (let mask=0; mask<8; mask++) {
+    const selected=['available','recovery','paid'].filter((_,i)=>mask & (1<<i));
+    const nodes=flatten(s.AvailabilityCell({cell:mixed.cells[0],selected,max:4,activeCell:null,onActivate(){}}));
+    const expected=new Set(selected.flatMap(key=>mixed.cells[0][key]).map(t=>t.id)).size;
+    assert.equal(nodes.find(n=>n.type==='td').props.children[0],expected);
+  }
+  let view=s.render();
+  for (const label of ['Recuperi permesso','A pagamento','Potenziamenti disponibili']) {
+    view.find(n=>n.type==='button' && n.props.children===label).props.onClick();
+    view=s.render();
+  }
+  assert.deepEqual(Array.from(view.find(n=>n.type===s.AvailabilityTable).props.selected),['recovery','paid']);
+  assert.equal(s.render('total',true).filter(n=>n.type===s.AvailabilityTable).length,1);
 });
