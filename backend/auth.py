@@ -245,7 +245,8 @@ def install(app, identities):
             request.state.secure_cookie = secure
             gate = await run_in_threadpool(identities.acquire, shared=request.method in ('GET', 'HEAD'))
             route = request.url.path.removeprefix('/api/')
-            if route not in ('auth/login','auth/session'):
+            public_display = route == 'display' and request.method == 'GET'
+            if route not in ('auth/login','auth/session') and not public_display:
                 user = identities.session(request.cookies.get(COOKIE))
                 request.state.account = user
                 if request.method not in ('GET','HEAD'):

@@ -1,0 +1,47 @@
+/* The monitor is a standalone viewport; operational planner styles stay scoped out. */
+body:has(.display-board) { overflow: hidden; }
+.display-board {
+  position: fixed; inset: 0; max-width: none; width: 100%; height: 100dvh;
+  padding: 24px 32px 18px; display: flex; flex-direction: column; gap: 16px;
+  background: var(--bg); color: var(--ink); font-size: 20px; line-height: 1.3;
+}
+.display-header { display: flex; justify-content: space-between; align-items: end; gap: 24px; padding-right: 35px; }
+.display-header p { margin: 0; }
+.display-eyebrow { color: var(--mute); font-size: 16px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; }
+.display-header h1 { margin: 3px 0 0; font-size: 38px; line-height: 1.1; }
+.display-context { text-align: right; font-size: 24px; }
+.display-context .display-updated { font-size: 16px; color: var(--mute); margin-top: 6px; }
+.display-area { flex: 1; min-height: 0; position: relative; }
+.display-tables { display: grid; align-items: start; gap: 24px; }
+.display-board .display-table { table-layout: fixed; border: 1px solid var(--line); width: 100%; border-collapse: collapse; }
+.display-name-column { width: 27%; }
+.display-board .display-table :is(th, td) { padding: 5px 8px; border: 1px solid var(--line); overflow-wrap: anywhere; vertical-align: middle; }
+.display-board .display-table thead th { display: table-cell; background: var(--acc); color: var(--on); font-size: 20px; font-weight: 650; text-align: center; height: 44px; }
+.display-table thead th:first-child { text-align: left; }
+.display-table thead span { font-size: 14px; font-weight: 500; }
+.display-board .display-table tbody th { font-size: 20px; font-weight: 650; line-height: 1.2; }
+.display-table td { height: 48px; text-align: center; }
+.display-table tr:nth-child(even) { background: color-mix(in srgb, var(--bg) 60%, var(--pan)); }
+.display-board .display-table .display-assigned { background: var(--soft); }
+.display-lesson { display: grid; gap: 1px; line-height: 1.15; }
+.display-lesson + .display-lesson { margin-top: 5px; padding-top: 5px; border-top: 1px solid var(--line); }
+.display-lesson strong { font-size: 22px; }
+.display-lesson span { font-size: 16px; }
+.display-replaced { font-size: 14px; line-height: 1.25; margin-top: 3px; }
+.display-changes { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 24px; border-top: 1px solid var(--line); padding-top: 12px; font-size: 18px; }
+.display-changes > strong { color: var(--acc); }
+.display-measure { position: absolute; top: 0; left: 0; width: 100%; visibility: hidden; pointer-events: none; contain: layout; }
+.display-measure-double { width: calc((100% - 24px) / 2); }
+.display-message { margin: auto; padding: 24px; text-align: center; font-size: 26px; }
+.display-message a { display: inline-block; margin: 16px; color: var(--acc); }
+.display-warning { padding: 10px 16px; border: 2px solid currentColor; color: var(--ink); background: var(--pan); font-weight: 650; font-size: 18px; }
+.display-footer { text-align: right; color: var(--mute); font-size: 16px; }
+.display-controls { position: fixed; right: 32px; bottom: 48px; display: flex; gap: 8px; opacity: 0; pointer-events: none; }
+.display-controls button { min-height: 44px; padding: 10px 16px; background: var(--acc); color: var(--on); border-radius: 4px; }
+.display-controls.is-visible, .display-controls:focus-within { opacity: 1; pointer-events: auto; }
+@media (max-width: 900px) {
+  .display-board { padding: 16px; gap: 12px; }
+  .display-header h1 { font-size: 30px; }
+  .display-context { font-size: 18px; }
+  .display-table thead span { display: none; }
+}

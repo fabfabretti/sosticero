@@ -4,6 +4,15 @@ export const teacherSearchText = (t: { name: string; importedName?: string; code
 export const DAYS = ["lun", "mar", "mer", "gio", "ven"];
 export const HOURS = [1, 2, 3, 4, 5, 6, 7];
 
+export const entryExitLabel = (id: string, hour: number) => {
+  const time = (id === 'ENTRA'
+    ? ['', '08:35', '09:40', '10:35', '11:40', '12:35', '12:35', '13:25']
+    : id === 'ESCE'
+      ? ['', '', '08:35', '09:30', '10:35', '11:30', '12:35', '13:25']
+      : [])[hour];
+  return time ? `${id === 'ENTRA' ? 'Entra dopo' : 'Esce prima'} alle ${time}` : undefined;
+};
+
 export const norm = (s: string) =>
   s
     .toLowerCase()

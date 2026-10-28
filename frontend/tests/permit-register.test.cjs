@@ -24,7 +24,7 @@ test('permit sites use the entire effective week and exact teacher identity', ()
 });
 
 test('campus tags expose full names with compact visible labels', () => {
-  const helper = source.slice(source.indexOf('const campusTag ='), source.indexOf('const entryExitLabel ='));
+  const helper = source.slice(source.indexOf('const campusTag ='), source.indexOf('const entryExitBoundary ='));
   const jsx = (type, props) => ({ type, props });
   const render = runInNewContext(ts.transpileModule(helper + '\ncampusTag;', {
     compilerOptions: { target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React },

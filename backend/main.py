@@ -6,11 +6,12 @@ from typing import Literal
 from uuid import uuid4
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from fastapi.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel, StrictInt, StrictBool, StrictStr
 from .domain import normalize_dataset, rows, candidates, consultation, validate_assignment, default_availability, auto_availability, HOURS, SITES, lesson, validate_permit, CDC_NAMES
 from .storage import Store, EMPTY
-from . import backup, attachments, concurrency, auth
+from . import backup, attachments, concurrency, auth, display
 from .hour_types import merge_types, validate_types
 from . import statistics, recovery, timetables, overrides, teacher_names, availability, receptions
 from zoneinfo import ZoneInfo
@@ -287,6 +288,19 @@ def create_app(path=None, seed=None):
         return dict(concurrency=concurrency.snapshot(state, ds, d), dataset=display, state=state, rows=rs, issues=problems, references=timetables.reference_issues(history, state, d),
                     recoveryRequests=recovery.request_details(state, d),
                     timetable=dict(id=selected['id'], effective=selected['effective']), autoDis={d: auto_availability(ds, state, d)})
+
+    @app.get('/api/display')
+    def get_display(campus: Literal['centrale', 'succursale']):
+        today = datetime.now(ZoneInfo('Europe/Rome'))
+        day = today.date().isoformat()
+        with store.connect() as db:
+            db.execute('BEGIN')
+            try:
+                ds, state = load(db, day)
+            except ValueError:
+                raise HTTPException(503, 'Orario non disponibile.')
+            result = display.project(presented(db, ds), state, day, campus)
+        return dict(day=day, campus=campus, updated=today.isoformat(), **result)
 
     @app.get('/api/orari')
     def get_orari(day: date | None = None):
@@ -929,5 +943,9 @@ def create_app(path=None, seed=None):
 
     static = Path(os.environ.get('STATIC_PATH', 'frontend/dist'))
     if static.exists():
+        @app.get('/display', include_in_schema=False)
+        def display_page():
+            return FileResponse(static / 'index.html', headers={'Cache-Control': 'no-store'})
+
         app.mount('/', StaticFiles(directory=static, html=True), name='frontend')
     return app

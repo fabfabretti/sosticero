@@ -61,3 +61,7 @@ Previous isolated container tests confirmed the red TESTING ribbon, import/save/
 ## Latest read-only HTTPS verification — 2026-10-26
 
 The production environment endpoint returned testing=false. The served frontend referenced index-DZuqAXPy.js and index-BQX7lBFr.css; both assets were available over HTTPS. The deployed source marker and a fresh local source snapshot both equal `1f6a766abc5edcf14e2c9e7dacbf2f45326b0ed0722b314d517156ac517e93e6`. This verifies application build-input identity (Dockerfile, .dockerignore, backend and frontend), not deployment-script/configuration identity or database contents. No SSH connection, login, application write or redeployment was performed for this check. Live container state, resource usage and logs were not rechecked.
+
+## Display refinement release — 2026-10-28
+
+Deployed with `./scripts/deploy.sh` as `incoming-20261028T180524-69434`, source snapshot `d2e9914712f3f6eab18d905cb2659fde73c4dd2874f4587782bccd433bf2aa6e`. The script verified the recovery snapshot at `snapshots/incoming-20261028T180524-69434`, replacement image, production environment, source marker and served frontend. Independent read-only HTTPS checks confirmed both `/display?campus=centrale` and `/display?campus=succursale` and the minimal public response with replaced-teacher names and class entry/exit notes. No production behavioral writes or data transfers were performed.
