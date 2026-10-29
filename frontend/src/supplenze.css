@@ -61,6 +61,14 @@
   }
 }
 
+.supplenze .sidebar-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+  min-height: 0;
+}
+
 .supplenze .lists {
   flex: 1;
   min-height: 0;

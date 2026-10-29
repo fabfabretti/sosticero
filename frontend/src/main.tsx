@@ -1003,6 +1003,7 @@ function Supplenze() {
               })}
             </div>
           </div>
+          <div className="sidebar-content">
           <button ref={entryTrigger} className="ui-button entry-trigger" onClick={() => { ++candidateRequest.current; setLoadingCandidates(false); setOpen(undefined); clearEntry(); setEntryOpen(true); }}>+ Aggiungi</button>
           <div className="lists">
             {([["planned", "Assenze programmate"], ["trip", "In gita"], ["strike", "In sciopero"], [null, "Assenze non classificate"], ["last_minute", "Assenze last minute"]] as const).map(([value, label]) => {
@@ -1012,6 +1013,7 @@ function Supplenze() {
             {Object.keys(entries("cf")).length > 0 && <section><h2>Classi assenti</h2>{renderEntries("cf")}</section>}
             <h2>A disposizione</h2>
             {renderDis()}
+          </div>
           </div>
         </aside>
         <main>
