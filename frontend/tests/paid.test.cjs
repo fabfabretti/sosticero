@@ -37,46 +37,50 @@ test('paid request and Avvisato are independent, permission guarded and give cli
 
 test('Banca ore edits recurring slots and keeps notification controls out of its register', async () => {
   let cursor = 0; const slots = [], calls = [];
-  const report = { dates: ['2026-10-26','2026-10-27','2026-10-28','2026-10-29','2026-10-30'], teachers: { rp: { id:'rp', name:'Rossi', code:'DOC01', importedName:'Ròssi Mario' }, retired: {id:'retired',name:'Rossi retired',retired:true}, ...Object.fromEntries(Array.from({length:8},(_,i)=>['t'+i,{id:'t'+i,name:'Rossi '+i}])) }, declarations: {0:{rp:[1]}}, cells: [{ weekday:0,hour:1,teachers:[{id:'rp',name:'Rossi',sites:['centrale'],uncertain:false,why:''}]}], totals:{rp:1}, records:[{date:'2026-10-28',key:'a|1|1A',teacher:'rp',name:'Rossi',hour:1,c:'1A',assignedBy:'centrale',notified:true,paidContext:{site:'centrale',room:'12'}}], concurrency:{records:{'paidAvailability|0|rp':'token'},dates:{}} };
+  const report = { dates: ['2026-10-26','2026-10-27','2026-10-28','2026-10-29','2026-10-30'], teachers: { rp: { id:'rp', name:'Rossi', code:'DOC01', importedName:'Ròssi Mario' }, retired: {id:'retired',name:'Rossi retired',retired:true}, ...Object.fromEntries(Array.from({length:8},(_,i)=>['t'+i,{id:'t'+i,name:'Rossi '+i}])) }, declarations: {0:{rp:[1]}}, cells: [{ weekday:0,hour:1,teachers:[{id:'rp',name:'Rossi',sites:['centrale'],uncertain:false,why:'',addedBy:'centrale'}]}], totals:{rp:1}, records:[{date:'2026-10-28',key:'a|1|1A',teacher:'rp',name:'Rossi',hour:1,c:'1A',assignedBy:'centrale',notified:true,paidContext:{site:'centrale',room:'12'}}], concurrency:{records:{'paidAvailability|0|rp':'token'},dates:{}} };
   const mod = load('src/PaidHours.tsx', {
-    react: { useState(initial) { const i=cursor++; if (!(i in slots)) slots[i]=initial; return [slots[i],value=>{ slots[i]=value; }]; }, useEffect() {} },
+    react: { useState(initial) { const i=cursor++; if (!(i in slots)) slots[i]=initial; return [slots[i],value=>{ slots[i]=value; }]; }, useEffect() {}, useRef() { return {current:null}; } },
     'react/jsx-runtime':{jsx,jsxs:jsx}, './StatsCalendar':{todayInRome:()=> '2026-10-28'},
     './timetables':load('src/timetables.ts', {}),
-    './useQuietRefresh':{useQuietRefresh(load,apply) { if (!slots[1]) slots[1]=report; return {refresh:async()=>{apply(report); return report;}}; }},
+    './useQuietRefresh':{useQuietRefresh(load,apply) { if (!slots[1]) slots[1]=report; return {ready:true, loading:false, loadError:"", refresh:async()=>{apply(report); return report;}}; }},
   });
-  function render(){cursor=0; return flatten(mod.PaidHours({api:async(...args)=>{calls.push(args);return report;}}));}
+  function render(){cursor=0; return flatten(mod.PaidHours({api:async(...args)=>{calls.push(args); if(args[1]) report.declarations[args[1].weekday][args[1].id]=Array.from(args[1].hours); return report;}}));}
   let nodes=render(); nodes=render();
   assert.ok(nodes.some(n=>n.type==='strong' && n.props.children==='Rossi'));
   assert.ok(!nodes.some(n=>n.type==='button' && /Avvisato|Copia/.test(String(n.props.children))));
   nodes.find(n=>n.type==='button' && n.props.children==='Modifica disponibilità').props.onClick(); nodes=render();
+  assert.equal(nodes.filter(n=>n.props.className==='paid-edit').length,35);
+  nodes.find(n=>n.props['aria-label']==='Modifica docenti · Lunedì, 2ª ora').props.onClick(); nodes=render();
+  assert.ok(nodes.some(n=>n.type==='dialog'));
+  assert.ok(nodes.some(n=>n.props.children==='Fatto'));
+  assert.ok(!nodes.some(n=>n.props.children==='Ricarica valori salvati'));
   const search = () => nodes.find(n=>n.type==='input' && n.props['aria-label']==='Cerca docente');
-  assert.equal(nodes.filter(n=>n.type==='select').length,1,'only the weekday uses a native select');
+  assert.equal(nodes.filter(n=>n.type==='select' || n.type==='fieldset').length,0,'slot editor has no day or hour selectors');
   search().props.onChange({target:{value:'ross'}}); nodes=render();
-  assert.equal(nodes.find(n=>n.props.className==='sug').props.children.length,6,'same six-result limit as Permessi');
+  assert.equal(nodes.find(n=>n.props.className==='sug').props.children.length,6);
   assert.ok(!JSON.stringify(nodes.find(n=>n.props.className==='sug')).includes('Rossi retired'));
   search().props.onChange({target:{value:'DOC01'}}); nodes=render();
-  search().props.onKeyDown({key:'Enter',preventDefault(){}}); nodes=render();
-  assert.equal(search().props.value,'Rossi');
-  assert.ok(!nodes.some(n=>n.props.className==='sug'),'selecting a teacher closes suggestions');
-  const hourButtons=()=>nodes.filter(n=>n.type==='button' && n.props['aria-label']?.startsWith('Disponibilità a pagamento '));
-  assert.equal(hourButtons().length,7);
-  assert.ok(nodes.some(n=>n.props.className==='hrs permit-hours'),'reuse the shared hour toggle styles');
-  assert.equal(hourButtons()[0].props['aria-pressed'],true);
-  assert.equal(hourButtons()[0].props.className,'on');
-  hourButtons()[1].props.onClick(); nodes=render();
-  assert.equal(hourButtons()[1].props['aria-pressed'],true);
-  hourButtons()[0].props.onClick(); nodes=render();
-  assert.equal(hourButtons()[0].props['aria-pressed'],false);
-  hourButtons()[0].props.onClick(); nodes=render();
-  nodes.find(n=>n.type==='button' && n.props.children==='Salva').props.onClick(); await new Promise(resolve=>setImmediate(resolve));
+  search().props.onKeyDown({key:'Enter',preventDefault(){}}); await new Promise(resolve=>setImmediate(resolve)); nodes=render();
   assert.equal(calls[0][0],'paid-availability'); assert.deepEqual(Array.from(calls[0][1].hours),[1,2]);
+  assert.equal(calls[0][1].weekday,0);
   assert.equal(calls[0][1].expected['paidAvailability|0|rp'],'token');
-  nodes=render(); search().props.onKeyDown({key:'Escape'}); nodes=render();
+  assert.ok(nodes.some(n=>n.type==='dialog'),'keep the slot open for more edits');
   assert.equal(search().props.value,'');
-  assert.equal(nodes.find(n=>n.type==='button' && n.props.children==='Salva').props.disabled,true);
   search().props.onChange({target:{value:'rossi mario'}}); nodes=render();
-  nodes.find(n=>n.props.className==='sug').props.children[0].props.onClick(); nodes=render();
-  assert.equal(search().props.value,'Rossi','search matches imported teacher names');
+  assert.ok(!nodes.some(n=>n.props.className==='sug'),'already present teachers cannot be added twice');
+  nodes.find(n=>n.props['aria-label']==='Rimuovi Rossi da questa ora').props.onClick(); await new Promise(resolve=>setImmediate(resolve)); nodes=render();
+  assert.deepEqual(Array.from(calls[1][1].hours),[1],'removing changes only the clicked hour');
+  assert.ok(!nodes.some(n=>n.props['aria-label']==='Rimuovi Rossi da questa ora'));
+  search().props.onChange({target:{value:'rossi mario'}}); nodes=render();
+  nodes.find(n=>n.props.className==='sug').props.children[0].props.onClick(); await new Promise(resolve=>setImmediate(resolve)); nodes=render();
+  assert.deepEqual(Array.from(calls[2][1].hours),[1,2]);
+  nodes.find(n=>n.props.children==='Fatto').props.onClick(); nodes=render();
+  assert.ok(!nodes.some(n=>n.type==='dialog'));
+  nodes.find(n=>n.props.className==='paid-name').props.onClick(); nodes=render();
+  assert.ok(nodes.some(n=>n.props['aria-label']==='Rimuovi Rossi da questa ora'),'existing names open management of their own slot');
+  nodes.find(n=>n.props['aria-label']==='Rimuovi Rossi da questa ora').props.onClick(); await new Promise(resolve=>setImmediate(resolve));
+  assert.deepEqual(Array.from(calls[3][1].hours),[2],'editing an existing name affects only its cell');
+
 });
 
 test('paid grid preserves the last weekday header and scopes overflow to the table', () => {

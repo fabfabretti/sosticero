@@ -146,6 +146,9 @@ def create_app(path=None, seed=None):
     def initialize_statistics():
         with store.connect() as db:
             db.execute('BEGIN IMMEDIATE')
+            state = store.read(db, 'state', EMPTY)
+            if paid.migrate(state.get('paidAvailability', {})):
+                store.write(db, 'state', state)
             ds = store.read(db, 'dataset')
             if ds and read_history(db) is None:
                 store.write(db, 'timetables', timetables.baseline(ds))
@@ -284,7 +287,7 @@ def create_app(path=None, seed=None):
             return dict(result, concurrency=concurrency.snapshot(state))
 
     @app.post('/api/paid-availability')
-    def edit_paid(e: PaidAvailability):
+    def edit_paid(e: PaidAvailability, request: Request):
         with store.connect() as db:
             db.execute('BEGIN IMMEDIATE')
             ds, state = load(db)
@@ -292,11 +295,7 @@ def create_app(path=None, seed=None):
                 raise ValueError('Docente o giorno non valido.')
             weekday = str(e.weekday)
             concurrency.check(e.expected, concurrency.snapshot(state), [concurrency.key('paidAvailability', weekday, e.id)])
-            declarations = state['paidAvailability'].setdefault(weekday, {})
-            if e.hours:
-                declarations[e.id] = sorted(e.hours)
-            else:
-                declarations.pop(e.id, None)
+            paid.edit(state, weekday, e.id, e.hours, request.state.account)
             paid.validate(state['paidAvailability'], ds['teachers'])
             save_state(db, ds, state, [], revalidate=False)
             return {'ok': True}
@@ -897,27 +896,27 @@ def create_app(path=None, seed=None):
             history = read_history(db)
             images = attachments.export(db, state)
             labels = name_overrides(db)
-        return dict(schema=7, receptions=history['_receptions'], teacherNameOverrides=labels, timetables={k: v for k, v in history.items() if not k.startswith('_')}, timetableOverrides=history['_overrides'], attachments=images, datasetId='v1:'+','.join(sorted(ds['teachers'])), hourTypes=rules, statistics=facts, **state)
+        return dict(schema=8, receptions=history['_receptions'], teacherNameOverrides=labels, timetables={k: v for k, v in history.items() if not k.startswith('_')}, timetableOverrides=history['_overrides'], attachments=images, datasetId='v1:'+','.join(sorted(ds['teachers'])), hourTypes=rules, statistics=facts, **state)
 
     @app.post('/api/import')
     def import_state(data: dict, preview: bool = False):
         with store.connect() as db:
             db.execute('BEGIN IMMEDIATE')
-            history = timetables.validate(data.get('timetables')) if data.get('schema') in (4, 5, 6, 7) else read_history(db)
+            history = timetables.validate(data.get('timetables')) if data.get('schema') in (4, 5, 6, 7, 8) else read_history(db)
             retained = store.read(db, 'timetableOverrides', overrides.empty())
-            document = overrides.validate(data.get('timetableOverrides'), history) if data.get('schema') in (5, 6, 7) else retained
+            document = overrides.validate(data.get('timetableOverrides'), history) if data.get('schema') in (5, 6, 7, 8) else retained
             document, restore_review = overrides.reconcile(document, history)
             history['_overrides'] = document
-            reception_document = receptions.validate(data.get('receptions', receptions.empty()) if data.get('schema') == 7 else receptions.empty(), teacher_names.catalog(history))
+            reception_document = receptions.validate(data.get('receptions', receptions.empty()) if data.get('schema') in (7, 8) else receptions.empty(), teacher_names.catalog(history))
             history['_receptions'] = reception_document
-            labels = teacher_names.validate(data.get('teacherNameOverrides') if data.get('schema') in (6, 7) else name_overrides(db), teacher_names.catalog(history))
-            if data.get('schema') not in (4, 5, 6, 7):
+            labels = teacher_names.validate(data.get('teacherNameOverrides') if data.get('schema') in (6, 7, 8) else name_overrides(db), teacher_names.catalog(history))
+            if data.get('schema') not in (4, 5, 6, 7, 8):
                 ds, _ = load(db)
-            if data.get('schema') in (4, 5, 6, 7):
+            if data.get('schema') in (4, 5, 6, 7, 8):
                 ds = timetables.dataset(history, datetime.now(ZoneInfo('Europe/Rome')).date().isoformat())
             identifier = data.get('datasetId')
-            compatible = identifier == 'v1:'+','.join(sorted(ds['teachers'])) if data.get('schema') in (4, 5, 6, 7) else isinstance(identifier, str) and identifier.startswith('v1:') and set(identifier[3:].split(',')) <= set(ds['teachers'])
-            if type(data.get('schema')) is not int or data['schema'] not in (1, 2, 3, 4, 5, 6, 7) or not compatible:
+            compatible = identifier == 'v1:'+','.join(sorted(ds['teachers'])) if data.get('schema') in (4, 5, 6, 7, 8) else isinstance(identifier, str) and identifier.startswith('v1:') and set(identifier[3:].split(',')) <= set(ds['teachers'])
+            if type(data.get('schema')) is not int or data['schema'] not in (1, 2, 3, 4, 5, 6, 7, 8) or not compatible:
                 raise ValueError('Archivio non compatibile.')
             rules = validate_types(data['hourTypes']) if 'hourTypes' in data else None
             state = {k: data.get(k, {}) for k in EMPTY}
@@ -925,6 +924,8 @@ def create_app(path=None, seed=None):
                 if not isinstance(dates, dict):
                     raise ValueError('Archivio non valido.')
                 if group == 'paidAvailability':
+                    if data['schema'] < 8:
+                        paid.migrate(dates)
                     paid.validate(dates, ds['teachers'])
                     continue
                 if group == 'manualPermitNotes':
@@ -985,7 +986,7 @@ def create_app(path=None, seed=None):
                 return dict(overrides=restore_review)
             identities.generation(advance=True)
             attachments.import_images(db, state, data, data['schema'])
-            if data['schema'] in (4, 5, 6, 7):
+            if data['schema'] in (4, 5, 6, 7, 8):
                 write_history(db, history)
                 store.write(db, 'dataset', history['versions'][0]['dataset'])
             if rules is not None:
