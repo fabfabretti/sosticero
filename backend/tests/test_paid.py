@@ -61,6 +61,56 @@ class PaidTest(RecoveryTest):
             self.assertEqual(self.client.post('/api/import', json=broken).status_code, 422)
         self.assertEqual(self.client.get('/api/paid-availability').json()['totals'], {'rp': 1})
 
+    def test_legacy_creator_migration_is_idempotent(self):
+        declarations = {'0': {'rp': [1, 4]}}
+        self.assertTrue(paid.migrate(declarations))
+        self.assertEqual(declarations['0']['rp']['1'], {'createdBy':None, 'createdFrom':'centrale'})
+        self.assertFalse(paid.migrate(declarations))
+
+    def test_startup_migration_preserves_operational_state(self):
+        from backend.storage import Store
+        from backend.main import create_app
+        store = Store(self.path)
+        with store.connect() as db:
+            state = store.read(db, 'state')
+            state['paidAvailability'] = {'0': {'rp': [1, 4]}}
+            store.write(db, 'state', state)
+        create_app(self.path)
+        with store.connect() as db:
+            migrated = store.read(db, 'state')
+        self.assertEqual({k:v for k,v in migrated.items() if k != 'paidAvailability'}, {k:v for k,v in state.items() if k != 'paidAvailability'})
+        self.assertEqual(migrated['paidAvailability']['0']['rp'], {'1':{'createdBy':None,'createdFrom':'centrale'}, '4':{'createdBy':None,'createdFrom':'centrale'}})
+        create_app(self.path)
+        with store.connect() as db:
+            self.assertEqual(store.read(db, 'state'), migrated)
+
+    def test_availability_authorship_per_slot_and_roundtrip(self):
+        self.declare(hours=[1]).raise_for_status()
+        other = AuthenticatedClient(self.client.app, campus='succursale')
+        report = self.client.get('/api/paid-availability', params={'day': DAY}).json()
+        ref = 'paidAvailability|0|rp'
+        other.post('/api/paid-availability', json=dict(weekday=0, id='rp', hours=[1, 4], createdFrom='centrale', expected={ref:report['concurrency']['records'][ref]})).raise_for_status()
+        archive = self.client.get('/api/export').json()
+        records = archive['paidAvailability']['0']['rp']
+        self.assertEqual(records['1']['createdFrom'], 'centrale')
+        self.assertEqual(records['4']['createdFrom'], 'succursale')
+        self.assertNotEqual(records['1']['createdBy'], records['4']['createdBy'])
+        self.client.post('/api/import', json=archive).raise_for_status()
+        report = self.client.get('/api/paid-availability', params={'day': DAY}).json()
+        self.assertEqual(next(c for c in report['cells'] if c['weekday']==0 and c['hour']==4)['teachers'][0]['addedBy'], 'succursale')
+        self.declare(hours=[4]).raise_for_status()
+        self.assertEqual(self.client.get('/api/export').json()['paidAvailability']['0']['rp'], {'4':records['4']})
+        refreshed = self.client.get('/api/paid-availability', params={'day': DAY}).json()
+        other.post('/api/paid-availability', json=dict(weekday=0, id='rp', hours=[1,4], expected={ref:refreshed['concurrency']['records'][ref]})).raise_for_status()
+        current = self.client.get('/api/export').json()['paidAvailability']['0']['rp']
+        self.assertEqual(current['1'], records['4'])
+        self.assertEqual(current['4'], records['4'])
+        broken = copy.deepcopy(archive); broken['paidAvailability']['0']['rp']['1']['createdFrom'] = 'fake'
+        self.assertEqual(self.client.post('/api/import', json=broken).status_code, 422)
+        legacy = copy.deepcopy(archive); legacy['schema']=7; legacy['paidAvailability']={'0':{'rp':[1,4]}}
+        self.client.post('/api/import', json=legacy).raise_for_status()
+        self.assertEqual(self.client.get('/api/export').json()['paidAvailability']['0']['rp'], {'1':{'createdBy':None,'createdFrom':'centrale'}, '4':{'createdBy':None,'createdFrom':'centrale'}})
+
     def test_paid_cannot_bypass_absence_or_occupied_hour(self):
         self.declare(hours=[1, 2]).raise_for_status()
         self.assertEqual(self.choice('PAID', h=2).status_code, 422)
@@ -73,6 +123,7 @@ class PaidTest(RecoveryTest):
     def test_free_day_unknown_campus_and_travel(self):
         ds = normalize_dataset(fixture()); state = copy.deepcopy(EMPTY)
         state['paidAvailability'] = {'0': {'rp': [1, 4, 7]}, '1': {'rp': [1]}}
+        paid.migrate(state['paidAvailability'])
         self.assertEqual(paid.slot(ds, state, '2026-10-13', 1, 'rp')['sites'], ['centrale', 'succursale'])
         self.assertEqual(paid.slot(ds, state, DAY, 4, 'rp')['sites'], ['centrale'])
         for l in ds['lessons'].values():
@@ -123,6 +174,7 @@ class PaidTest(RecoveryTest):
     def test_paid_report_receptions_and_retired_history(self):
         ds = normalize_dataset(fixture()); history = timetables.baseline(ds)
         state = copy.deepcopy(EMPTY); state['paidAvailability'] = {'0': {'rp': [1, 4]}}
+        paid.migrate(state['paidAvailability'])
         ds['receptions'] = [dict(teacher='rp', day='lun', hour=4, site='centrale')]
         self.assertEqual(paid.slot(ds, state, DAY, 4, 'rp')['why'], 'Impegnato nell’orario')
         ds['teachers']['rp']['retired'] = True
