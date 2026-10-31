@@ -24,7 +24,7 @@ function harness() {
     useRef(value) { const i = index++; return slots[i] ||= { current: value }; },
     useState(initial) {
       const i = index++; slots[i] ??= initial;
-      return [slots[i], update => { slots[i] = update(slots[i]); renderRequested = true; }];
+      return [slots[i], update => { slots[i] = typeof update === "function" ? update(slots[i]) : update; renderRequested = true; }];
     },
     useEffect(fn, deps) {
       const i = index++, previous = slots[i];
@@ -84,4 +84,29 @@ test('non-overlapping polls and visibility return share the same guarded loader'
   h.requests.shift().resolve('one'); await pending;
   const returned = h.listeners.get('visibilitychange')(); h.requests.shift().resolve('two'); await returned;
   assert.deepEqual(h.applied, ['one', 'two']); h.unmount();
+});
+
+test('foreground loading blocks immediately on scope change and only the newest completion unlocks', async () => {
+  const h = harness(); let c = h.render();
+  assert.equal(c.ready, false); assert.equal(c.loading, true);
+  const a = c.refresh(); h.requests.shift().resolve('A'); await a;
+  c = h.render(); assert.equal(c.ready, true); assert.equal(c.loading, false);
+  h.scope('B'); c = h.render(); assert.equal(c.ready, false);
+  const b = c.refresh(), requestB = h.requests.shift();
+  h.scope('C'); c = h.render(); const newer = c.refresh(), requestC = h.requests.shift();
+  requestC.resolve('C'); await newer;
+  requestB.reject(Error('old failure')); await b;
+  c = h.render(); assert.equal(c.ready, true); assert.equal(c.loadError, '');
+  assert.deepEqual(h.applied, ['A', 'C']); h.unmount();
+});
+
+test('foreground failure stops loading but keeps stale data blocked until explicit retry', async () => {
+  const h = harness(); let c = h.render();
+  const first = c.refresh(); h.requests.shift().resolve('saved'); await first;
+  h.scope('another'); c = h.render(); const failed = c.refresh();
+  h.requests.shift().reject(Error('offline')); await assert.rejects(failed, /offline/);
+  c = h.render(); assert.equal(c.ready, false); assert.equal(c.loading, false); assert.match(c.loadError, /offline/);
+  assert.deepEqual(h.applied, ['saved']);
+  const retry = c.refresh(); h.requests.shift().resolve('current'); await retry;
+  c = h.render(); assert.equal(c.ready, true); assert.equal(c.loadError, ''); h.unmount();
 });

@@ -1,3 +1,4 @@
+const requireLoading = require('./loading-harness.cjs').loading;
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
@@ -8,7 +9,7 @@ function load(file, require, confirm = () => true) {
   const exports = {};
   runInNewContext(ts.transpileModule(readFileSync(file, 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
-  }).outputText, { exports, require: id => id === './useQuietRefresh' ? {useQuietRefresh:(load,apply)=>({refresh:async()=>{const v=await load();apply(v);return v;},invalidate(){}})} : require(id), URLSearchParams, setTimeout, clearTimeout, requestAnimationFrame: fn => { fn(); return 1; }, cancelAnimationFrame() {}, window: { confirm, scrollBy: options => scrollsForTest.push(options) }, document: { elementFromPoint: () => null } });
+  }).outputText, { exports, require: id => id === './Loading' ? requireLoading : id === './useQuietRefresh' ? {useQuietRefresh:(load,apply)=>({ready:true,loading:false,loadError:"",refresh:async()=>{const v=await load();apply(v);return v;},invalidate(){}})} : require(id), URLSearchParams, setTimeout, clearTimeout, requestAnimationFrame: fn => { fn(); return 1; }, cancelAnimationFrame() {}, window: { confirm, scrollBy: options => scrollsForTest.push(options) }, document: { elementFromPoint: () => null } });
   return exports;
 }
 const exportsForTest = [], downloadsForTest = [];
@@ -63,7 +64,7 @@ const types = { types: { 'code:POT': { label: 'POT', color: 'amber', available: 
 function screen(handler, confirm) {
   const c = component('src/TeacherTimetables.tsx', confirm);
   const calls = [];
-  const api = async (url, body) => { calls.push(url); return handler ? handler(url, body) : url.startsWith('orari?') ? orari : types; };
+  const api = async (url, body) => { calls.push(url); const result = await (handler ? handler(url, body) : url.startsWith('orari?') ? orari : types); return url.startsWith('orari?') ? {...result, day:new URLSearchParams(url.split('?')[1]).get('day')} : result; };
   const props = { api };
   return { c, calls, props, nodes: () => c.render(props) };
 }
@@ -500,7 +501,7 @@ test('teachers with only receptions still get a timetable and R markers', async 
   const s = await loaded(async () => current);
   s.nodes().find(n => n.props?.['aria-label'] === 'Cerca docente').props.onChange({ target: { value: 'Anna' } });
   const button = () => s.nodes().find(n => n.type === 'button' && n.props.children === 'Scarica PDF completo');
-  button().props.onClick();
+  await button().props.onClick();
   assert.equal(exportsForTest.at(-1), orari.dataset);
   assert.equal(downloadsForTest.at(-1), `orari-${current.day}.pdf`);
   s.nodes().find(n => n.props?.['aria-label'] === 'Modifica orario di Anna').props.onClick();

@@ -30,7 +30,7 @@ function harness(component, responses = {}, notify = false) {
   }).outputText, { exports, Map, Date, Event, CustomEvent, AudioContext: FakeAudioContext, window, document:{documentElement:{dataset:{}}},
     setInterval: fn => timers.push(fn), clearInterval() {},
     fetch: async (url, options) => { calls.push({ url, options }); return { ok: true, json: async () => ({}) }; },
-    require: id => id === './useQuietRefresh' ? {useQuietRefresh:(load,apply)=>({refresh:async()=>apply(await load()),invalidate(){}})} : id === './session' ? {sessionFetch:async (url,options)=>{calls.push({url,options});return {ok:true,headers:{get:()=>'7'},json:async()=>({version:'uploaded-version'})};}} : id === 'react' ? react : id === 'react/jsx-runtime' ? { jsx, jsxs: jsx } : { Link: 'a' },
+    require: id => id === './useQuietRefresh' ? {useQuietRefresh:(load,apply)=>({ready:true, loading:false, loadError:"", refresh:async()=>apply(await load()),invalidate(){}})} : id === './session' ? {sessionFetch:async (url,options)=>{calls.push({url,options});return {ok:true,headers:{get:()=>'7'},json:async()=>({version:'uploaded-version'})};}} : id === 'react' ? react : id === 'react/jsx-runtime' ? { jsx, jsxs: jsx } : { Link: 'a' },
   });
   const render = () => {
     index = 0;

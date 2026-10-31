@@ -1,3 +1,4 @@
+const { loading, quiet } = require('./loading-harness.cjs');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
@@ -6,7 +7,7 @@ const ts = require('typescript');
 function load(file, imports = {}, globals = {}) {
   const exports = {};
   runInNewContext(ts.transpileModule(readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText,
-    { exports, require: id => id === './session' ? {sessionFetch:(...args)=>globals.fetch(...args)} : imports[id], URLSearchParams, ...globals });
+    { exports, require: id => id === './Loading' ? loading : id === './useQuietRefresh' ? quiet(imports.react) : id === './session' ? {sessionFetch:(...args)=>globals.fetch(...args)} : imports[id], URLSearchParams, ...globals });
   return exports;
 }
 const reporting = load('src/stats-report.ts');
@@ -35,10 +36,11 @@ function screen(storage) {
   let cursor = 0;
   const slots = [], effects = [], requests = [];
   const react = {
-    useState(initial) { const i = cursor++; if (!(i in slots)) slots[i] = typeof initial === 'function' ? initial() : initial; return [slots[i], value => { slots[i] = value; }]; },
+    useRef(initial) { const i = cursor++; if (!(i in slots)) slots[i] = {current:initial}; return slots[i]; },
+    useState(initial) { const i = cursor++; if (!(i in slots)) slots[i] = typeof initial === 'function' ? initial() : initial; return [slots[i], value => { slots[i] = typeof value === "function" ? value(slots[i]) : value; }]; },
     useEffect(fn, deps) {
       const i = cursor++;
-      if (!slots[i] || deps.some((v, j) => slots[i].deps[j] !== v)) {
+      if (!slots[i] || !deps || deps.some((v, j) => slots[i].deps?.[j] !== v)) {
         slots[i]?.cleanup?.();
         slots[i] = { deps };
         effects.push(() => { slots[i].cleanup = fn(); });

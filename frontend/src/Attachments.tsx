@@ -1,13 +1,19 @@
+import { Loading } from './Loading';
 import { useEffect, useId, useRef, useState } from "react";
 
 export type ImageDraft = { mediaType: string; data: string } | null | undefined;
 export type AttachmentMap = Record<string, Record<string, string>>;
 export const imageUrl = (id: string) => "/api/attachments/" + encodeURIComponent(id);
 
-export function AttachmentField({ value, saved, onChange, disabled = false }: { value: ImageDraft; saved?: string; onChange: (value: ImageDraft) => void; disabled?: boolean }) {
+export function AttachmentField({ value, saved, onChange, disabled = false, onPendingChange }: { onPendingChange?: (pending: boolean) => void; value: ImageDraft; saved?: string; onChange: (value: ImageDraft) => void; disabled?: boolean }) {
+  const [reading, setReading] = useState(false);
+  const [imageReady, setImageReady] = useState("");
+  const pendingCallback = useRef(onPendingChange);
+  pendingCallback.current = onPendingChange;
+  const pending = (value: boolean) => { setReading(value); pendingCallback.current?.(value); };
   const [error, setError] = useState("");
   const generation = useRef(0);
-  useEffect(() => () => { ++generation.current; }, []);
+  useEffect(() => () => { ++generation.current; pendingCallback.current?.(false); }, []);
   const preview = value ? `data:${value.mediaType};base64,${value.data}` : value === undefined && saved ? imageUrl(saved) : "";
   return <div className="attachment-field">
     <div className="attachment-paste" tabIndex={disabled ? -1 : 0} role="group" aria-label="Allegato facoltativo: incolla un’immagine" aria-disabled={disabled}
@@ -18,19 +24,22 @@ export function AttachmentField({ value, saved, onChange, disabled = false }: { 
         if (!file || !["image/png", "image/jpeg"].includes(file.type)) { setError("Incolla un’immagine PNG o JPEG."); return; }
         if (file.size > 5_242_880) { setError("L’immagine supera 5 MiB."); return; }
         const current = ++generation.current;
+        pending(true); setError('');
         const reader = new FileReader();
-        reader.onerror = () => { if (current === generation.current) setError("Impossibile leggere l’immagine."); };
+        reader.onerror = () => { if (current === generation.current) { setError("Impossibile leggere l’immagine. Incolla nuovamente o rimuovi l’allegato."); setReading(false); } };
         reader.onload = () => {
           if (current !== generation.current) return;
+          pending(false);
           onChange({ mediaType: file.type, data: String(reader.result).split(",")[1] });
           setError("");
         };
         reader.readAsDataURL(file);
       }}>
       <span>Allegato facoltativo — incolla qui</span><small>PNG o JPEG · massimo 5 MiB · Ctrl+V</small>
-      {preview && <img src={preview} alt="Anteprima allegato" />}
+      {preview && <img src={preview} alt="Anteprima allegato" onLoad={() => setImageReady(preview)} onError={() => { setImageReady(preview); setError("Impossibile caricare l’anteprima."); }} />}
     </div>
-    {preview && <button type="button" disabled={disabled} onClick={() => { ++generation.current; onChange(null); setError(""); }}>Rimuovi allegato</button>}
+    {(reading || (preview && imageReady !== preview)) && <Loading label="Preparazione allegato…" />}
+    {(preview || error) && <button type="button" disabled={disabled} onClick={() => { ++generation.current; pending(false); onChange(null); setError(""); }}>Rimuovi allegato</button>}
     {error && <p role="alert">{error}</p>}
   </div>;
 }

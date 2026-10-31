@@ -1,3 +1,4 @@
+import { Loading } from './Loading';
 import { useRef, useState } from 'react';
 import { todayInRome } from './StatsCalendar';
 
@@ -15,17 +16,17 @@ export function TimetableImport({ api, onImported }: { api: <T>(url: string, bod
   const request = useRef(0);
   const invalidate = () => { request.current++; setImpact(undefined); setError(''); setSuccess(''); };
   const preview = async () => {
-    if (!file || !effective) return;
+    if (busy || !file || !effective) return;
     const n = ++request.current;
     setBusy(true); setError(''); setImpact(undefined); setSuccess('');
     try {
       const next = await api<Impact>('timetable/preview?' + new URLSearchParams({effective}), file.data);
       if (n === request.current) setImpact(next);
     } catch (e) { if (n === request.current) setError(String(e)); }
-    finally { setBusy(false); }
+    finally { if (n === request.current) setBusy(false); }
   };
   const apply = async () => {
-    if (!impact || !file) return;
+    if (busy || !impact || !file) return;
     if (!window.confirm(`Importare ${file.name} con decorrenza ${effective}? Le registrazioni coinvolte saranno ricalcolate e le assegnazioni conservate, con eventuali conflitti da risolvere.`)) return;
     setBusy(true); setError('');
     try {
@@ -42,11 +43,13 @@ export function TimetableImport({ api, onImported }: { api: <T>(url: string, bod
     <label>Orario JSON completo <input type="file" accept=".json,application/json" disabled={busy} onChange={async e => {
       invalidate(); setFile(undefined); const n = request.current, selected = e.target.files?.[0];
       if (!selected) return;
+      setBusy(true);
       try { const data = JSON.parse(await selected.text()); if (n === request.current) setFile({name: selected.name, data}); }
       catch { if (n === request.current) setError('File JSON non valido.'); }
+      finally { if (n === request.current) setBusy(false); }
     }} /></label>
     {file && <p>{file.name}</p>}
-    <button className="ui-button ui-button-primary" disabled={busy || !file || !effective} onClick={preview}>{busy ? 'Elaborazione…' : 'Mostra anteprima'}</button>
+    <button className="ui-button ui-button-primary" disabled={busy || !file || !effective} onClick={preview}>{busy ? <Loading label="Elaborazione…" /> : 'Mostra anteprima'}</button>
     {error && <p className="ui-notice ui-notice-error" role="alert">{error} Genera nuovamente l’anteprima prima di confermare.</p>}
     {success && <p className="ui-notice" role="status">{success}</p>}
     {impact && <div className="ui-surface settings-preview" aria-label="Anteprima importazione">
@@ -65,7 +68,7 @@ export function TimetableImport({ api, onImported }: { api: <T>(url: string, bod
         {d.references.map((r, n) => <p key={n}>{r.id}: {r.message}</p>)}
       </details>)}
       <p>Un backup verificato sarà creato prima dell’applicazione. Le assegnazioni non vengono cancellate o spostate automaticamente.</p>
-      <div className="ui-actions"><button className="ui-button ui-button-primary" disabled={busy} onClick={apply}>Conferma importazione</button>
+      <div className="ui-actions"><button className="ui-button ui-button-primary" disabled={busy} onClick={apply}>{busy ? <Loading label="Importazione…" /> : "Conferma importazione"}</button>
       <button className="ui-button" disabled={busy} onClick={() => { invalidate(); setFile(undefined); }}>Annulla</button>
       </div>
     </div>}

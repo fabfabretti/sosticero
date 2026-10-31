@@ -1,3 +1,4 @@
+const { loading, quiet } = require('./loading-harness.cjs');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
@@ -7,7 +8,7 @@ const jsx = (type, props) => ({ type, props });
 function load(file, imports = {}, globals = {}) {
   const exports = {};
   runInNewContext(ts.transpileModule(readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText,
-    { exports, require: id => id === './session' ? {sessionFetch:(...args)=>globals.fetch(...args)} : imports[id], URLSearchParams, ...globals });
+    { exports, require: id => id === './Loading' ? loading : id === './useQuietRefresh' ? quiet(imports.react) : id === './session' ? {sessionFetch:(...args)=>globals.fetch(...args)} : imports[id], URLSearchParams, ...globals });
   return exports;
 }
 const reporting = load('src/stats-report.ts');
@@ -34,14 +35,16 @@ function screen() {
   let cursor = 0;
   const slots = [], setters = [], effects = [], requests = [], ready = [];
   const react = {
-    useState(initial) { const i = cursor++; if (!(i in slots)) slots[i] = initial; setters[i] ||= value => { slots[i] = value; }; return [slots[i], setters[i]]; },
+    useRef(initial) { const i = cursor++; if (!(i in slots)) slots[i] = {current:initial}; return slots[i]; },
+    useState(initial) { const i = cursor++; if (!(i in slots)) slots[i] = initial; setters[i] ||= value => { slots[i] = typeof value === "function" ? value(slots[i]) : value; }; return [slots[i], setters[i]]; },
     useEffect(fn, deps) {
       const i = cursor++;
-      if (!slots[i] || deps.some((v, j) => slots[i].deps[j] !== v)) {
+      if (!slots[i] || !deps || deps.some((v, j) => slots[i].deps?.[j] !== v)) {
         slots[i]?.cleanup?.(); slots[i] = { deps }; effects.push(() => { slots[i].cleanup = fn(); });
       }
     },
   };
+  react.useLayoutEffect = react.useEffect;
   const module = load('src/StatsAvailability.tsx', { react, 'react/jsx-runtime': { jsx, jsxs: jsx },
     './StatsCalendar': { todayInRome: () => '2026-10-20' }, './stats-report': reporting }, {
     fetch(url) { return new Promise(resolve => requests.push({ url, resolve: (body, ok = true) => resolve({ ok, json: async () => body }) })); },
