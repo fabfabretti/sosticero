@@ -61,7 +61,7 @@ class DisplayTest(unittest.TestCase):
         data = response.json()
         self.assertEqual(set(data), {'day', 'campus', 'updated', 'teachers', 'changes', 'incomplete'})
         self.assertEqual(data['teachers'], [dict(name='Àlba', slots=[
-            dict(period=2, classe='1A', room='A12', replaced=['absent']), dict(period=2, classe='2A', room='Aula n.d.', replaced=['support'])])])
+            dict(period=2, classe='1A', room='A12', kind='POT', replaced=['absent']), dict(period=2, classe='2A', room='Aula n.d.', kind='POT', replaced=['support'])])])
         self.assertEqual(self.get('succursale').json()['teachers'], [])
         self.assertNotIn('PRIVATE', response.text)
         self.assertNotIn('absenceNotes', response.text)
@@ -81,7 +81,7 @@ class DisplayTest(unittest.TestCase):
         self.state['asg'][DAY]['support|2|2A']['v'] = 'dis'
         self.state['asg'][DAY]['missing|1|1Z'] = dict(v='pot', t='POT', c='1Z')
         self.save()
-        self.assertEqual(self.get().json()['teachers'][0]['slots'], [dict(period=2, classe='1A', room='A12', replaced=['absent'])])
+        self.assertEqual(self.get().json()['teachers'][0]['slots'], [dict(period=2, classe='1A', room='A12', kind='POT', replaced=['absent'])])
         self.assertEqual(self.get('succursale').json()['teachers'][0]['name'], 'dis')
         self.assertTrue(self.get().json()['incomplete'])
         self.ds['lessons']['absent|lun|2']['site'] = None

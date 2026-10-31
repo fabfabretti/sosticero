@@ -10,3 +10,5 @@ references
 .aws
 .env
 .env.*
+
+frontend/publication-dist

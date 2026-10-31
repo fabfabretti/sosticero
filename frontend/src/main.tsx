@@ -20,11 +20,13 @@ import { SettingsGroup } from './SettingsGroup';
 import type { Row, Candidate, Data, AbsenceKind, Assignment } from "./types";
 import { TimetableImport } from "./TimetableImport";
 import { HourTypes } from "./HourTypes";
+import { PublicationSchedule } from './PublicationSchedule';
 import { CandidateDrawer } from "./CandidateDrawer";
 import { AttachmentField, RecordInfo, type ImageDraft, type AttachmentMap } from "./Attachments";
 import { Stats } from "./Stats";
 import { TeacherTimetables } from "./TeacherTimetables";
 import { Display } from './Display';
+import { Publication } from './Publication';
 import { AbsenceInbox, SheetsSettings, InboxNotice, useInboxStatus } from "./Inbox";
 import { ReceptionImport } from './Receptions';
 import { norm, teacherSearchText, entryExitLabel } from "./timetables";
@@ -307,6 +309,7 @@ function Settings() {
   const [hourSummary, setHourSummary] = useState('Caricamento…');
   const [receptionSummary, setReceptionSummary] = useState('Ricevimenti: caricamento…');
   const [connectionSummary, setConnectionSummary] = useState('Caricamento…');
+  const [scheduleSummary, setScheduleSummary] = useState('Caricamento…');
   const [backupSummary, setBackupSummary] = useState('Caricamento…');
   const [backupRevision, setBackupRevision] = useState(0);
   const [archiveBusy, setArchiveBusy] = useState(false);
@@ -376,6 +379,9 @@ function Settings() {
     </SettingsGroup>
     <SettingsGroup title="Collegamenti" description="Importazione delle assenze da Google Forms." status={connectionSummary}>
       <SheetsSettings api={api} onSummary={setConnectionSummary} revision={backupRevision} />
+    </SettingsGroup>
+    <SettingsGroup title="Pubblicazione" description="Aggiornamento automatico del sito pubblico." status={scheduleSummary}>
+      <PublicationSchedule api={api} onSummary={setScheduleSummary} />
     </SettingsGroup>
     <SettingsGroup title="Dati e backup" description="Esporta i dati o ripristina un archivio salvato." status={backupSummary}>
       <section className="settings-subsection" aria-label="Archivio JSON">
@@ -943,7 +949,9 @@ function Supplenze() {
   const pendingReminders = Object.entries(assigned)
     .filter(([key, a]) => !a.communicated && entryExitBoundary(key, assigned))
     .map(([key, a]) => `${a.c} ${(entryExitLabel(a.v, Number(key.split("|")[1])) || name(a.v)).toLowerCase()}`);
-  const reminders = Object.entries(data?.state.asg[nextDay] || {})
+  const nextAssignments = data?.state.asg[nextDay] || {};
+  const reminders = Object.entries(nextAssignments)
+    .filter(([key, a]) => !a.communicated && entryExitBoundary(key, nextAssignments))
     .map(([key, a]) => a.v === "ENTRA" || a.v === "ESCE" ? `${a.c} ${(entryExitLabel(a.v, Number(key.split("|")[1])) || name(a.v)).toLowerCase()}` : "")
     .filter(Boolean);
   return (
@@ -1044,6 +1052,8 @@ function Supplenze() {
               Prossimo giorno di scuola ({nextDay.split("-").reverse().join("/")}): {reminders.join(", ")}. Avvisa le classi.
             </p>
           )}
+          <div className="supplenze-heading">
+            <div className="supplenze-heading-copy">
           <h1>
             {new Date(day + "T12:00").toLocaleDateString("it-IT", {
               weekday: "long",
@@ -1057,6 +1067,9 @@ function Supplenze() {
             assegnate
           </p>
           {data?.timetable && <p className="sub">Orario: {data.timetable.effective ? `dal ${italianDate(data.timetable.effective)}` : 'versione iniziale'}</p>}
+            </div>
+            {account && <Publication day={day} campus={account.campus} disabled={busy || !ready || loadedDay !== day} />}
+          </div>
           {data?.references?.map((r, n) => <p role="alert" key={`reference-${n}`}>{r.id}: {r.message}</p>)}
           {data?.issues.map((i) => (
             <p role="alert" key={i.key}>

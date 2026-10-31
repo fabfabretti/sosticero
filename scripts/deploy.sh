@@ -15,14 +15,15 @@ if [[ ${1:-} == --dry-run && $# == 1 ]]; then
 fi
 [[ $# == 0 ]] || { echo 'Usage: scripts/deploy.sh [--dry-run]' >&2; exit 2; }
 work=$(mktemp -d)
+control_path=${SOSTICERO_SSH_CONTROL_PATH:-$work/ssh}
 cleanup() {
-    if [[ -S $work/ssh ]]; then ssh -S "$work/ssh" -O exit "$host" >/dev/null 2>&1 || true; fi
+    if [[ -z ${SOSTICERO_SSH_CONTROL_PATH:-} && -S $work/ssh ]]; then ssh -S "$work/ssh" -O exit "$host" >/dev/null 2>&1 || true; fi
     rm -rf -- "$work"
 }
 trap cleanup EXIT
 ssh_options=(-o StrictHostKeyChecking=yes -o ClearAllForwardings=yes
     -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=3
-    -o ControlMaster=auto -o ControlPersist=60 -o "ControlPath=$work/ssh")
+    -o ControlMaster=auto -o ControlPersist=60 -o "ControlPath=$control_path")
 release="incoming-$(date -u +%Y%m%dT%H%M%S)-$$"
 python3 "$root/scripts/prepare-source.py" "$work/release"
 snapshot=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["source_snapshot"])' "$work/release/release.json")

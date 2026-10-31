@@ -22,7 +22,7 @@ def snapshot(source, destination):
     destination.mkdir()
     for name in ('Dockerfile', '.dockerignore'):
         shutil.copy2(source / name, destination / name, follow_symlinks=False)
-    ignore = shutil.ignore_patterns('node_modules', 'dist', '__pycache__', '.git', '.venv',
+    ignore = shutil.ignore_patterns('node_modules', 'dist', 'publication-dist', '__pycache__', '.git', '.venv',
                                     '.env', '.env.*', '*.sqlite*', '*.db', '*.db-*', '*.pem', '*.key',
                                     '.aws', '.ssh', 'google-service-account.json')
     for name in ('backend', 'frontend'):

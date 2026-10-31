@@ -125,6 +125,7 @@ function app(localStorage = { getItem: () => null, setItem() {} }, confirm = () 
       }
       if (id === './Receptions') return { ReceptionImport: 'reception-import' };
       if (id === './HourTypes') return { HourTypes: 'hour-types' };
+      if (id === './PublicationSchedule') return { PublicationSchedule: 'publication-schedule' };
       if (id === './CandidateDrawer') return { CandidateDrawer: 'drawer' };
       if (id === './ClassificationChoices') {
         const exports = {};
@@ -960,9 +961,9 @@ test('Settings delegates timetable imports to the reviewed version import flow',
 test('Settings groups share independent native disclosures and theme changes preserve workflow identity', () => {
   const a = app(); a.go('/settings');
   const nodes = a.render();
-  assert.deepEqual(nodes.filter(node => node.props?.className === 'settings-group-title').map(node => node.props.children), ['Orari e ricevimenti', 'Regole supplenze', 'Collegamenti', 'Dati e backup', 'Aspetto']);
+  assert.deepEqual(nodes.filter(node => node.props?.className === 'settings-group-title').map(node => node.props.children), ['Orari e ricevimenti', 'Regole supplenze', 'Collegamenti', 'Pubblicazione', 'Dati e backup', 'Aspetto']);
   const groups = nodes.filter(node => node.props?.className?.split(' ').includes('settings-group'));
-  assert.equal(groups.length, 5);
+  assert.equal(groups.length, 6);
   assert.ok(groups.every(node => node.type === 'details' && !node.props.open && !node.props.name));
   assert.equal(a.requests.filter(request => request.options?.method === 'POST').length, 0);
   const importer = nodes.find(node => node.type === 'timetable-import');
@@ -1311,6 +1312,35 @@ test('RP row wires acceptance mutation and refreshed shared metadata', async () 
   assert.equal(actions().props.assignment.accepted, true);
   const other = await loaded(updated, 'succursale');
   assert.equal(other.render().find(n => n.type === 'recovery-actions').props.canAssign, false);
+});
+
+test('next-school-day reminders include only uncommunicated entry and exit boundaries', async () => {
+  const next = new Date(todayYmd + 'T12:00');
+  next.setDate(next.getDate() + 1);
+  while (next.getDay() === 0 || next.getDay() === 6) next.setDate(next.getDate() + 1);
+  const nextDay = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-${String(next.getDate()).padStart(2, '0')}`;
+  for (const communicated of [false, true]) {
+    const asg = {
+      't|1|1A': { v: 'ENTRA', t: 'SPECIAL', c: '1A' },
+      't|2|1A': { v: 'ENTRA', t: 'SPECIAL', c: '1A', communicated: true },
+      't|6|2A': { v: 'ESCE', t: 'SPECIAL', c: '2A', communicated: true },
+      't|7|2A': { v: 'ESCE', t: 'SPECIAL', c: '2A' },
+      't|2|3A': { v: 'ENTRA', t: 'SPECIAL', c: '3A', communicated },
+      't|6|4A': { v: 'ESCE', t: 'SPECIAL', c: '4A', communicated },
+    };
+    const a = await loaded({ state: { ...data.state, asg: { [nextDay]: asg } } });
+    const reminders = a.render().filter(n => n.props?.className === 'reminder');
+    if (communicated) assert.equal(reminders.length, 0);
+    else {
+      assert.equal(reminders.length, 1);
+      const text = JSON.stringify(reminders[0]);
+      assert.ok(text.includes('Prossimo giorno di scuola'));
+      assert.ok(text.includes('3A entra dopo'));
+      assert.ok(text.includes('4A esce prima'));
+      assert.ok(!text.includes('1A'));
+      assert.ok(!text.includes('2A'));
+    }
+  }
 });
 
 test('day transitions retain dimmed rows, block stale handlers, and keep calendar and retry available', async () => {

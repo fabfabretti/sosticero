@@ -11,6 +11,10 @@ services:
       APP_ORIGIN: https://sosticero.iamfabs.dev
       DATABASE_PATH: /data/supplenze.sqlite
       PYTHONDONTWRITEBYTECODE: "1"
+      CLOUDFLARE_ACCOUNT_ID: "${CLOUDFLARE_ACCOUNT_ID:-}"
+      CLOUDFLARE_API_TOKEN: "${CLOUDFLARE_API_TOKEN:-}"
+      CLOUDFLARE_PAGES_PROJECT: "${CLOUDFLARE_PAGES_PROJECT:-}"
+      CLOUDFLARE_PAGES_BRANCH: "${CLOUDFLARE_PAGES_BRANCH:-main}"
     volumes:
       - type: bind
         source: ./data
