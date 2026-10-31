@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "794bd3c0-89ab-49b1-af59-1d487e8e3bfa",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "/home/fabs/Desktop/sosticero/.archify/architecture-sosticero-20261028-221037/internals.json",
+  "output": "/home/fabs/Desktop/sosticero/sosticero-backend-internals.html",
+  "specification": {
+    "sha256": "40d707e740a3f406a159005bb4f83dfa591c280ab87233e071264704abaa5d9d",
+    "bytes": 14238
+  },
+  "artifact": {
+    "sha256": "69828a64a3361032cea1c109d8818e4564df779b631b09769a854a99797a6e29",
+    "bytes": 880756
+  }
+}

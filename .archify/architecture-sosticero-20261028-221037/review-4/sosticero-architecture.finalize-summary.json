@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "ok": false,
+  "command": "finalize",
+  "status": "skipped",
+  "type": "architecture",
+  "quality": "showcase",
+  "specification": {
+    "path": "/home/fabs/Desktop/sosticero/.archify/architecture-sosticero-20261028-221037/candidate.json",
+    "sha256": "d879a0464f482ef2812e1f60d0c54e6fea3ae5e284aa2328372e2ba40aa4e96f",
+    "bytes": 14519
+  },
+  "artifact": {
+    "path": "/home/fabs/Desktop/sosticero/sosticero-architecture.html",
+    "sha256": "c06925874a6d7edcfab11cc79b16404c0b88413516a1907c1873dd7269daa076",
+    "bytes": 863076
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "skipped"
+  },
+  "failedStage": "browser-check",
+  "diagnostics": [
+    {
+      "code": "viewer/chrome-unavailable",
+      "severity": "warning",
+      "message": "No supported browser found. Install Chrome/Chromium (or Microsoft Edge), or set ARCHIFY_CHROME to its executable path.",
+      "subject": {
+        "artifact": "/home/fabs/Desktop/sosticero/sosticero-architecture.html"
+      },
+      "evidence": {
+        "executable": null
+      },
+      "supportedFixes": [
+        "set ARCHIFY_CHROME to a Chrome/Chromium executable (or Microsoft Edge) and rerun browser-check"
+      ]
+    }
+  ],
+  "diagnosticSummary": {
+    "total": 1,
+    "shown": 1,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "/home/fabs/Desktop/sosticero/.archify/architecture-sosticero-20261028-221037/review-4/sosticero-architecture.finalize.json",
+    "summaryReceipt": "/home/fabs/Desktop/sosticero/.archify/architecture-sosticero-20261028-221037/review-4/sosticero-architecture.finalize-summary.json",
+    "browserCheckReceipt": "/home/fabs/Desktop/sosticero/.archify/architecture-sosticero-20261028-221037/review-4/sosticero-architecture.browser-check.json"
+  },
+  "update": {
+    "status": "current",
+    "installedVersion": "3.2.0",
+    "availableVersion": "3.2.0",
+    "releaseNotes": null,
+    "checkedAt": "2026-10-28T21:10:58.047Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  },
+  "visualReview": "not-requested",
+  "durationMs": 2539,
+  "browserCheck": {
+    "requested": true,
+    "ran": false
+  }
+}

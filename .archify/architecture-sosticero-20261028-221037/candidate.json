@@ -1,0 +1,577 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Sosticero — runtime architecture",
+    "subtitle": "Staff-substitution planner: SPA → FastAPI → SQLite documents, with session gate, snapshots and one Google Sheets integration",
+    "output": "sosticero-architecture.html",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/fabfabretti/sosticero",
+      "provider": "github",
+      "revision": "3a9bfa2e4138413b24042136f563fcf61689d2d1"
+    },
+    "views": [
+      {
+        "id": "request-path",
+        "label": "Request path",
+        "focus": [
+          "users",
+          "proxy",
+          "spa",
+          "gate",
+          "routers",
+          "services"
+        ],
+        "note": "A planner opens the day, asks for candidates, saves an assignment."
+      },
+      {
+        "id": "trust",
+        "label": "Trust gates",
+        "focus": [
+          "proxy",
+          "gate",
+          "auth",
+          "kiosk"
+        ],
+        "note": "Everything under /api passes the gate except login, session and the public display."
+      },
+      {
+        "id": "data",
+        "label": "Data & recovery",
+        "focus": [
+          "routers",
+          "supplenze",
+          "auth",
+          "backups"
+        ],
+        "note": "JSON documents in WAL SQLite; a snapshot precedes every destructive import."
+      },
+      {
+        "id": "hosts",
+        "label": "Hosts & integrations",
+        "focus": [
+          "routers",
+          "launcher",
+          "spa",
+          "sheets"
+        ],
+        "note": "The same factory runs under Docker on the server or under launcher.py on a desktop."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "users",
+      "type": "external",
+      "icon": "person",
+      "label": "Staff & admin",
+      "sublabel": "browser · Centrale / Succursale",
+      "pos": [
+        40,
+        60
+      ],
+      "size": [
+        150,
+        66
+      ]
+    },
+    {
+      "id": "proxy",
+      "type": "cloud",
+      "icon": "cloud",
+      "label": "Nginx TLS proxy",
+      "sublabel": "sosticero.iamfabs.dev",
+      "tag": "npm_npm_proxy",
+      "pos": [
+        280,
+        60
+      ],
+      "size": [
+        160,
+        66
+      ],
+      "sources": [
+        {
+          "path": "compose.server.yaml",
+          "line": 9,
+          "end_line": 22,
+          "label": "APP_ORIGIN + proxy network"
+        }
+      ]
+    },
+    {
+      "id": "spa",
+      "type": "frontend",
+      "icon": "frontend",
+      "label": "Frontend SPA",
+      "sublabel": "React 19 + Vite bundle",
+      "tag": "15 s quiet polling",
+      "pos": [
+        530,
+        60
+      ],
+      "size": [
+        160,
+        66
+      ],
+      "sources": [
+        {
+          "path": "frontend/package.json",
+          "line": 11,
+          "end_line": 16,
+          "label": "React 19, router, charts"
+        },
+        {
+          "path": "frontend/src/session.ts",
+          "line": 7,
+          "end_line": 13,
+          "label": "API client adds CSRF + generation"
+        }
+      ]
+    },
+    {
+      "id": "kiosk",
+      "type": "external",
+      "icon": "moon",
+      "label": "Wall display",
+      "sublabel": "no login, today only",
+      "tag": "public projection",
+      "pos": [
+        750,
+        60
+      ],
+      "size": [
+        150,
+        66
+      ],
+      "sources": [
+        {
+          "path": "backend/display.py",
+          "line": 1,
+          "end_line": 8,
+          "label": "public projection"
+        }
+      ]
+    },
+    {
+      "id": "sheets",
+      "type": "external",
+      "icon": "external",
+      "label": "Google Sheets",
+      "sublabel": "absence form rows",
+      "tag": "read-only scope",
+      "pos": [
+        1026,
+        60
+      ],
+      "size": [
+        150,
+        66
+      ],
+      "sources": [
+        {
+          "path": "backend/inbox.py",
+          "line": 47,
+          "end_line": 58,
+          "label": "service-account read"
+        }
+      ]
+    },
+    {
+      "id": "launcher",
+      "type": "external",
+      "icon": "start",
+      "label": "launcher.py",
+      "sublabel": "desktop app · opens browser",
+      "tag": "free port",
+      "pos": [
+        40,
+        270
+      ],
+      "size": [
+        160,
+        72
+      ],
+      "sources": [
+        {
+          "path": "launcher.py",
+          "line": 41,
+          "end_line": 61,
+          "label": "sets paths, runs uvicorn"
+        }
+      ]
+    },
+    {
+      "id": "gate",
+      "type": "security",
+      "icon": "security",
+      "label": "Session & campus gate",
+      "sublabel": "cookie · CSRF · origin",
+      "tag": "centrale-only writes",
+      "pos": [
+        530,
+        270
+      ],
+      "size": [
+        160,
+        72
+      ],
+      "sources": [
+        {
+          "path": "backend/auth.py",
+          "line": 233,
+          "end_line": 263,
+          "label": "protect middleware"
+        },
+        {
+          "path": "backend/auth.py",
+          "line": 21,
+          "end_line": 25,
+          "label": "read/write campus policy"
+        }
+      ]
+    },
+    {
+      "id": "routers",
+      "type": "backend",
+      "icon": "backend",
+      "label": "/api/* routers",
+      "sublabel": "create_app + inbox poller",
+      "tag": "X-Data-Generation",
+      "pos": [
+        790,
+        270
+      ],
+      "size": [
+        150,
+        72
+      ],
+      "sources": [
+        {
+          "path": "backend/main.py",
+          "line": 92,
+          "end_line": 120,
+          "label": "factory, config, testing guard"
+        },
+        {
+          "path": "backend/main.py",
+          "line": 761,
+          "end_line": 773,
+          "label": "candidates + assignment routes"
+        },
+        {
+          "path": "backend/inbox.py",
+          "line": 229,
+          "end_line": 235,
+          "label": "inbox routes"
+        }
+      ]
+    },
+    {
+      "id": "services",
+      "type": "backend",
+      "icon": "decision",
+      "label": "Domain services",
+      "sublabel": "rules, ledger, statistics",
+      "tag": "pure, no I/O",
+      "pos": [
+        1006,
+        270
+      ],
+      "size": [
+        160,
+        72
+      ],
+      "sources": [
+        {
+          "path": "backend/domain.py",
+          "line": 9,
+          "end_line": 18,
+          "label": "hours, campuses, candidate tiers"
+        },
+        {
+          "path": "backend/timetables.py",
+          "line": 1,
+          "end_line": 16,
+          "label": "dated timetable versions"
+        },
+        {
+          "path": "backend/recovery.py",
+          "line": 8,
+          "end_line": 11,
+          "label": "permit recovery deadline"
+        }
+      ]
+    },
+    {
+      "id": "auth",
+      "type": "database",
+      "icon": "database",
+      "label": "auth.sqlite",
+      "sublabel": "accounts · sessions",
+      "tag": "argon2, 12 h",
+      "pos": [
+        530,
+        470
+      ],
+      "size": [
+        160,
+        70
+      ],
+      "sources": [
+        {
+          "path": "backend/auth.py",
+          "line": 35,
+          "end_line": 52,
+          "label": "accounts, sessions, generation"
+        }
+      ]
+    },
+    {
+      "id": "supplenze",
+      "type": "database",
+      "icon": "database",
+      "label": "supplenze.sqlite",
+      "sublabel": "JSON docs + blob attachments",
+      "tag": "WAL",
+      "pos": [
+        780,
+        470
+      ],
+      "size": [
+        170,
+        70
+      ],
+      "sources": [
+        {
+          "path": "backend/storage.py",
+          "line": 8,
+          "end_line": 27,
+          "label": "documents + attachments tables"
+        }
+      ]
+    },
+    {
+      "id": "backups",
+      "type": "database",
+      "icon": "clock",
+      "label": "Backup store",
+      "sublabel": "snapshots · retention",
+      "tag": "10 files / 7 days",
+      "pos": [
+        1006,
+        470
+      ],
+      "size": [
+        160,
+        70
+      ],
+      "sources": [
+        {
+          "path": "backend/backup.py",
+          "line": 51,
+          "end_line": 51,
+          "label": "backup_database"
+        },
+        {
+          "path": "backend/main.py",
+          "line": 113,
+          "end_line": 117,
+          "label": "retention config"
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "sosticero container · read-only rootfs · no published port",
+      "wraps": [
+        "gate",
+        "routers",
+        "services"
+      ],
+      "pad": 24
+    },
+    {
+      "kind": "region",
+      "label": "/data bind mount · owned by LOCAL_UID",
+      "wraps": [
+        "auth",
+        "supplenze",
+        "backups"
+      ],
+      "pad": 24
+    }
+  ],
+  "connections": [
+    {
+      "id": "users-proxy",
+      "from": "users",
+      "to": "proxy",
+      "label": "HTTPS",
+      "variant": "security"
+    },
+    {
+      "id": "proxy-spa",
+      "from": "proxy",
+      "to": "spa",
+      "label": "proxy_pass"
+    },
+    {
+      "id": "spa-gate",
+      "from": "spa",
+      "to": "gate",
+      "label": "fetch /api/*",
+      "variant": "emphasis"
+    },
+    {
+      "id": "gate-routers",
+      "from": "gate",
+      "to": "routers",
+      "label": "authorized"
+    },
+    {
+      "id": "routers-services",
+      "from": "routers",
+      "to": "services",
+      "label": "compute"
+    },
+    {
+      "id": "gate-auth",
+      "from": "gate",
+      "to": "auth",
+      "label": "sessions",
+      "variant": "security"
+    },
+    {
+      "id": "routers-supplenze",
+      "from": "routers",
+      "to": "supplenze",
+      "label": "JSON docs"
+    },
+    {
+      "id": "routers-backups",
+      "from": "routers",
+      "to": "backups",
+      "label": "snapshot",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          865,
+          410
+        ],
+        [
+          1086,
+          410
+        ]
+      ]
+    },
+    {
+      "id": "routers-sheets",
+      "from": "sheets",
+      "to": "routers",
+      "label": "form rows in",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          1101,
+          200
+        ],
+        [
+          865,
+          200
+        ]
+      ]
+    },
+    {
+      "id": "kiosk-routers",
+      "from": "kiosk",
+      "to": "routers",
+      "label": "public /api/display",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "launcher-gate",
+      "from": "launcher",
+      "to": "gate",
+      "label": "create_app · uvicorn"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Backend modules",
+      "items": [
+        "main.py: one factory builds every route, the dataset/state loaders and the write transaction helpers",
+        "domain.py: rows, candidates, consultation, permit and assignment validation",
+        "timetables.py + overrides.py + receptions.py: dated versions, dated hour patches, XLSX receptions",
+        "recovery.py + paid.py + availability.py: permit ledger, banca ore, on-paper availability",
+        "statistics.py, concurrency.py, backup.py, attachments.py, teacher_names.py, hour_types.py",
+        "inbox.py registers /api/inbox* and polls the form sheet on a lifespan task"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Frontend views → endpoints",
+      "items": [
+        "Supplenze: GET /api/day/{day}, /api/candidates, /api/availability; POST /api/entries, /api/assignments",
+        "Permessi: GET /api/permessi; POST /api/permessi, /api/manual-permits",
+        "Banca ore: GET/POST /api/paid-availability; GET /api/stats/availability",
+        "Orari: GET /api/orari, /api/receptions; POST /api/timetable, /api/orari/override, /api/orari/name",
+        "Stats: GET /api/stats; Settings: /api/hour-types, /api/import|export, /api/backups*",
+        "Inbox: GET /api/inbox*, POST /api/inbox/{id}/{accept|ignore|preview}; every view re-reads quietly every 15 s"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Key domains",
+      "items": [
+        "Substitutions: cover rows per class-period, fixed candidate tiers (compresenza → other campus → recovery → exceptional)",
+        "Permits: dated leave per period, optional request date, planned/last-minute, one-month recovery window clamped to month end",
+        "Banca ore: paid availability per weekday plus assignment-derived recovery accounting",
+        "Availability: capacity on paper from timetables and hour-type rules, never from the day's absences",
+        "Campuses: Centrale / Succursale drive candidate ranking, travel rules, stats filters, PDF sheets and write permissions"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Trust & data safety",
+      "items": [
+        "Single session cookie (HttpOnly, SameSite=Lax, Secure behind HTTPS) plus a CSRF header on every POST",
+        "Host/origin check from APP_ORIGIN; non-Centrale accounts cannot call hour-types, timetable, import or restore",
+        "Data generation header: 428 when missing, 409 when the dataset was replaced; per-record digests give 409 on stale edits",
+        "GET /api/display is the only public API: today's assigned substitutes and class entry/exit times, nothing else",
+        "Testing mode refuses the operational directory via the .sosticero-production marker",
+        "SQLite WAL, 15 s busy timeout, 503 on a busy database; import and restore take a snapshot first"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Runtime & deployment",
+      "items": [
+        "Dockerfile: Node builds frontend/dist, Python image runs uvicorn --factory on :8000 as a non-root user",
+        "compose.server.yaml: no published port, read-only rootfs, dropped caps, 1 CPU / 1 GiB, only the proxy network",
+        "scripts/deploy.sh builds on atlante, snapshots data, swaps only the sosticero container, verifies over HTTPS",
+        "launcher.py is the second host: same factory, data beside the executable, random free port, opens the browser"
+      ]
+    },
+    {
+      "dot": "slate",
+      "title": "Deliberate omissions",
+      "items": [
+        "No ORM and no migrations: the whole dataset and state are JSON documents with in-place shape upgrades",
+        "No queue, worker or scheduler: the only background work is the inbox poll and the startup backup",
+        "No external identity provider and no relational history tables",
+        "Not shown: the deploy host atlante, test-only compose.testing.yaml, and per-file module boundaries"
+      ]
+    }
+  ]
+}
