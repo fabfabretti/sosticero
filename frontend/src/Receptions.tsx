@@ -1,3 +1,4 @@
+import { Loading, LoadingRegion } from './Loading';
 import { useEffect, useRef, useState } from 'react';
 import { useQuietRefresh } from './useQuietRefresh';
 import { todayInRome } from './StatsCalendar';
@@ -22,8 +23,8 @@ export function ReceptionImport({ api, onSummary, onImported, revision }: { api:
   const [query, setQuery] = useState('');
   const [teacherQueries, setTeacherQueries] = useState<Record<number, string>>({});
   const request = useRef(0);
-  useQuietRefresh(() => api<Document>('receptions'), setDocument, busy || !!file || !!impact, 'settings-receptions');
-  useEffect(() => { let active = true; api<Document>('receptions').then(value => { if (active) setDocument(value); }).catch(e => { if (active) setError(String(e)); }); return () => { active = false; }; }, [api, revision]);
+  const { refresh, loading, ready, loadError } = useQuietRefresh(() => api<Document>('receptions'), setDocument, busy || !!file || !!impact, 'settings-receptions:' + revision);
+  useEffect(() => { void refresh().catch(() => {}); }, [api, revision]);
   useEffect(() => {
     const selected = document?.versions.filter(version => version.effective <= todayInRome()).at(-1);
     onSummary?.(error ? 'Ricevimenti: da verificare' : document ? `${selected?.rows.length || 0} ricevimenti` : 'Ricevimenti: caricamento…');
@@ -31,22 +32,23 @@ export function ReceptionImport({ api, onSummary, onImported, revision }: { api:
   const invalidate = () => { request.current++; setReviewed(false); setError(''); setSuccess(''); };
   const body = () => ({ file: file?.data, effective, choices });
   const preview = async () => {
-    if (!file) return;
+    if (busy || !file) return;
     const current = ++request.current;
     setBusy(true); setError(''); setReviewed(false);
     try { const value = await api<Impact>('receptions/preview', body()); if (current === request.current) { setImpact(value); setReviewed(true); } }
     catch (e) { if (current === request.current) setError(String(e)); }
-    finally { setBusy(false); }
+    finally { if (current === request.current) setBusy(false); }
   };
   const choose = (row: number, value: Choice) => { invalidate(); setChoices({ ...choices, [row]: { ...choices[row], ...value } }); };
   const apply = async () => {
-    if (!impact || !reviewed || !impact.ready || !window.confirm(`Importare i ricevimenti dal ${effective}? Il nuovo elenco sostituisce il precedente nell’intervallo indicato. Le assegnazioni restano conservate con eventuali conflitti da verificare.`)) return;
+    if (busy || !impact || !reviewed || !impact.ready || !window.confirm(`Importare i ricevimenti dal ${effective}? Il nuovo elenco sostituisce il precedente nell’intervallo indicato. Le assegnazioni restano conservate con eventuali conflitti da verificare.`)) return;
     setBusy(true); setError('');
     try {
       const result = await api<{ backup: { filename: string } }>('receptions', { ...body(), _generation: impact.generation, token: impact.token, confirm: true });
-      setDocument(await api<Document>('receptions')); setImpact(undefined); setFile(undefined); setChoices({}); setReviewed(false);
+      setImpact(undefined); setFile(undefined); setChoices({}); setReviewed(false);
       setSuccess('Ricevimenti importati. Backup precedente: ' + result.backup.filename);
       onImported?.();
+      try { await refresh(); } catch { setError('Ricevimenti importati. Impossibile aggiornare i dati: usa Riprova.'); }
     } catch (e) { setError(String(e)); setReviewed(false); }
     finally { setBusy(false); }
   };
@@ -56,6 +58,7 @@ export function ReceptionImport({ api, onSummary, onImported, revision }: { api:
   return <section className="reception-import settings-subsection" aria-label="Ricevimenti">
     <h2>Ricevimenti</h2>
     <p>Importa l’Excel con docente, giorno e ora. R compare in Orari e non può essere usato come recupero permesso. Le sedi mancanti restano da verificare.</p>
+    <LoadingRegion pending={loading} blocked={false} error={loadError} retry={() => void refresh().catch(() => {})} />
     {!!document?.versions.length && <details><summary>Versioni ricevimenti ({document.versions.length})</summary>{document.versions.map(version => <p key={version.effective}>Dal {version.effective}: {version.rows.length} ricevimenti · {version.rows.filter(row => !row.site).length} sedi da verificare</p>)}</details>}
     <div className="ui-form">
       <label>Decorrenza<input type="date" value={effective} required disabled={busy} onChange={e => { invalidate(); setEffective(e.target.value); }} /></label>
@@ -70,9 +73,9 @@ export function ReceptionImport({ api, onSummary, onImported, revision }: { api:
           let binary = ''; for (const byte of bytes) binary += String.fromCharCode(byte);
           if (current === request.current) setFile({ name: selected.name, data: btoa(binary) });
         } catch (e) { if (current === request.current) setError(String(e)); }
-        finally { setBusy(false); }
+        finally { if (current === request.current) setBusy(false); }
       }} /></label>
-      <button className="ui-button ui-button-primary" disabled={busy || !file || !effective} onClick={preview}>{busy ? 'Elaborazione…' : 'Mostra anteprima ricevimenti'}</button>
+      <button className="ui-button ui-button-primary" disabled={busy || !file || !effective} onClick={preview}>{busy ? <Loading label="Elaborazione…" /> : 'Mostra anteprima ricevimenti'}</button>
     </div>
     {file && <p>{file.name}</p>}
     {error && !impact && <p className="ui-notice ui-notice-error" role="alert">{error}</p>}
@@ -109,7 +112,7 @@ export function ReceptionImport({ api, onSummary, onImported, revision }: { api:
       {reviewed && !impact.ready && <p className="ui-notice ui-notice-error" role="status">Importazione bloccata: risolvi o salta le {unresolved} righe evidenziate, poi clicca «Verifica abbinamenti».</p>}
       {reviewed && impact.ready && <p className="ui-notice" role="status">Verifica completata. Clicca «Conferma ricevimenti» per importare.</p>}
       <div className="ui-actions">
-      <button className="ui-button ui-button-primary" disabled={busy || (reviewed && !impact.ready)} onClick={reviewed ? apply : preview}>{busy ? 'Elaborazione…' : reviewed ? 'Conferma ricevimenti' : 'Verifica abbinamenti'}</button>
+      <button className="ui-button ui-button-primary" disabled={busy || (reviewed && !impact.ready)} onClick={reviewed ? apply : preview}>{busy ? <Loading label="Elaborazione…" /> : reviewed ? 'Conferma ricevimenti' : 'Verifica abbinamenti'}</button>
       <button className="ui-button" disabled={busy} onClick={() => { invalidate(); setImpact(undefined); setFile(undefined); setChoices({}); }}>Annulla</button>
       </div>
     </div>}

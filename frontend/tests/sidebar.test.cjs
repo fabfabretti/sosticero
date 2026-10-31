@@ -1,3 +1,4 @@
+const requireLoading = require('./loading-harness.cjs').loading;
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
@@ -93,6 +94,8 @@ function app(localStorage = { getItem: () => null, setItem() {} }, confirm = () 
     document,
     fetch: fetcher,
     require(id) {
+      if (id === './Publication') return { Publication: 'publication-controls' };
+      if (id === './Loading') return requireLoading;
       if (id === './BuildInfo') return { BuildWarning: () => null, builtAt: '2026-10-28T12:00:00.000Z' };
       if (id === './Auth') return { Auth: ({children}) => children, useAccount: () => ({ id:'test', username:'test', name:'Test', campus }) };
       if (id === './session') return { requestApi: async (url, body) => {
@@ -578,9 +581,12 @@ test('permit absences lock and keep manual control payloads separate', async () 
   assert.ok(a.render().some(n => n.type === 'record-info' && n.props.text === 'Permesso'), 'permit reason shown in information popover');
   assert.ok(a.render().some(n => n.props?.['aria-label'] === 'Modifica dalla pagina permessi'), 'disabled permit hours explain themselves');
   button(4).props.onClick();
-  assert.deepEqual(JSON.parse(a.requests.shift().options.body).hours, [2,4]);
+  const update = a.requests.shift();
+  assert.deepEqual(JSON.parse(update.options.body).hours, [2,4]);
+  update.resolve({}); await settle(); a.requests.shift().resolve({...data,dataset:permitData.dataset,state:{...data.state,abs:{[todayYmd]:{t:[2,4]}},permessi:{[todayYmd]:{t:[2,3]}}}}); await settle();
   a.render().find(n => n.type === 'button' && n.props?.className === 'n' && n.props.children === 'Contartase').props.onClick();
-  assert.deepEqual(JSON.parse(a.requests.shift().options.body).hours, [1,2,3,4,5,6,7]);
+  const allDay = a.requests.shift(); assert.deepEqual(JSON.parse(allDay.options.body).hours, [1,2,3,4,5,6,7]);
+  allDay.resolve({}); await settle(); a.requests.shift().resolve({...data,dataset:permitData.dataset,state:{...data.state,abs:{[todayYmd]:{t:[1,2,3,4,5,6,7]}},permessi:{[todayYmd]:{t:[2,3]}}}}); await settle();
   a.render().find(n => n.type === 'button' && n.props['aria-label'] === 'Rimuovi Contartase').props.onClick();
   assert.equal(JSON.parse(a.requests.shift().options.body).hours, undefined);
   const only = await loaded({ dataset: permitData.dataset, state: { ...data.state, permessi: { [todayYmd]: { t: [2] } } } });
@@ -989,6 +995,7 @@ test('Settings backup restore requires a named confirmation and exposes failures
 
 test('Settings JSON restore names the file and cancel performs no import', async () => {
   const prompts = []; const a = app(undefined, message => { prompts.push(message); return false; }); a.go('/settings'); a.render();
+  a.requests.find(request => request.url.startsWith('/api/day/')).resolve(data); await settle();
   a.render().find(node => node.props?.type === 'file' && node.props.accept === '.json,application/json').props.onChange({target:{files:[{name:'archive.json',text:async()=>'{"schema":7}'}]}});
   await settle();
   a.requests.find(request => request.url === '/api/import/preview').resolve({overrides:[]}); await settle();
@@ -1304,4 +1311,33 @@ test('RP row wires acceptance mutation and refreshed shared metadata', async () 
   assert.equal(actions().props.assignment.accepted, true);
   const other = await loaded(updated, 'succursale');
   assert.equal(other.render().find(n => n.type === 'recovery-actions').props.canAssign, false);
+});
+
+test('day transitions retain dimmed rows, block stale handlers, and keep calendar and retry available', async () => {
+  const a = await loaded({rows:[{k:'t|2|1A',h:2,c:'1A',ids:['t'],sede:'centrale'}]});
+  const choose = () => a.render().find(n=>n.type==='button' && n.props.className?.startsWith('fill '));
+  const dayButtons = () => a.render().filter(n=>n.type==='button' && /^d(?: sel)?$/.test(n.props.className || '') && !n.props.disabled);
+  const days=dayButtons().filter(n=>n.props.className==='d').slice(0,2);
+  days[0].props.onClick();
+  let nodes=a.render();
+  assert.equal(nodes.find(n=>n.props?.className==='entry-trigger ui-button')?.props.disabled ?? nodes.find(n=>n.props?.className==='ui-button entry-trigger').props.disabled,true);
+  const stale=choose(); assert.ok(stale); stale.props.onClick();
+  assert.ok(!a.requests.some(r=>r.url.startsWith('/api/candidates')));
+  assert.ok(nodes.some(n=>n.props?.className==='ui-loading-content' && n.props.inert));
+  const old=a.requests.shift(); days[1].props.onClick();a.render();const current=a.requests.shift();
+  current.resolve({...data,rows:[]});await settle();old.resolve({...data,rows:[{k:'t|2|OLD',h:2,c:'OLD',ids:['t'],sede:'centrale'}]});await settle();
+  assert.ok(!JSON.stringify(a.render()).includes('OLD'));
+  dayButtons().find(n=>n.props.className==='d').props.onClick();a.render();a.requests.shift().resolve({detail:'offline'},false);await settle();
+  nodes=a.render();const retry=nodes.find(n=>n.type==='button' && n.props.children==='Riprova');assert.ok(retry);assert.equal(retry.props.disabled,false);
+  assert.ok(nodes.some(n=>n.props?.className==='ui-loading-content' && n.props.inert));
+});
+
+test('a successful write followed by a failed reload offers retry without repeating the mutation', async () => {
+  const a=await loaded({dataset:permitData.dataset,state:{...data.state,abs:{[todayYmd]:{t:[2]}}}});
+  a.render().find(n=>n.props?.['aria-label']==='Contartase, 4ª ora').props.onClick();
+  const mutation=a.requests.shift();assert.equal(mutation.url,'/api/entries');mutation.resolve({});await settle();
+  a.requests.shift().resolve({detail:'offline'},false);await settle();
+  const nodes=a.render();assert.ok(nodes.some(n=>n.props?.role==='alert' && JSON.stringify(n.props.children).includes('Salvato.')));
+  const retry=nodes.find(n=>n.type==='button' && n.props.children==='Riprova');assert.ok(retry);retry.props.onClick();
+  assert.ok(a.requests.every(r=>r.url.startsWith('/api/day/')),'retry reads rather than repeating the write');
 });

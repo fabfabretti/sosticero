@@ -1,3 +1,5 @@
+import { useQuietRefresh } from './useQuietRefresh';
+import { Loading, LoadingRegion } from './Loading';
 import { sessionFetch } from './session';
 import { useEffect, useState } from "react";
 import { CartesianGrid, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, LineChart, Line, BarChart, Bar } from "recharts";
@@ -57,31 +59,22 @@ export function Stats() {
   const [selectingEnd, setSelectingEnd] = useState(false);
   const [metric, setMetric] = useState<Metric>("demand");
   const [data, setData] = useState<StatReport>();
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+
   const [retry, setRetry] = useState(0);
   const [preview, setPreview] = useState(false);
   const [availabilityReady, setAvailabilityReady] = useState(false);
   const range = period === "custom" ? { start, end } : presetRange(period, today, first);
 
-  useEffect(() => {
-    let active = true;
-    setData(undefined); setError("");
-    if (period === "custom" && (!start || !end || start > end)) {
-      setError("Seleziona un intervallo di date valido."); setLoading(false); return;
-    }
-    setLoading(true);
+  const scope = JSON.stringify([campus, period, start, end]);
+  const { refresh, loading, ready, loadError } = useQuietRefresh(async () => {
+    if (period === "custom" && (!start || !end || start > end)) throw Error("Seleziona un intervallo di date valido.");
     const query = new URLSearchParams({ campus, period, ...(period === "custom" ? { start, end } : {}) });
-    sessionFetch("/api/stats?" + query).then(async response => {
-      const body = await response.json();
-      if (!response.ok) throw Error(typeof body.detail === "string" ? body.detail : "Impossibile caricare le statistiche.");
-      if (active) {
-        setData(body);
-        if (period === "all") setFirst(body.start);
-      }
-    }).catch(e => { if (active) setError(String(e)); }).finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
-  }, [campus, period, start, end, retry]);
+    const response = await sessionFetch("/api/stats?" + query);
+    const body = await response.json();
+    if (!response.ok) throw Error(typeof body.detail === "string" ? body.detail : "Impossibile caricare le statistiche.");
+    return body as StatReport;
+  }, body => { setData(body); if (period === 'all') setFirst(body.start); }, false, scope, true);
+  useEffect(() => { void refresh().catch(() => {}); }, [scope, retry]);
 
   const selectPreset = (id: string) => {
     setSelectingEnd(false);
@@ -98,7 +91,7 @@ export function Stats() {
     setPeriod("custom");
   };
   const download = () => {
-    if (!data) return;
+    if (!data || !ready) return;
     const url = URL.createObjectURL(new Blob([reportCsv(data)], { type: "text/csv;charset=utf-8" }));
     const a = document.createElement("a"); a.href = url; a.download = `sosticero-stats-${data.campus}-${data.start}-${data.end}.csv`; a.click(); URL.revokeObjectURL(url);
   };
@@ -119,10 +112,10 @@ export function Stats() {
       </section>
     </aside>
     <main className={"stats-page" + (preview ? " stats-print-preview" : "")}>
-      {preview && <div className="stats-preview-actions"><strong>Anteprima report</strong><button onClick={() => window.print()}>Stampa</button><button onClick={() => setPreview(false)}>Torna alle statistiche</button></div>}
-      <div className="stats-heading"><h1>Statistiche</h1><div className="stats-actions"><button onClick={download} disabled={!data?.days}>Esporta CSV</button><button onClick={() => setPreview(true)} disabled={!data?.days && !availabilityReady}>Stampa report</button></div></div>
-      {loading && <p role="status">Caricamento statistiche…</p>}
-      {error && <div role="alert" className="stats-warning">{error} <button onClick={() => setRetry(retry + 1)}>Riprova</button></div>}
+      {preview && <div className="stats-preview-actions"><strong>Anteprima report</strong><button disabled={!(ready && data?.days) && !availabilityReady} onClick={() => { if ((ready && data?.days) || availabilityReady) window.print(); }}>Stampa</button><button onClick={() => setPreview(false)}>Torna alle statistiche</button></div>}
+      <div className="stats-heading"><h1>Statistiche</h1><div className="stats-actions"><button onClick={download} disabled={!ready || !data?.days}>Esporta CSV</button><button onClick={() => { if ((ready && data?.days) || availabilityReady) setPreview(true); }} disabled={!(ready && data?.days) && !availabilityReady}>Stampa report</button></div></div>
+
+      <LoadingRegion pending={loading} blocked={!ready} error={loadError} retry={() => setRetry(retry + 1)}>
       {data && <>
         <p className="stats-scope"><strong>{campuses[data.campus]}</strong> · {data.start} — {data.end} · {data.days} {data.days === 1 ? "giorno registrato" : "giorni registrati"}</p>
         {!data.days ? <section className="stats-panel"><h2>Nessun giorno con assenze registrate</h2><p>Seleziona un altro periodo. Le date future sono escluse dalle statistiche.</p></section> : <>
@@ -159,12 +152,13 @@ export function Stats() {
           </section>
         </>}
       </>}
+      </LoadingRegion>
       <StatsAvailability campus={campus} preview={preview} onReady={setAvailabilityReady} />
-      {!!data?.days && <>
+      <div inert={!ready} className={!ready ? "ui-loading-content" : undefined}>{!!data?.days && <>
           <div className="stats-grid"><section className="stats-panel"><h2>Come abbiamo coperto</h2><Values caption="Coperture per tipo" headings={["Tipo", "Ore"]} rows={Object.entries(data.types).map(([t, n]) => [typeNames[t] || t, n])} /><p>{fmt(data.exceptional)} coperture eccezionali, già incluse nei tipi sopra.</p></section>
             <section className="stats-panel"><h2>Giorni con maggiore domanda</h2><Values caption="Dieci giorni con più ore da coprire" headings={["Data", metricNames.demand, outcomes.uncovered, "Entrata / uscita"]} rows={data.worst.map(d => [d.date, d.demand, d.uncovered, d.late + d.early])} /></section></div>
           <section className="stats-panel"><h2>Classi interessate</h2><Values caption="Domanda per classe" headings={["Classe", metricNames.demand]} rows={data.classes.map(c => [c.name, c.demand])} /></section>
-      </>}
+      </>}</div>
     </main>
   </div>;
 }

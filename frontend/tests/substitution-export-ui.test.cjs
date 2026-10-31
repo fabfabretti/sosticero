@@ -1,3 +1,4 @@
+const requireLoading = require('./loading-harness.cjs').loading;
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
@@ -22,6 +23,7 @@ function component() {
   runInNewContext(ts.transpileModule(readFileSync('src/SubstitutionExportPanel.tsx', 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022 },
   }).outputText, { exports, URL: { createObjectURL: () => 'blob:test-' + ++nextUrl, revokeObjectURL: u => revoked.push(u) }, require(id) {
+      if (id === './Loading') return requireLoading;
     if (id === 'react') return react;
     if (id === 'react/jsx-runtime') return { jsx, jsxs: jsx };
     if (id === './substitutionExport') return { projectExport(data, day, choice) { calls.push({ data, day, choice }); return { warnings: ['Example warning'] }; } };

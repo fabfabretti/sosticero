@@ -1,5 +1,7 @@
+import { useQuietRefresh } from './useQuietRefresh';
+import { Loading, LoadingRegion } from './Loading';
 import { sessionFetch } from './session';
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import { campuses, weekdays, formatNumber as fmt } from "./stats-report";
 import { todayInRome } from "./StatsCalendar";
 
@@ -74,21 +76,18 @@ export function StatsAvailability({ campus, onReady }: { campus: string; preview
   const [date, setDate] = useState(todayInRome());
   const [selected, setSelected] = useState<Category[]>(defaultSelection);
   const [data, setData] = useState<AvailabilityReport>();
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+
   const [retry, setRetry] = useState(0);
-  useEffect(() => {
-    let active = true;
-    setData(undefined); setError(""); onReady(false);
-    if (!date) { setLoading(false); return; }
-    setLoading(true);
-    sessionFetch("/api/stats/availability?" + new URLSearchParams({ date, campus })).then(async response => {
-      const body = await response.json();
-      if (!response.ok) throw Error(typeof body.detail === "string" ? body.detail : "Impossibile caricare le disponibilità.");
-      if (active) { setData(body); onReady(true); }
-    }).catch(e => { if (active) setError(String(e)); }).finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
-  }, [date, campus, retry, onReady]);
+  const scope = JSON.stringify([date, campus]);
+  const { refresh, loading, ready, loadError } = useQuietRefresh(async () => {
+    if (!date) throw Error('Seleziona una data per vedere la settimana.');
+    const response = await sessionFetch("/api/stats/availability?" + new URLSearchParams({ date, campus }));
+    const body = await response.json();
+    if (!response.ok) throw Error(typeof body.detail === "string" ? body.detail : "Impossibile caricare le disponibilità.");
+    return body as AvailabilityReport;
+  }, setData, false, scope, true);
+  useEffect(() => { void refresh().catch(() => {}); }, [scope, retry]);
+  useLayoutEffect(() => { onReady(ready); return () => onReady(false); }, [ready, scope, onReady]);
 
   return <section className="stats-panel stats-availability">
     <div className="stats-panel-heading"><h2>A disposizione</h2>
@@ -99,14 +98,13 @@ export function StatsAvailability({ campus, onReady }: { campus: string; preview
       {(Object.keys(categories) as Category[]).map(category => <button key={category} className={selected.includes(category) ? "active" : ""} aria-pressed={selected.includes(category)} onClick={() => setSelected(selected.includes(category) ? selected.filter(value => value !== category) : [...selected, category])}>{categories[category]}</button>)}
     </div>
     {!date && <p role="alert">Seleziona una data per vedere la settimana.</p>}
-    {loading && <p role="status">Caricamento disponibilità…</p>}
-    {error && <p role="alert" className="stats-warning">{error} <button onClick={() => setRetry(retry + 1)}>Riprova</button></p>}
-    {data && <>
+
+    <LoadingRegion pending={loading} blocked={!ready} error={loadError} retry={() => setRetry(retry + 1)}>{data && <>
       <AvailabilityTable data={data} selected={selected} />
       <p className="availability-ratio"><strong>POT disponibili: {fmt(data.pot.enabled)} / {fmt(data.pot.total)} ore · {fmt(data.pot.percentage)}{data.pot.percentage === null ? "" : "%"}</strong><span>Riferimento atteso: {data.pot.reference}%</span></p>
       <p className="stats-method">POT + ALF + PE abilitati / totale in orario nella settimana {data.start} — {data.end}. Ore disabilitate incluse nel totale; DI.S e recuperi esclusi. {data.pot.total === 0 && "Nessuna ora POT/ALF/PE nella sede selezionata."}</p>
       {data.unknown.hours > 0 && <p className="stats-method">{fmt(data.unknown.hours)} ore senza sede verificabile, di cui {fmt(data.unknown.pot)} POT/ALF/PE: incluse solo in Entrambi.</p>}
-    </>}
+    </>}</LoadingRegion>
     <p className="stats-method">Attiva o disattiva le categorie da includere nella tabella. Potenziamenti disponibili: attività abilitate nell’orario. Recuperi permesso: ore favorevoli con debito ancora recuperabile alla data. A pagamento: disponibilità a pagamento compatibili con la sede. Ogni docente conta una volta per cella, anche in più categorie. Le sedi incerte sono indicate come da verificare. I recuperi sono opportunità alternative: la stessa ora da recuperare può apparire in più celle e non va sommata.</p>
   </section>;
 }

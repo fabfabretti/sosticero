@@ -1,3 +1,4 @@
+import { Loading, paintLoading } from './Loading';
 import { useEffect, useRef, useState } from 'react';
 import type { Data } from './types';
 import { projectExport, type CampusChoice } from './substitutionExport';
@@ -27,6 +28,8 @@ export function SubstitutionExport({ data, day, initialChoice, disabled, special
     setResult(undefined);
     const snapshot = data;
     try {
+      await paintLoading();
+      if (latest.current !== snapshot || unavailable.current) return;
       const content = projectExport(snapshot, day, choice, specialLabel);
       if (latest.current !== snapshot || unavailable.current) return;
       const pdf = generateSubstitutionPdf(content);
@@ -43,11 +46,11 @@ export function SubstitutionExport({ data, day, initialChoice, disabled, special
         <option value="succursale">Separata</option>
         <option value="both">Entrambe (un PDF, fogli separati)</option>
       </select></label>
-      <button className="ui-button ui-button-primary" type="button" disabled={disabled || !data || !choice || generating} onClick={() => void generate()}>{generating ? 'Generazione…' : 'Genera PDF'}</button>
+      <button className="ui-button ui-button-primary" type="button" disabled={disabled || !data || !choice || generating} onClick={() => void generate()}>{generating ? <Loading label="Generazione…" /> : 'Genera PDF'}</button>
     </div>
-    {generating && <p role="status">Preparazione dei fogli…</p>}
+
     {error && <p className="ui-notice ui-notice-error" role="alert">{error}</p>}
-    {result && <div className="export-result">
+    {result && !disabled && <div className="export-result">
       <p role="status">PDF pronto.</p>
       {result.warnings.map(w => <p role="alert" key={w}>{w}</p>)}
       <div className="export-controls">

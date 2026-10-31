@@ -83,3 +83,16 @@ test('all information uses native click toggling, anchored positioning and Escap
   assert.ok(closed && focused);
   c.unmount();
 });
+
+test('attachment preparation blocks the parent, ignores superseded reads and recovers after failure', async () => {
+  const c = components(); let value; const pending = [];
+  const props = { onChange: next => {value=next;}, onPendingChange: next => pending.push(next) };
+  const paste = () => c.render('AttachmentField', props).find(n=>n.props.onPaste).props.onPaste({preventDefault(){},clipboardData:{items:[{kind:'file',type:'image/png',getAsFile:()=>({type:'image/png',size:10})}]}});
+  await paste(); await paste();
+  c.readers[0].result='data:image/png;base64,OLD'; c.readers[0].onload(); assert.equal(value,undefined);
+  assert.equal(pending.at(-1),true);
+  c.readers[1].onerror(); assert.equal(pending.at(-1),true,'failed preparation cannot silently omit the attachment');
+  c.render('AttachmentField',props).find(n=>n.type==='button').props.onClick(); assert.equal(pending.at(-1),false);assert.equal(value,null);
+  await paste();c.readers[2].result='data:image/png;base64,NEW';c.readers[2].onload();assert.equal(value.data,'NEW');assert.equal(pending.at(-1),false);
+  c.unmount();
+});

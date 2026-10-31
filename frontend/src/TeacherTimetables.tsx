@@ -1,3 +1,4 @@
+import { Loading, LoadingRegion, paintLoading } from './Loading';
 import { useQuietRefresh } from './useQuietRefresh';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { buildTeacherTimetables, norm, teacherSearchText, DAYS, HOURS } from './timetables';
@@ -76,7 +77,7 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
   }, [draft?.teacher, nameDraft?.teacher]);
   const dirty = !!draft || !!nameDraft;
   const endpoint = (day: string) => 'orari?' + new URLSearchParams({ day });
-  const { refresh: quietRefresh, invalidate: invalidateRefresh } = useQuietRefresh(
+  const { refresh: quietRefresh, invalidate: invalidateRefresh, loading, ready, loadError } = useQuietRefresh(
     () => api<Orari>(endpoint(viewDay)),
     next => setData(old => JSON.stringify(old) === JSON.stringify(next) && old?.generation === next.generation ? old : next),
     dirty || busy || !!classEdit || !!impact || !!deletion || !!drag,
@@ -119,27 +120,27 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
   const name = (id: string) => data?.dataset.teachers[id]?.name || id;
   const discard = () => { rememberTimetable(draft?.teacher || nameDraft?.teacher); setClassEdit(undefined); request.current++; baseline.current = undefined; setDraft(undefined); setNameDraft(undefined); setImpact(undefined); setDeletion(undefined); setDrag(undefined); setError(''); };
   const beginName = (teacher: string) => {
-    if (!data || busy || (dirty && !window.confirm('Scartare la bozza corrente?'))) return;
+    if (!data || !ready || data.day !== viewDay || busy || (dirty && !window.confirm('Scartare la bozza corrente?'))) return;
     discard(); setNameStatus('');
     rememberTimetable(teacher);
     const previous = data.dataset.teachers[teacher].nameOverride || null;
     setNameDraft({ _generation: data.generation, teacher, previous, name: previous?.name || '', originalName: previous?.originalName || '' });
   };
   const saveName = async (remove = false) => {
-    if (!nameDraft || busy) return;
+    if (!nameDraft || busy || !ready) return;
     setBusy(true); setError(''); setNameStatus('');
     try {
       invalidateRefresh();
       await api('orari/name', { _generation: nameDraft._generation, teacher: nameDraft.teacher, previous: nameDraft.previous,
         value: remove ? null : { name: nameDraft.name, originalName: nameDraft.originalName } });
-      setData(await api<Orari>(endpoint(viewDay)));
       rememberTimetable(nameDraft.teacher); setNameDraft(undefined);
       setNameStatus(remove ? 'Nome importato ripristinato.' : 'Nome aggiornato.');
+      try { await quietRefresh(); } catch { setError('Nome salvato. Impossibile aggiornare i dati: usa Riprova.'); }
     } catch (e) { setError(String(e)); }
     finally { setBusy(false); }
   };
   const begin = (teacher: string) => {
-    if (!data || busy || (dirty && !window.confirm('Scartare la bozza corrente?'))) return;
+    if (!data || !ready || data.day !== viewDay || busy || (dirty && !window.confirm('Scartare la bozza corrente?'))) return;
     rememberTimetable(teacher);
     setClassEdit(undefined);
     setNameDraft(undefined); setNameStatus('');
@@ -151,7 +152,7 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
   };
   const change = (values: Partial<Draft>) => { setDraft(d => d && ({ ...d, ...values })); setImpact(undefined); setError(''); };
   const startAt = async (start: string) => {
-    if (!draft || !start || start === draft.start) return;
+    if (!draft || busy || !ready || !start || start === draft.start) return;
     const changed = draft.reset !== baseline.current?.reset || draft.end !== baseline.current?.end || JSON.stringify(draft.cells) !== JSON.stringify(baseline.current?.cells);
     if (changed && !window.confirm('Scartare le modifiche non salvate e cambiare la decorrenza?')) return;
     setBusy(true); setError('');
@@ -188,10 +189,11 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
     if (!draft) return;
     invalidateRefresh();
     await api('orari/override', { ...draft, end: draft.end || null, token: result.token });
-    const updated = await api<Orari>(endpoint(viewDay)); setData(updated); discard();
+    discard();
+    try { await quietRefresh(); } catch { setError('Salvato. Impossibile aggiornare i dati: usa Riprova.'); }
   };
   const save = async (confirmed?: Impact) => {
-    if (!draft) return;
+    if (!draft || busy || !ready) return;
     const n = ++request.current;
     setBusy(true); setError(''); setImpact(undefined);
     try {
@@ -203,7 +205,7 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
     finally { setBusy(false); }
   };
   const remove = async (record: Override, confirmed?: Deletion) => {
-    if (!data || busy || (!confirmed && !window.confirm(`${dirty ? 'Scartare la bozza corrente ed eliminare' : 'Eliminare'} la modifica dal ${dateLabel(record.start)} e tutte le sue revisioni?`))) return;
+    if (!data || !ready || data.day !== viewDay || busy || (!confirmed && !window.confirm(`${dirty ? 'Scartare la bozza corrente ed eliminare' : 'Eliminare'} la modifica dal ${dateLabel(record.start)} e tutte le sue revisioni?`))) return;
     if (!confirmed && dirty) discard();
     const n = ++request.current;
     const basis = confirmed?.basis || data.basis;
@@ -214,8 +216,8 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
       if (n !== request.current) return;
       if (!confirmed && result.days.some(d => d.issues.length > 0)) { setDeletion({ record, basis, impact: result }); return; }
       await api('orari/override', { ...body, token: result.token });
-      const updated = await api<Orari>(endpoint(viewDay));
-      if (n === request.current) { setData(updated); setDeletion(undefined); }
+      setDeletion(undefined);
+      try { await quietRefresh(); } catch { setError('Eliminato. Impossibile aggiornare i dati: usa Riprova.'); }
     } catch (e) { if (n === request.current) setError(String(e)); }
     finally { setBusy(false); }
   };
@@ -230,20 +232,20 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
   const dragged = drag && draft?.cells[drag.slot];
   return <section className="ui-page orari" aria-labelledby="orari-title">
     <h2 className="ui-title" id="orari-title">Orari</h2>
-    <p className="sub">{data ? data.effective ? `Orario dal ${dateLabel(data.effective)}` : 'Orario attuale' : 'Caricamento…'}</p>
+    <p className="sub">{data ? data.effective ? `Orario dal ${dateLabel(data.effective)}` : 'Orario attuale' : ''}</p>
     <div className="ui-surface orari-toolbar">
       <label className="orari-filter">Cerca docente<input type="search" aria-label="Cerca docente" value={query} onChange={e => setQuery(e.target.value)} /></label>
       <label>Orario al<input type="date" value={viewDay} disabled={busy} onChange={e => {
         if (!e.target.value || (dirty && !window.confirm('Scartare la bozza e cambiare data?'))) return;
-        discard(); setData(undefined); setViewDay(e.target.value);
+        discard(); setViewDay(e.target.value);
       }} /></label>
-      <button type="button" className="ui-button" disabled={!data || data.day !== viewDay || dirty || busy || exporting || !grids.length} onClick={() => {
-        if (!data || data.day !== viewDay || dirty || busy || exporting) return;
+      <button type="button" className="ui-button" disabled={!data || data.day !== viewDay || dirty || busy || exporting || !grids.length} onClick={async () => {
+        if (!ready || !data || data.day !== viewDay || dirty || busy || exporting) return;
         setExporting(true); setError('');
-        try { generateTimetablePdf(projectTimetableExport(data.dataset), data.day, data.effective).save(`orari-${data.day}.pdf`); }
+        try { await paintLoading(); generateTimetablePdf(projectTimetableExport(data.dataset), data.day, data.effective).save(`orari-${data.day}.pdf`); }
         catch (e) { setError(`Impossibile generare il PDF: ${e instanceof Error ? e.message : String(e)}`); }
         finally { setExporting(false); }
-      }}>{exporting ? 'Generazione…' : 'Scarica PDF completo'}</button>
+      }}>{exporting ? <Loading label="Generazione…" /> : 'Scarica PDF completo'}</button>
       <span className="sub">Salva o annulla le modifiche prima di esportare.</span>
     </div>
     <div className="orari-legend" aria-label="Legenda sedi">
@@ -253,6 +255,8 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
     </div>
     {error && <p className="ui-notice ui-notice-error" role="alert">{error}</p>}
     {nameStatus && <p className="ui-notice" role="status">{nameStatus}</p>}
+    {busy && <Loading label="Elaborazione…" />}
+    <LoadingRegion pending={loading} blocked={!ready || busy || exporting} error={loadError} retry={() => void quietRefresh().catch(() => {})}>
     {data && !filtered.length && <p>Nessun docente trovato.</p>}
     <div className="orari-grids">{filtered.map(g => {
       const editing = draft?.teacher === g.id;
@@ -276,19 +280,19 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
           </div>
           <p className="sub">Cambia solo il nome, anche nelle giornate passate. Permessi e recuperi restano sullo stesso conto.</p>
           <div className="orari-name-actions">
-            <button className="ui-button ui-button-primary" disabled={busy || !nameDraft.name.trim() || !nameDraft.originalName.trim()}>{busy ? 'Salvataggio…' : 'Salva nome'}</button>
+            <button className="ui-button ui-button-primary" disabled={busy || !nameDraft.name.trim() || !nameDraft.originalName.trim()}>{busy ? <Loading label="Salvataggio…" /> : 'Salva nome'}</button>
             {nameDraft.previous && <button type="button" className="ui-button" disabled={busy} onClick={() => void saveName(true)}>Rimuovi nome personalizzato</button>}
             <button type="button" className="ui-button" disabled={busy} onClick={() => { rememberTimetable(g.id); setNameDraft(undefined); setError(''); }}>Annulla</button>
           </div>
         </form>}
         {g.cdcName && <p className="orari-cdc" title={`${g.cdc ? g.cdc + ' · ' : ''}${g.cdcName}`}>{g.cdc ? `${g.cdc} · ` : ''}{g.cdcName}</p>}
-        {!!records.length && <details className="orari-history" open={!!upcoming || editing}><summary>Modifiche salvate ({records.length})</summary>{records.map(r => <div className="orari-history-row" key={r.id}><button disabled={busy || editing} onClick={() => { if (r.start === viewDay) { begin(g.id); } else { discard(); setData(undefined); setViewDay(r.start); } }}>{r.reset ? 'Ripristino' : 'Modifica'} dal {dateLabel(r.start)}{r.end ? ` al ${dateLabel(r.end)}` : ''}</button><button className="ui-button" disabled={busy} aria-label={`Elimina modifica di ${g.name} dal ${dateLabel(r.start)}`} onClick={() => remove(r)}>Elimina</button></div>)}</details>}
+        {!!records.length && <details className="orari-history" open={!!upcoming || editing}><summary>Modifiche salvate ({records.length})</summary>{records.map(r => <div className="orari-history-row" key={r.id}><button disabled={busy || editing} onClick={() => { if (r.start === viewDay) { begin(g.id); } else { discard(); setViewDay(r.start); } }}>{r.reset ? 'Ripristino' : 'Modifica'} dal {dateLabel(r.start)}{r.end ? ` al ${dateLabel(r.end)}` : ''}</button><button className="ui-button" disabled={busy} aria-label={`Elimina modifica di ${g.name} dal ${dateLabel(r.start)}`} onClick={() => remove(r)}>Elimina</button></div>)}</details>}
         {deletion?.record.teacher === g.id && <div className="orari-impact" aria-label="Conferma eliminazione"><p>Eliminare la modifica dal {dateLabel(deletion.record.start)}? {deletion.impact.days.reduce((sum, d) => sum + d.issues.length, 0)} assegnazioni da verificare. Le assegnazioni restano conservate.</p><details><summary>Mostra dettagli</summary>{deletion.impact.days.filter(d => d.issues.length > 0).map(d => <div key={d.day}><p>{dateLabel(d.day)}</p>{d.issues.map(i => <p key={i.key}>{i.key}: {i.message}</p>)}</div>)}</details><button className="ui-button ui-button-primary" disabled={busy} onClick={() => remove(deletion.record, deletion)}>Conferma ed elimina</button> <button className="ui-button" disabled={busy} onClick={() => setDeletion(undefined)}>Annulla</button></div>}
         {editing && draft && <>
           <div className="orari-edit-toolbar" role="group" aria-label={`Modifica orario di ${g.name}`}>
             <label>Dal<input type="date" required value={draft.start} disabled={busy} onChange={e => startAt(e.target.value)} /></label>
             <label>Al<input aria-label="Fino al (facoltativo)" type="date" min={draft.start} value={draft.end} disabled={busy || draft.reset} onChange={e => change({ end: e.target.value })} /></label>
-            <button className="ui-button ui-button-primary" disabled={busy || (!!draft.end && draft.end < draft.start)} onClick={() => save()}>{busy ? 'Salvataggio…' : 'Salva'}</button>
+            <button className="ui-button ui-button-primary" disabled={busy || (!!draft.end && draft.end < draft.start)} onClick={() => save()}>{busy ? <Loading label="Salvataggio…" /> : 'Salva'}</button>
             <button className="ui-button" disabled={busy} onClick={() => { if (data) change({ reset: true, end: '', cells: week(data.imported, g.id) }); }}>Ripristina</button>
             <button className="ui-button" disabled={busy} onClick={discard}>Annulla</button>
           </div>
@@ -352,6 +356,7 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
         })}</tr>)}</tbody></table>
       </div>;
     })}</div>
+    </LoadingRegion>
     {classEdit && editedHour && <dialog ref={activityDialog} className="orari-activity-editor" aria-labelledby="activity-editor-title" onCancel={closeActivityEditor}>
       <div className="orari-activity-header"><div><h3 id="activity-editor-title">Modifica {editedActivity}</h3><p className="sub">{name(classEdit.teacher)} · {DAY_LABELS[classEdit.slot.split('|')[0]]} {classEdit.slot.split('|')[1]}ª ora</p></div><button type="button" className="x" aria-label="Chiudi editor attività" onClick={closeActivityEditor}>×</button></div>
       <label className="orari-class-label" htmlFor="activity-class">Classe</label>

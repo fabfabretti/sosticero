@@ -1,3 +1,4 @@
+import { Loading, LoadingRegion } from './Loading';
 import { PaidHours } from "./PaidHours";
 import { BuildWarning, builtAt } from './BuildInfo';
 import { PaidActions } from "./PaidActions";
@@ -137,6 +138,7 @@ function Permessi() {
   const requestedOn = parseItalianDate(requestedInput);
   const invalidDates = !day || (!!requestedInput && !requestedOn);
   const [attachment, setAttachment] = useState<ImageDraft>();
+  const [attachmentPending, setAttachmentPending] = useState(false);
   const [note, setNote] = useState("");
   const [newClassification, setNewClassification] = useState<AbsenceKind>(null);
   const [editClassification, setEditClassification] = useState<AbsenceKind>(null);
@@ -150,7 +152,7 @@ function Permessi() {
   const [busy, setBusy] = useState(false);
   const editBaseline = useRef<Baseline | undefined>(undefined);
   const [conflict, setConflict] = useState(false);
-  const { refresh, invalidate } = useQuietRefresh(
+  const { refresh, invalidate, loading: refreshing, ready, loadError } = useQuietRefresh(
     () => api<NonNullable<typeof data>>("permessi"),
     next => setData(old => JSON.stringify(old) === JSON.stringify(next) ? old : next),
     busy || !!query || !!teacher || !!note || !!attachment || !!manualHours || !!original || selected.length > 0 || dayInput !== italianDate(localDate(new Date())) || requestedInput !== italianDate(localDate(new Date())), "permessi",
@@ -190,14 +192,14 @@ function Permessi() {
     setSelected([]);
   };
   const save = async (body: Parameters<typeof preconditions>[2], endpoint = "permessi") => {
-    if (conflict) return;
+    if (conflict || busy || !ready || attachmentPending) return;
     invalidate();
     setBusy(true);
     setError("");
     try {
       await api(endpoint, { ...body, expected: preconditions((original || editingManual) ? editBaseline.current : data?.concurrency, endpoint, body) });
-      await refresh();
       reset();
+      try { await refresh(); } catch { setError("Salvato. Impossibile aggiornare i dati: usa Riprova."); }
     } catch (e) {
       setError(String(e));
       if (e instanceof ApiError && e.status === 409) {
@@ -218,7 +220,8 @@ function Permessi() {
     <svg className="warning-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 22 21H2Z" fill="none" stroke="currentColor" strokeWidth="2"/><path d="M12 9v5m0 3v1" stroke="currentColor" strokeWidth="2"/></svg>
   </HourHelp>;
   return <div className="app ui-page permessi">
-    <aside>
+    <div className="loading-permit-status"><LoadingRegion pending={refreshing} blocked={false} error={loadError ? (error || loadError) : undefined} retry={() => void refresh().catch(() => {})} />{busy && <Loading label="Salvataggio…" />}</div>
+    <aside inert={!ready || busy} className={!ready || busy ? "ui-loading-content" : undefined}>
     {conflict && <div role="alert"><p>Il record è cambiato. I valori inseriti sono rimasti nel modulo.</p><button className="ui-button" onClick={async () => { try { await refresh(); reset(); setConflict(false); setError(""); } catch (e) { setError(String(e)); } }}>Ricarica valori salvati</button></div>}
     <form className="permit-form" onSubmit={e => { e.preventDefault(); if (manual) { if (teacher && Number.isInteger(Number(manualHours)) && Number(manualHours) > 0) void save({ id: teacher, hours: Number(manualHours), note, editing: editingManual }, "manual-permits"); return; } if (invalidDates || !teacher || !selected.length) return; void save({ day, id: teacher, requested_on: requestedOn || null, note, attachment, classification: original ? editClassification : newClassification, hours: selected, ...(original ? { original_day: original.day, original_id: original.id } : {}) }); }}>
       <h2>{manual ? (editingManual ? "Modifica saldo manuale" : "Aggiungi saldo manuale") : original ? "Modifica permesso" : "Aggiungi permesso"}</h2>
@@ -248,7 +251,7 @@ function Permessi() {
           <p className="sub">Per ore pregresse senza registrazione giornaliera. Nessuna assenza in Supplenze e nessuna scadenza automatica. I recuperi RP scalano questo saldo.</p>
           {editingManual && <p className="sub">Il totale include le ore già recuperate: {data?.manualPermits?.[teacher]?.recovered ?? 0}.</p>}
         </> : <>
-        <AttachmentField key={`${teacher}|${dayInput}|${manual}`} value={attachment} saved={original ? data?.permitAttachments?.[original.day]?.[original.id] : undefined} onChange={setAttachment} disabled={busy} />
+        <AttachmentField key={`${teacher}|${dayInput}|${manual}`} value={attachment} onPendingChange={setAttachmentPending} saved={original ? data?.permitAttachments?.[original.day]?.[original.id] : undefined} onChange={setAttachment} disabled={busy} />
         <ClassificationChoices value={original ? editClassification : newClassification} onChange={original ? setEditClassification : setNewClassification} />
         <label>Data permesso<input required aria-label="Data permesso" type="text" inputMode="numeric" placeholder="gg/mm/aaaa" pattern="[0-9]{2}/[0-9]{2}/[0-9]{4}" value={dayInput} aria-invalid={!!dayInput && !day} onChange={e => setDayInput(e.target.value)} /></label>
         <label>Data richiesta (facoltativa)<input aria-label="Data richiesta" type="text" inputMode="numeric" placeholder="gg/mm/aaaa" pattern="[0-9]{2}/[0-9]{2}/[0-9]{4}" value={requestedInput} aria-invalid={!!requestedInput && !requestedOn} onChange={e => setRequestedInput(e.target.value)} /></label>
@@ -259,16 +262,16 @@ function Permessi() {
 
         <p className="sub">Massimo giornaliero: {maximum} ore · Selezionate: {selected.length}. Sono comprese tutte le attività in orario, inclusi POT e DIS.</p>
         </>}
-        <button className="ui-button ui-button-primary permit-save" type="submit" disabled={conflict || !teacher || (manual ? !Number.isInteger(Number(manualHours)) || Number(manualHours) < 1 : invalidDates || !selected.length)}>{busy ? "Salvataggio…" : manual ? "Salva saldo manuale" : "Salva permesso"}</button>
+        <button className="ui-button ui-button-primary permit-save" type="submit" disabled={attachmentPending || conflict || !teacher || (manual ? !Number.isInteger(Number(manualHours)) || Number(manualHours) < 1 : invalidDates || !selected.length)}>{busy ? <Loading label="Salvataggio…" /> : manual ? "Salva saldo manuale" : "Salva permesso"}</button>
         {(original || editingManual) && <button className="ui-button" type="button" onClick={reset}>Annulla modifica</button>}
       </fieldset>
       <div className="permit-feedback" aria-live="polite">{!manual && invalidDates && <p role="alert">Inserisci date valide nel formato gg/mm/aaaa.</p>}{(error || (!manual && overLimit)) && <p role="alert">{error || `Superato il massimo giornaliero di ${maximum} ore di permesso.`}</p>}</div>
     </form>
     </aside>
-    <main>
+    <main inert={!ready || busy} className={!ready || busy ? "ui-loading-content" : undefined}>
     <h1>Permessi</h1>
     <p className="sub">Per i permessi con data, recupero entro un mese dal permesso, scadenza inclusa. Le assegnazioni RP future riservano già le ore e sono elencate per data.</p>
-    {!data && !error && <p role="status">Caricamento…</p>}
+
     <div className="ui-surface permit-table"><table className="ui-table"><thead><tr><th>Docente</th><th>Sede lezioni</th><th>Inserito da</th>{([ ["date", "Data permesso"], ["requested", "Data richiesta"] ] as const).map(([field, title]) => <th key={field} aria-sort={sort.field === field ? (sort.ascending ? "ascending" : "descending") : "none"}><button className="lk" onClick={() => setSort({ field, ascending: sort.field === field ? !sort.ascending : false })}>{title}{sort.field === field ? (sort.ascending ? " ↑" : " ↓") : " ↕"}</button></th>)}{["Ore di permesso", "Dettaglio recuperi", "Ore da recuperare", "Azioni"].map(title => <th key={title}>{title}</th>)}</tr></thead>
       <tbody>{records.map(r => <tr key={r.date + r.id} className={(r.recovery?.remaining ?? r.periods.length) === 0 ? "permit-complete" : "permit-outstanding"}>
         <td><span className="permit-name">{data?.dataset.teachers[r.id]?.name || r.id}</span><RecordInfo text={data?.permitNotes?.[r.date]?.[r.id]} links={[{ label: "Apri allegato permesso", id: data?.permitAttachments?.[r.date]?.[r.id] }]} /></td>
@@ -306,26 +309,21 @@ function Settings() {
   const [connectionSummary, setConnectionSummary] = useState('Caricamento…');
   const [backupSummary, setBackupSummary] = useState('Caricamento…');
   const [backupRevision, setBackupRevision] = useState(0);
+  const [archiveBusy, setArchiveBusy] = useState(false);
+  const [backupBusy, setBackupBusy] = useState(false);
+  const archiveRunning = useRef(false);
   const [archiveError, setArchiveError] = useState('');
   const [archiveMessage, setArchiveMessage] = useState('');
   const [theme, setTheme] = useState(() => document.documentElement.dataset.theme || (window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
   const [data, setData] = useState<Data>(),
     [error, setError] = useState("");
-  const request = useRef(0);
-  const refresh = async () => {
-    const n = ++request.current;
-    try {
-      const d = await api<Data>("day/" + localDate(new Date()));
-      if (n === request.current) { setData(d); setError(''); }
-    } catch (e) {
-      setError(String(e));
-    }
-  };
-  useEffect(() => {
-    void refresh();
-  }, []);
+  const { refresh, loading: settingsLoading, ready: settingsReady, loadError: settingsError } = useQuietRefresh(
+    () => api<Data>("day/" + localDate(new Date())), setData, archiveBusy || backupBusy, 'settings-overview', true,
+  );
+  useEffect(() => { void refresh().catch(() => {}); }, []);
   const upload = async (file: File | undefined, target: string) => {
-    if (!file) return;
+    if (!file || archiveRunning.current || backupBusy || !settingsReady) return;
+    archiveRunning.current = true; setArchiveBusy(true);
     setArchiveError(''); setArchiveMessage('');
     try {
       let content = JSON.parse(await file.text());
@@ -336,13 +334,15 @@ function Settings() {
         if (!window.confirm(`Ripristinare l’archivio ${file.name}? I dati attuali verranno sostituiti. ${review.length} modifiche manuali richiedono verifica${review.length ? ': ' + [...new Set(review.map(r => r.teacher))].join(', ') : ''}. Le modifiche incompatibili useranno le ore importate fino alla verifica.`)) return;
       }
       await api(target, content);
-      await refresh();
       setBackupRevision(value => value + 1); setArchiveMessage('Archivio ripristinato.');
+      try { await refresh(); } catch { setArchiveError('Archivio ripristinato. Impossibile aggiornare i dati: usa Riprova.'); }
     } catch (e) {
       setArchiveError(String(e));
-    }
+    } finally { archiveRunning.current = false; setArchiveBusy(false); }
   };
   const exportData = async () => {
+    if (archiveRunning.current || backupBusy || !settingsReady) return;
+    archiveRunning.current = true; setArchiveBusy(true);
     setArchiveError(''); setArchiveMessage('');
     try {
       const b = await api("export");
@@ -356,15 +356,17 @@ function Settings() {
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (e) {
       setArchiveError(String(e));
-    }
+    } finally { archiveRunning.current = false; setArchiveBusy(false); }
   };
   return <section className="ui-page settings">
     <h1>Settings</h1>
     <p className="settings-intro settings-muted">Configurazione, collegamenti e gestione dei dati.</p>
     {readOnly && <p className="ui-notice" role="status">Configurazione condivisa: modifiche riservate alla sede Centrale.</p>}
-    <fieldset className="settings-permissions" disabled={readOnly}>
+    <LoadingRegion pending={settingsLoading} blocked={false} error={settingsError} retry={() => void refresh().catch(() => {})} />
+    {(archiveBusy || backupBusy) && <Loading label="Elaborazione dati…" />}
+    <fieldset className="settings-permissions" disabled={readOnly || archiveBusy || backupBusy || !settingsReady}>
     <SettingsGroup title="Orari e ricevimenti" description="Importa e verifica gli impegni settimanali." status={[data ? `${Object.keys(data.dataset.teachers).length} docenti · ${data.dataset.classes.length} classi` : error ? 'Orario non disponibile' : 'Caricamento…', receptionSummary].join(' · ')}>
-      <TimetableImport api={api} onImported={() => { void refresh(); setBackupRevision(value => value + 1); }} />
+      <TimetableImport api={api} onImported={() => { void refresh().catch(() => {}); setBackupRevision(value => value + 1); }} />
       {error && <p className="ui-notice ui-notice-error" role="alert">{error}</p>}
       {!!data?.dataset.warnings.length && <details className="settings-disclosure"><summary>{data.dataset.warnings.length} anomalie da verificare</summary><pre className="settings-pre">{JSON.stringify(data.dataset.warnings, null, 2)}</pre></details>}
       <ReceptionImport api={api} onSummary={setReceptionSummary} revision={backupRevision} onImported={() => setBackupRevision(value => value + 1)} />
@@ -385,7 +387,7 @@ function Settings() {
         {archiveMessage && <p className="ui-notice" role="status">{archiveMessage}</p>}
         {archiveError && <p className="ui-notice ui-notice-error" role="alert">{archiveError}</p>}
       </section>
-      <BackupSection onSummary={setBackupSummary} revision={backupRevision} onRestored={() => { void refresh(); setBackupRevision(value => value + 1); }} />
+      <BackupSection onPendingChange={setBackupBusy} onSummary={setBackupSummary} revision={backupRevision} onRestored={() => { void refresh().catch(() => {}); setBackupRevision(value => value + 1); }} />
     </SettingsGroup>
     </fieldset>
     <SettingsGroup title="Aspetto" description="Scegli il tema dell’interfaccia." status={theme === 'dark' ? 'Scuro' : 'Chiaro'}>
@@ -495,6 +497,7 @@ function Supplenze() {
     return () => { document.removeEventListener("keydown", key); entryTrigger.current?.focus(); };
   }, [entryOpen]);
   const [entryAttachment, setEntryAttachment] = useState<ImageDraft>();
+  const [attachmentPending, setAttachmentPending] = useState(false);
   const [editAttachment, setEditAttachment] = useState<ImageDraft>();
   const [editingDis, setEditingDis] = useState<string>();
   const [disTeacher, setDisTeacher] = useState<string>();
@@ -532,7 +535,7 @@ function Supplenze() {
   useEffect(() => { editBaseline.current = data?.concurrency; }, [editingKind, editingDis]);
   const [conflict, setConflict] = useState(false);
   const [conflictSummary, setConflictSummary] = useState("");
-  const { refresh, invalidate } = useQuietRefresh(
+  const { refresh, invalidate, loading: refreshing, ready, loadError } = useQuietRefresh(
     () => api<Data>("day/" + day),
     next => { setData(old => JSON.stringify(old) === JSON.stringify(next) ? old : next); setLoadedDay(day); },
     entryOpen || busy || loadingCandidates || !!open || !!consultation || !!editingKind || !!editingDis || !!disTeacher || !!query || !!chosen || !!entryNote || !!entryAttachment,
@@ -546,6 +549,7 @@ function Supplenze() {
     clearEntry();
     void refresh().catch(e => setError(String(e)));
     setConflict(false);
+    setError("");
     setLoadingCandidates(false);
     setEditingKind(undefined);
     setEditingDis(undefined);
@@ -556,7 +560,7 @@ function Supplenze() {
     setEntryNote("");
   }, [day]);
   const mutate = async (url: string, body: Parameters<typeof preconditions>[2]) => {
-    if (conflict) return false;
+    if (conflict || busy || !ready || loadedDay !== day || attachmentPending) return false;
     invalidate();
     ++candidateRequest.current;
     setLoadingCandidates(false);
@@ -568,7 +572,7 @@ function Supplenze() {
       const editing = url === "entries" && (body.id === editingKind || body.id === editingDis);
       const saved = await api<{ concurrency: Baseline }>(url, { ...body, expected: preconditions(editing ? editBaseline.current : data?.concurrency, url, body) });
       if (editing) editBaseline.current = saved.concurrency;
-      await refresh();
+      try { await refresh(); } catch { setError("Salvato. Impossibile aggiornare i dati: usa Riprova."); }
       return true;
     } catch (e) {
       setError(String(e));
@@ -599,7 +603,7 @@ function Supplenze() {
     }
   };
   const choose = async (r: Row) => {
-    if (busy) return;
+    if (busy || !ready || loadedDay !== day) return;
     setConsultation(undefined);
     closeEntry();
     const n = ++candidateRequest.current;
@@ -620,7 +624,7 @@ function Supplenze() {
     } finally { if (n === candidateRequest.current) setLoadingCandidates(false); }
   };
   const consult = async (h: number, trigger: HTMLButtonElement) => {
-    if (busy || loadingCandidates) return;
+    if (busy || loadingCandidates || !ready || loadedDay !== day) return;
     consultationTrigger.current = trigger;
     closeEntry();
     setOpen(undefined);
@@ -642,7 +646,8 @@ function Supplenze() {
     data?.dataset.teachers[id]?.name ||
     { DIR: "Dirigente", ENTRA: "Entra dopo", ESCE: "Esce prima", UNCOVERED: "Scoperta" }[id] ||
     id;
-  const entries = (g: "abs" | "cf" | "dis") => data?.state[g][day] || {};
+  const shownDay = ready ? day : loadedDay || day;
+  const entries = (g: "abs" | "cf" | "dis") => data?.state[g][shownDay] || {};
   const suggestions =
     query && !chosen && data
       ? [
@@ -794,8 +799,8 @@ function Supplenze() {
         {g === "abs" && editingKind === id && Object.hasOwn(entries(g), id) && <div className="absence-editor">
           <ClassificationChoices value={data?.state.absenceKinds?.[day]?.[id] || null} onChange={value => void mutate("entries", { day, group: "abs", id, hours: hs, classification: value })} />
           <label>Note (facoltative)<textarea aria-label={"Note assenza di " + name(id)} value={absenceNote} disabled={busy} onChange={e => setAbsenceNote(e.target.value)} /></label>
-          <AttachmentField key={`abs|${day}|${id}`} value={editAttachment} saved={data?.state.absenceAttachments?.[day]?.[id]} onChange={setEditAttachment} disabled={busy} />
-          <button className="ui-button" disabled={busy} onClick={async () => { if (await mutate("entries", { day, group: "abs", id, hours: hs, note: absenceNote, attachment: editAttachment })) { setEditAttachment(undefined); setEditingKind(undefined); } }}>Salva nota e allegato</button>
+          <AttachmentField key={`abs|${day}|${id}`} value={editAttachment} onPendingChange={setAttachmentPending} saved={data?.state.absenceAttachments?.[day]?.[id]} onChange={setEditAttachment} disabled={busy} />
+          <button className="ui-button" disabled={busy || attachmentPending} onClick={async () => { if (await mutate("entries", { day, group: "abs", id, hours: hs, note: absenceNote, attachment: editAttachment })) { setEditAttachment(undefined); setEditingKind(undefined); } }}>Salva nota e allegato</button>
           <button className="ui-button" onClick={() => { setEditingKind(undefined); setEditAttachment(undefined); }}>Annulla</button>
         </div>}
         </div>
@@ -921,8 +926,8 @@ function Supplenze() {
           )}
         </div>
         {editingDis === id && Object.hasOwn(manual, id) && <div className="absence-editor">
-          <AttachmentField key={`dis|${day}|${id}`} value={editAttachment} saved={data?.state.disAttachments?.[day]?.[id]} onChange={setEditAttachment} disabled={busy} />
-          <button className="ui-button" disabled={busy} onClick={async () => { if (await mutate("entries", { day, group: "dis", id, hours: hs, site: data?.state.disSites[day]?.[id], attachment: editAttachment })) { setEditAttachment(undefined); setEditingDis(undefined); } }}>Salva allegato</button>
+          <AttachmentField key={`dis|${day}|${id}`} value={editAttachment} onPendingChange={setAttachmentPending} saved={data?.state.disAttachments?.[day]?.[id]} onChange={setEditAttachment} disabled={busy} />
+          <button className="ui-button" disabled={busy || attachmentPending} onClick={async () => { if (await mutate("entries", { day, group: "dis", id, hours: hs, site: data?.state.disSites[day]?.[id], attachment: editAttachment })) { setEditAttachment(undefined); setEditingDis(undefined); } }}>Salva allegato</button>
           <button className="ui-button" onClick={() => { setEditingDis(undefined); setEditAttachment(undefined); }}>Annulla</button>
         </div>}</div>
       );
@@ -943,7 +948,7 @@ function Supplenze() {
     .filter(Boolean);
   return (
     <>
-      <div className="app ui-scope supplenze" aria-busy={busy} inert={busy || !!open || entryOpen}>
+      <div className="app ui-scope supplenze" aria-busy={busy || refreshing} inert={busy || !!open || entryOpen}>
         <aside>
           <div>
             <div className="cal-h">
@@ -1003,8 +1008,9 @@ function Supplenze() {
               })}
             </div>
           </div>
-          <div className="sidebar-content">
-          <button ref={entryTrigger} className="ui-button entry-trigger" onClick={() => { ++candidateRequest.current; setLoadingCandidates(false); setOpen(undefined); clearEntry(); setEntryOpen(true); }}>+ Aggiungi</button>
+          <LoadingRegion pending={refreshing} blocked={false} error={loadError ? (error || loadError) : undefined} retry={() => void refresh().catch(() => {})} />
+          <div inert={!ready || loadedDay !== day} className={"sidebar-content" + (!ready || loadedDay !== day ? " ui-loading-content" : "")}>
+          <button disabled={!ready || loadedDay !== day} ref={entryTrigger} className="ui-button entry-trigger" onClick={() => { ++candidateRequest.current; setLoadingCandidates(false); setOpen(undefined); clearEntry(); setEntryOpen(true); }}>+ Aggiungi</button>
           <div className="lists">
             {([["planned", "Assenze programmate"], ["trip", "In gita"], ["strike", "In sciopero"], [null, "Assenze non classificate"], ["last_minute", "Assenze last minute"]] as const).map(([value, label]) => {
               const ids = absentIds.filter(id => absenceKind(id) === value);
@@ -1017,6 +1023,7 @@ function Supplenze() {
           </div>
         </aside>
         <main>
+          <div inert={!ready || loadedDay !== day} className={!ready || loadedDay !== day ? "ui-loading-content" : undefined}>
           {!entryOpen && <>
           {error && (
             <p className="ui-notice ui-notice-error" role="alert">
@@ -1180,7 +1187,8 @@ function Supplenze() {
             A parità di priorità: insegna nella classe o la stessa CDC, meno ore oggi, meno ore totali.
             Le opzioni manuali e gli spostamenti richiedono verifica.
           </p>
-          <SubstitutionExport key={`${day}-${filter}`} initialChoice={filter === "centrale" || filter === "succursale" ? filter : "both"} data={data} day={day} disabled={busy || loadedDay !== day} specialLabel={key => entryExitCellLabel(key, data?.state.asg[day] || {})} />
+          <SubstitutionExport key={`${day}-${filter}`} initialChoice={filter === "centrale" || filter === "succursale" ? filter : "both"} data={data} day={day} disabled={busy || !ready || loadedDay !== day} specialLabel={key => entryExitCellLabel(key, data?.state.asg[day] || {})} />
+          </div>
         </main>
       </div>
       {entryOpen && <div className="entry-backdrop" onClick={e => { if (e.target === e.currentTarget) closeEntry(); }}>
@@ -1195,6 +1203,7 @@ function Supplenze() {
           )}
           {conflict && conflictSummary && <p className="ui-notice" role="status">{conflictSummary}</p>}
           {conflict && <button className="ui-button" onClick={async () => { try { await refresh(); setEditingKind(undefined); setEditingDis(undefined); setDisTeacher(undefined); setEditAttachment(undefined); setQuery(""); setChosen(undefined); setEntryNote(""); setEntryAttachment(undefined); setConflict(false); setError(""); } catch (e) { setError(String(e)); } }}>Ricarica valori salvati</button>}
+          {entryOpen && <LoadingRegion pending={refreshing} blocked={false} error={loadError} retry={() => void refresh().catch(() => {})} />}
           <form className="entry-form ui-form" onSubmit={e => { e.preventDefault(); void add(); }}>
             <label htmlFor="q">Cerca docente o classe</label>
             <div className="entry-search">
@@ -1251,7 +1260,7 @@ function Supplenze() {
                 </div>
               )}
             </div>
-            <button className="ui-button ui-button-primary entry-submit" type="submit" disabled={busy || conflict || duplicate || !target || (!wholeDay && !entryHours.length)}>{busy ? "…" : "Aggiungi"}</button>
+            <button className="ui-button ui-button-primary entry-submit" type="submit" disabled={attachmentPending || busy || !ready || conflict || duplicate || !target || (!wholeDay && !entryHours.length)}>{busy ? <Loading label="Salvataggio…" /> : "Aggiungi"}</button>
             </div>
             {duplicate && <p className="ui-notice" role="status">{target?.label}: già registrato per questa data.</p>}
             {entrySuccess && <p className="ui-notice" role="status">{entrySuccess}</p>}
@@ -1276,7 +1285,7 @@ function Supplenze() {
               <ClassificationChoices value={classification} onChange={setClassification} />
               <label className="entry-note">Note (facoltative)<textarea aria-label="Note nuova assenza" value={entryNote} disabled={busy} onChange={e => setEntryNote(e.target.value)} /></label>
             </>}
-            {target?.group !== "cf" && <AttachmentField key={`${day}|${kind}|${target?.id}`} value={entryAttachment} onChange={setEntryAttachment} disabled={busy} />}
+            {target?.group !== "cf" && <AttachmentField key={`${day}|${kind}|${target?.id}`} value={entryAttachment} onPendingChange={setAttachmentPending} onChange={setEntryAttachment} disabled={busy} />}
             {kind === "dis" && (
               <label className="dis-location">
                 Sede della disposizione
@@ -1289,7 +1298,7 @@ function Supplenze() {
           </form>
         </div>
       </div>}
-      {loadingCandidates && <p role="status">Caricamento disponibilità…</p>}
+      {(loadingCandidates || (busy && !entryOpen)) && <div className="ui-operation-status"><Loading label={loadingCandidates ? "Caricamento disponibilità…" : "Salvataggio…"} /></div>}
       {consultation && <CandidateDrawer open={consultation} cands={cands} busy={busy} name={name} readOnlyReason="Solo consultazione" returnFocus={consultationTrigger.current} onAssign={() => {}} onClose={() => { ++candidateRequest.current; setConsultation(undefined); setLoadingCandidates(false); }} />}
       {open && (
         <CandidateDrawer
@@ -1306,14 +1315,15 @@ function Supplenze() {
             setOpen(undefined);
           }}
           onAssign={async (value, exceptional, category) => {
-            if (!canAssign(open.sede)) return;
+            if (!canAssign(open.sede) || busy || !ready || loadedDay !== day) return;
             const selectedRow = open;
             invalidate();
             ++candidateRequest.current; setLoadingCandidates(false); setOpen(undefined);
             setBusy(true); setError("");
             try {
               await api("assignments", { day, key: selectedRow.k, value, exceptional, category, expected: preconditions(candidateBaseline.current, "assignments", { day, key: selectedRow.k }) });
-              ++candidateRequest.current; setLoadingCandidates(false); setOpen(undefined); await refresh();
+              ++candidateRequest.current; setLoadingCandidates(false); setOpen(undefined);
+              try { await refresh(); } catch { setError("Assegnazione salvata. Impossibile aggiornare i dati: usa Riprova."); }
             } catch (e) {
               setError(String(e));
               try {
@@ -1329,47 +1339,49 @@ function Supplenze() {
   );
 }
 
-function BackupSection({ onSummary, revision, onRestored }: { onSummary: (value: string) => void; revision: number; onRestored: () => void }) {
+function BackupSection({ onSummary, revision, onRestored, onPendingChange }: { onPendingChange: (pending: boolean) => void; onSummary: (value: string) => void; revision: number; onRestored: () => void }) {
   const backupGeneration = useRef<number | undefined>(undefined);
   const [backups, setBackups] = useState<{ filename: string; created_at: string; size: number }[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const loadBackups = async () => {
-    try { const values = await api<typeof backups & {generation:number}>('backups'); backupGeneration.current = values.generation; setBackups(values); setError(''); setLoaded(true); }
-    catch (e) { setError(String(e)); }
-  };
-  useQuietRefresh(() => api<typeof backups & {generation:number}>('backups'), values => { backupGeneration.current = values.generation; setBackups(values); setLoaded(true); }, loading, 'settings-backups');
-  useEffect(() => { void loadBackups(); }, [revision]);
+  const { refresh: loadBackups, loading: listing, ready: backupsReady, loadError } = useQuietRefresh(
+    () => api<typeof backups & { generation: number }>('backups'),
+    values => { backupGeneration.current = values.generation; setBackups(values); setLoaded(true); }, loading, 'settings-backups:' + revision,
+  );
+  useEffect(() => { void loadBackups().catch(() => {}); }, [revision]);
   useEffect(() => {
     onSummary(error ? 'Backup non disponibili' : !loaded ? 'Caricamento…' : backups.length ? `${backups.length} backup · ultimo ${new Date(backups[0].created_at).toLocaleDateString('it-IT')}` : 'Nessun backup');
   }, [backups, error, loaded, onSummary]);
   const run = async (filename?: string) => {
+    if (loading || !backupsReady) return;
     if (filename && !window.confirm(`Ripristinare il backup ${filename}? I dati attuali verranno sovrascritti. Questa operazione non è annullabile.`)) return;
-    setLoading(true); setError(''); setSuccess('');
+    setLoading(true); onPendingChange(true); setError(''); setSuccess('');
     try {
       await api(filename ? 'backups/restore' : 'backups', filename ? { filename, confirm: true, _generation: backupGeneration.current } : {});
       setSuccess(filename ? 'Backup ripristinato con successo.' : 'Backup creato con successo.');
-      await loadBackups();
       if (filename) onRestored();
+      try { await loadBackups(); } catch { setError('Operazione completata. Impossibile aggiornare i backup: usa Riprova.'); }
     } catch (e) { setError(String(e)); }
-    finally { setLoading(false); }
+    finally { setLoading(false); onPendingChange(false); }
   };
   const formatSize = (bytes: number) => bytes < 1024 ? `${bytes} B` : bytes < 1048576 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1048576).toFixed(2)} MB`;
   return <section className="settings-subsection" aria-label="Backup del database">
     <h2>Backup del database</h2>
     <p className="settings-muted">Copie complete del database. Il ripristino sostituisce i dati attuali.</p>
-    <div className="ui-actions"><button className="ui-button ui-button-primary" onClick={() => void run()} disabled={loading}>Crea backup manuale</button></div>
-    {loading && <p className="ui-notice" role="status">Operazione in corso…</p>}
+    <div className="ui-actions"><button className="ui-button ui-button-primary" onClick={() => void run()} disabled={loading || !backupsReady}>Crea backup manuale</button></div>
+    {loading && <Loading label="Elaborazione…" />}
     {error && <p className="ui-notice ui-notice-error" role="alert">{error}</p>}
     {success && <p className="ui-notice" role="status">{success}</p>}
-    {!loaded && !error ? <p className="settings-muted">Caricamento…</p> : !backups.length ? <p className="settings-muted">Nessun backup disponibile</p> : <ul className="settings-list">
+    <LoadingRegion pending={listing} blocked={!backupsReady || loading} error={loadError ? (error || loadError) : undefined} retry={() => void loadBackups().catch(() => {})}>
+    {loaded && !backups.length ? <p className="settings-muted">Nessun backup disponibile</p> : <ul className="settings-list">
       {backups.map(backup => <li key={backup.filename}>
         <div><strong>{backup.filename}</strong><small className="settings-muted">{new Date(backup.created_at).toLocaleString('it-IT')} · {formatSize(backup.size)}</small></div>
-        <button className="ui-button ui-button-danger" disabled={loading} onClick={() => void run(backup.filename)}>Ripristina</button>
+        <button className="ui-button ui-button-danger" disabled={loading || !backupsReady} onClick={() => void run(backup.filename)}>Ripristina</button>
       </li>)}
     </ul>}
+    </LoadingRegion>
   </section>;
 }
 createRoot(document.getElementById("root")!).render(<App />);

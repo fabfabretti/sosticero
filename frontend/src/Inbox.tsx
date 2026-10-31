@@ -1,3 +1,4 @@
+import { Loading, LoadingRegion } from './Loading';
 import { useQuietRefresh } from './useQuietRefresh';
 import { sessionFetch } from './session';
 import { ClassificationChoices } from "./ClassificationChoices";
@@ -82,15 +83,16 @@ export function SheetsSettings({ api, onSummary, revision }: { api: Api; onSumma
   const [file, setFile] = useState<File>();
   const [busy, setBusy] = useState(false), [error, setError] = useState(""), [message, setMessage] = useState("");
   const fileInput = useRef<HTMLInputElement>(null);
-  const { refresh, invalidate } = useQuietRefresh(
+  const { refresh, invalidate, loading, ready, loadError } = useQuietRefresh(
     () => api<InboxStatus>("inbox/connection"),
     value => { setStatus(value); setSpreadsheet(value.spreadsheet || ""); setWorksheet(value.worksheet || "Risposte del modulo 1"); },
     busy || !!file || (!!status && (spreadsheet !== (status.spreadsheet || "") || worksheet !== (status.worksheet || "Risposte del modulo 1"))),
-    "inbox-connection",
+    "inbox-connection:" + revision,
   );
-  useEffect(() => { void refresh().catch(e => setError(String(e))); }, [api]);
+  useEffect(() => { void refresh().catch(e => setError(String(e))); }, [api, revision]);
   useEffect(() => { onSummary?.(error || liveStatus?.error ? 'Collegamento da verificare' : status ? `${status.configured ? 'Configurato' : 'Da configurare'} · ultima sincronizzazione: ${timestamp(liveStatus?.lastSuccess || status.lastSuccess)}` : 'Caricamento…'); }, [status, liveStatus, error, onSummary]);
   const run = async (test: boolean) => {
+    if (busy || !ready) return;
     invalidate(); setBusy(true); setError(""); setMessage("");
     try {
       if (test) {
@@ -118,13 +120,16 @@ export function SheetsSettings({ api, onSummary, revision }: { api: Api; onSumma
   return <section className="sheets-settings settings-subsection">
     <h2>Assenze da Google Forms</h2>
     <p className="sub">Controllo ogni 30 secondi. Le comunicazioni entrano in Inbox: il calendario cambia solo quando le accetti.</p>
+    {busy && <Loading label="Elaborazione…" />}
+    <LoadingRegion pending={loading} blocked={!ready || busy} error={loadError} retry={() => void refresh().catch(() => {})}>
     <form className="ui-form" onSubmit={e => { e.preventDefault(); void run(false); }}>
       <label>URL o ID del foglio<input required value={spreadsheet} onChange={e => setSpreadsheet(e.target.value)} disabled={busy} /></label>
       <label>Nome della scheda<input required maxLength={100} value={worksheet} onChange={e => setWorksheet(e.target.value)} disabled={busy} /></label>
       <label>Chiave JSON account di servizio<input ref={fileInput} type="file" accept=".json,application/json" disabled={busy} onChange={e => setFile(e.target.files?.[0])} /></label>
       <p className="sub">{status?.email ? `Account installato: ${status.email}` : "Nessuna chiave installata."} Condividi il foglio con questo account come Visualizzatore.</p>
-      <div className="ui-actions"><button className="ui-button ui-button-primary" disabled={busy} type="submit">{busy ? "Attendi…" : "Salva configurazione"}</button><button className="ui-button" type="button" disabled={busy || !status?.configured} onClick={() => void run(true)}>Test connessione salvata</button></div>
+      <div className="ui-actions"><button className="ui-button ui-button-primary" disabled={busy} type="submit">{busy ? <Loading label="Salvataggio…" /> : "Salva configurazione"}</button><button className="ui-button" type="button" disabled={busy || !status?.configured} onClick={() => void run(true)}>Test connessione salvata</button></div>
     </form>
+    </LoadingRegion>
     {error && <p className="ui-notice ui-notice-error" role="alert">{error}</p>}
     {message && <p className="ui-notice" role="status">{message}</p>}
     <p className="sub">Ultima sincronizzazione: {timestamp(liveStatus?.lastSuccess || status?.lastSuccess)}{liveStatus?.error ? ` · ${liveStatus.error}` : ""}</p>
@@ -134,38 +139,39 @@ export function SheetsSettings({ api, onSummary, revision }: { api: Api; onSumma
 
 export function AbsenceInbox({ api }: { api: Api }) {
   const [history, setHistory] = useState(false), [items, setItems] = useState<Item[]>([]);
-  const [error, setError] = useState(""), [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [busy, setBusy] = useState<string>();
   const [drafts, setDrafts] = useState<Record<string, { classification?: AbsenceKind; note?: string; attachment?: ImageDraft }>>({});
   const status = useInboxStatus(api);
-  const request = useRef(0);
+  const [attachmentPending, setAttachmentPending] = useState<Record<string, boolean>>({});
   const overrides = useRef(new Map<string, Item>());
-  const refresh = async () => {
-    const n = ++request.current;
-    try { const next = await api<Item[]>("inbox?history=" + history); if (n === request.current) { setItems(next.map(item => ({...item,generation:(next as Item[] & {generation?:number}).generation})).map(item => item.status === "pending" ? overrides.current.get(item.id) || item : item)); setError(""); if (!history) window.dispatchEvent(new CustomEvent("inbox-changed", { detail: { pending: next.length } })); } }
-    catch (e) { if (n === request.current) setError(String(e)); }
-    finally { if (n === request.current) setLoading(false); }
-  };
-  useEffect(() => {
-    setItems([]); setLoading(true); void refresh();
-    const timer = setInterval(() => void refresh(), 30000);
-    return () => { ++request.current; clearInterval(timer); };
-  }, [history]);
+  const { refresh, invalidate, loading, ready, loadError } = useQuietRefresh(
+    () => api<Item[]>("inbox?history=" + history),
+    next => {
+      setItems(next.map(item => ({ ...item, generation: (next as Item[] & {generation?:number}).generation })).map(item => item.status === 'pending' ? overrides.current.get(item.id) || item : item));
+      setError('');
+      if (!history) window.dispatchEvent(new CustomEvent('inbox-changed', { detail: { pending: next.length } }));
+    }, !!busy || Object.values(attachmentPending).some(Boolean) || Object.keys(drafts).length > 0, String(history),
+  );
+  useEffect(() => { void refresh().catch(() => {}); }, [history]);
   const act = async (item: Item, action: string, teacher?: string) => {
-    ++request.current; setBusy(item.id); setError("");
+    if (busy || !ready || Object.values(attachmentPending).some(Boolean)) return;
+    invalidate(); setBusy(item.id); setError("");
     try {
       const result = await api<Item & { alreadyProcessed?: boolean }>(`inbox/${item.id}/${action}`, { _generation: item.generation, teacher: teacher || item.teacher, ...(action === "accept" ? drafts[item.id] : {}) });
       if (action === "preview") { overrides.current.set(item.id, result); setItems(items.map(i => i.id === item.id ? result : i)); }
-      else { overrides.current.delete(item.id); await refresh(); if (result.alreadyProcessed) setError(`Comunicazione già ${result.status === "accepted" ? "accettata" : "ignorata"}${result.acceptedBy ? ` da ${result.acceptedBy.name} (${result.acceptedBy.username})` : ""}. Le tue scelte non sono state applicate.`); if (history) window.dispatchEvent(new Event("inbox-changed")); }
-    } catch (e) { await refresh(); setError(String(e)); }
+      else { overrides.current.delete(item.id); setDrafts(old => { const next = { ...old }; delete next[item.id]; return next; }); try { await refresh(); } catch { setError("Operazione salvata. Impossibile aggiornare i dati: usa Riprova."); } if (result.alreadyProcessed) setError(`Comunicazione già ${result.status === "accepted" ? "accettata" : "ignorata"}${result.acceptedBy ? ` da ${result.acceptedBy.name} (${result.acceptedBy.username})` : ""}. Le tue scelte non sono state applicate.`); if (history) window.dispatchEvent(new Event("inbox-changed")); }
+    } catch (e) { try { await refresh(); } catch { /* Recovery is exposed by the loading region. */ } setError(String(e)); }
     finally { setBusy(undefined); }
   };
   return <main className="ui-page inbox-page">
-    <div className="inbox-heading"><div><h1>Inbox</h1><p className="sub">Comunicazioni di assenza da Google Forms</p></div><div className="inbox-actions"><button className={!history ? "ui-button on" : "ui-button"} aria-pressed={!history} onClick={() => setHistory(false)}>Da esaminare</button><button className={history ? "ui-button on" : "ui-button"} aria-pressed={history} onClick={() => setHistory(true)}>Cronologia</button></div></div>
+    <div className="inbox-heading"><div><h1>Inbox</h1><p className="sub">Comunicazioni di assenza da Google Forms</p></div><div className="inbox-actions"><button className={!history ? "ui-button on" : "ui-button"} aria-pressed={!history} disabled={!!busy} onClick={() => setHistory(false)}>Da esaminare</button><button className={history ? "ui-button on" : "ui-button"} aria-pressed={history} disabled={!!busy} onClick={() => setHistory(true)}>Cronologia</button></div></div>
     <p className="sub">Ultima sincronizzazione: {timestamp(status.lastSuccess)} · {!status.configured ? <Link to="/settings">Configura Google Sheets</Link> : "Controllo automatico ogni 30 secondi"}</p>
     {status.error && <p className="ui-notice ui-notice-error" role="status">{status.error}</p>}
     {error && <p className="ui-notice ui-notice-error" role="alert">{error}</p>}
-    {loading ? <p role="status">Caricamento…</p> : !items.length ? <section className="ui-surface inbox-empty"><h2>{history ? "Nessuna comunicazione elaborata" : "Nessuna comunicazione da esaminare"}</h2><p className="sub">Le nuove risposte compariranno qui automaticamente.</p></section> : items.map(item => <article className="ui-surface inbox-item" key={item.id}>
+    {busy && <Loading label="Elaborazione…" />}
+    <LoadingRegion pending={loading} blocked={!ready || !!busy} error={loadError} retry={() => void refresh().catch(() => {})}>
+    {!items.length && ready ? <section className="ui-surface inbox-empty"><h2>{history ? "Nessuna comunicazione elaborata" : "Nessuna comunicazione da esaminare"}</h2><p className="sub">Le nuove risposte compariranno qui automaticamente.</p></section> : items.map(item => <article className="ui-surface inbox-item" key={item.id}>
       <div className="inbox-person"><span className="inbox-name">{item.teacherName || item.name || item.raw[2] || "Docente da verificare"}</span>
         {item.status === "pending" && !!item.teachers?.length && (item.nameMatched === undefined ? item.teachers.filter(t => t.name === (item.name || item.raw[2])).length !== 1 : !item.nameMatched) && <><span aria-hidden="true">→</span><select className="inbox-teacher" aria-label={`Docente associato: ${item.name || item.raw[2]}`} value={item.teacher || ""} disabled={!!busy} onChange={e => void act(item, "preview", e.target.value)}><option value="">Seleziona docente…</option>{item.teachers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></>}
       </div>
@@ -179,11 +185,11 @@ export function AbsenceInbox({ api }: { api: Api }) {
         <fieldset disabled={!!busy}>
           <ClassificationChoices value={drafts[item.id]?.classification || null} onChange={classification => setDrafts(d => ({ ...d, [item.id]: { ...d[item.id], classification } }))} />
           <label>Note (facoltative)<textarea value={drafts[item.id]?.note || ""} onChange={e => setDrafts(d => ({ ...d, [item.id]: { ...d[item.id], note: e.target.value } }))} /></label>
-          <AttachmentField value={drafts[item.id]?.attachment} onChange={attachment => setDrafts(d => ({ ...d, [item.id]: { ...d[item.id], attachment } }))} disabled={!!busy} />
+          <AttachmentField value={drafts[item.id]?.attachment} onPendingChange={value => setAttachmentPending(old => ({ ...old, [item.id]: value }))} onChange={attachment => setDrafts(d => ({ ...d, [item.id]: { ...d[item.id], attachment } }))} disabled={!!busy} />
           <p className="sub">Applicati a tutti i giorni della comunicazione. Le note si aggiungono a quelle già presenti.</p>
         </fieldset>
       </details>}
-      {item.status === "pending" ? <div className="inbox-actions"><button className="ui-button ui-button-primary inbox-accept" disabled={!!busy || !!item.error} onClick={() => void act(item, "accept")}>{busy === item.id ? "Attendi…" : "Accetta"}</button><button className="ui-button" disabled={!!busy} onClick={() => void act(item, "ignore")}>Ignora</button></div> : <span className="inbox-result">{item.status === "accepted" ? item.acceptedBy ? `Accettata da ${item.acceptedBy.name} (${item.acceptedBy.username})` : "Accettata · autore non disponibile" : "Ignorata"}</span>}
+      {item.status === "pending" ? <div className="inbox-actions"><button className="ui-button ui-button-primary inbox-accept" disabled={!!busy || !!item.error || !!attachmentPending[item.id]} onClick={() => void act(item, "accept")}>{busy === item.id ? <Loading label="Salvataggio…" /> : "Accetta"}</button><button className="ui-button" disabled={!!busy} onClick={() => void act(item, "ignore")}>Ignora</button></div> : <span className="inbox-result">{item.status === "accepted" ? item.acceptedBy ? `Accettata da ${item.acceptedBy.name} (${item.acceptedBy.username})` : "Accettata · autore non disponibile" : "Ignorata"}</span>}
       <details className="inbox-details"><summary aria-label={`Dettagli comunicazione di ${item.name || item.raw[2] || "docente"}`}>⋯</summary>
         <p className="sub">Inviata: {item.raw[0] || timestamp(item.submitted)}{item.processed ? ` · Elaborata: ${timestamp(item.processed)}` : ""}</p>
         {item.days && <ul>{item.days.map(day => <li key={day}>{date(day)} · Ore {item.hours?.join(", ")}{item.overlaps?.find(o => o.day === day)?.hours.length ? ` · Già presenti: ${item.overlaps.find(o => o.day === day)!.hours.join(", ")}` : ""}</li>)}</ul>}
@@ -191,5 +197,6 @@ export function AbsenceInbox({ api }: { api: Api }) {
       </details>
       {item.error && <p className="ui-notice ui-notice-error">{item.error}</p>}
     </article>)}
+    </LoadingRegion>
   </main>;
 }

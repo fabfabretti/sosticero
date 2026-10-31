@@ -1,3 +1,4 @@
+import { Loading } from './Loading';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { packRows, romeDay, rotatePages, startDisplay, type DisplayState, type DisplayTeacher } from './display';
 import { entryExitLabel } from './timetables';
@@ -90,7 +91,7 @@ export function Display() {
       <div className="display-area" ref={area}>
         <div className="display-measure" ref={single} aria-hidden="true"><TeacherTable teachers={teachers} indices={teachers.map((_, i) => i)} /></div>
         <div className="display-measure display-measure-double" ref={double} aria-hidden="true"><TeacherTable teachers={teachers} indices={teachers.map((_, i) => i)} /></div>
-        {!state.data ? <p className="display-message" role="status">{state.error ? 'Impossibile caricare le supplenze.' : 'Caricamento supplenze…'}</p> :
+        {!state.data ? <p className="display-message" role="status">{state.error ? 'Impossibile caricare le supplenze.' : <Loading label="Caricamento supplenze…" />}</p> :
           !teachers.length ? <p className="display-message">Nessuna supplenza assegnata oggi per questa sede.</p> :
           !layout.fits ? <p className="display-message" role="alert">Il contenuto non entra nello schermo. Aumenta la risoluzione o riduci lo zoom del browser.</p> :
           <div className="display-tables" style={{ gridTemplateColumns: `repeat(${layout.columns}, minmax(0, 1fr))` }}>

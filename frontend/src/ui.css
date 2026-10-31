@@ -48,3 +48,13 @@
 @media (max-width: 650px), (pointer: coarse) {
   .ui-page, .ui-scope { --ui-control-height: 44px; }
 }
+
+.ui-loading { display: inline-flex; align-items: center; gap: 8px; padding-block: 6px; color: inherit; font-size: 13px; line-height: 1.4; }
+.ui-spinner { display: inline-block; flex: 0 0 auto; width: 14px; height: 14px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: ui-spin .8s linear infinite; }
+.ui-loading-content { opacity: .45; pointer-events: none; }
+@keyframes ui-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .ui-spinner { animation: none; } }
+@media print { .ui-loading, .ui-loading-content { display: none !important; } }
+.loading-permit-status { grid-column: 1 / -1; }
+
+.ui-operation-status { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 200; padding: 6px 16px; border: 1px solid var(--line); border-radius: 4px; background: var(--pan); color: var(--ink); box-shadow: 0 4px 16px #0002; }
