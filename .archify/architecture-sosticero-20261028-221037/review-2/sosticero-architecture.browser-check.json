@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "ok": false,
+  "command": "browser-check",
+  "evidenceKind": "automated-browser",
+  "status": "fail",
+  "visualReview": "not-requested",
+  "provenance": "current",
+  "deliveryReceiptId": "72fd92a5-fff1-43ca-811f-4646aa2dd246",
+  "artifact": {
+    "path": "/home/fabs/Desktop/sosticero/sosticero-architecture.html",
+    "sha256": "5c2aadb4b12ffe0c116594de66bbf56d7c406ac7d6f6b91d49a8ccde5e1e34f1",
+    "bytes": 863082
+  },
+  "state": {
+    "detail": "read",
+    "motion": "still"
+  },
+  "chrome": {
+    "status": "available",
+    "executable": "/home/fabs/.local/share/flatpak/exports/bin/com.google.Chrome"
+  },
+  "diagnostics": [
+    {
+      "code": "viewer/browser-check-runtime",
+      "severity": "error",
+      "message": "browser-check could not complete its Chrome inspection.",
+      "subject": {
+        "artifact": "/home/fabs/Desktop/sosticero/sosticero-architecture.html"
+      },
+      "evidence": {
+        "reason": "Chrome navigation failed: net::ERR_FILE_NOT_FOUND"
+      },
+      "supportedFixes": [
+        "resolve the reported Chrome inspection error, then rerun browser-check"
+      ]
+    }
+  ],
+  "containment": {
+    "status": "fail",
+    "policy": "fit-or-reader-declared-readable-vertical-scroll",
+    "viewports": []
+  },
+  "themeStates": {
+    "status": "fail",
+    "viewports": []
+  },
+  "readability": {
+    "status": "fail",
+    "minimumProjectedNodeTextPx": 6,
+    "viewports": []
+  },
+  "viewerChrome": {
+    "status": "fail",
+    "viewports": []
+  },
+  "captures": {
+    "status": "not-requested",
+    "screenshots": [],
+    "contactSheet": null
+  },
+  "sidecars": {
+    "directory": "/home/fabs/Desktop/sosticero/.archify/architecture-sosticero-20261028-221037/review-2",
+    "receipt": "sosticero-architecture.browser-check.json",
+    "files": []
+  },
+  "error": "Chrome navigation failed: net::ERR_FILE_NOT_FOUND"
+}

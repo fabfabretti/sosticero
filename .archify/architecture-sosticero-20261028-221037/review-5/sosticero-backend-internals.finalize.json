@@ -1,0 +1,418 @@
+{
+  "schemaVersion": 1,
+  "ok": false,
+  "command": "finalize",
+  "status": "skipped",
+  "type": "architecture",
+  "quality": "showcase",
+  "startedAt": "2026-10-28T21:25:55.164Z",
+  "specification": {
+    "path": "/home/fabs/Desktop/sosticero/.archify/architecture-sosticero-20261028-221037/internals.json",
+    "sha256": "40d707e740a3f406a159005bb4f83dfa591c280ab87233e071264704abaa5d9d",
+    "bytes": 14238
+  },
+  "artifact": {
+    "path": "/home/fabs/Desktop/sosticero/sosticero-backend-internals.html",
+    "sha256": "69828a64a3361032cea1c109d8818e4564df779b631b09769a854a99797a6e29",
+    "bytes": 880756
+  },
+  "stages": {
+    "validate": {
+      "status": "pass",
+      "exitCode": 0,
+      "durationMs": null,
+      "execution": "embedded-in-deliver",
+      "command": [
+        "/home/fabs/.nvm/versions/node/v24.21.0/bin/node",
+        "/home/fabs/.agents/skills/archify/bin/archify.mjs",
+        "deliver",
+        "architecture",
+        "/home/fabs/Desktop/sosticero/.archify/architecture-sosticero-20261028-221037/internals.json",
+        "/home/fabs/Desktop/sosticero/sosticero-backend-internals.html",
+        "--quality",
+        "showcase",
+        "--repo-root",
+        "/home/fabs/Desktop/sosticero",
+        "--json"
+      ],
+      "receipt": {
+        "schemaVersion": 1,
+        "ok": true,
+        "command": "validate",
+        "specification": {
+          "sha256": "40d707e740a3f406a159005bb4f83dfa591c280ab87233e071264704abaa5d9d",
+          "bytes": 14238
+        },
+        "validation": {
+          "checksPassed": 9,
+          "checkCount": 9,
+          "compositionProfile": "showcase",
+          "compositionStatus": "pass",
+          "errors": 0,
+          "warnings": 0
+        }
+      }
+    },
+    "deliver": {
+      "status": "pass",
+      "exitCode": 0,
+      "durationMs": 2065,
+      "command": [
+        "/home/fabs/.nvm/versions/node/v24.21.0/bin/node",
+        "/home/fabs/.agents/skills/archify/bin/archify.mjs",
+        "deliver",
+        "architecture",
+        "/home/fabs/Desktop/sosticero/.archify/architecture-sosticero-20261028-221037/internals.json",
+        "/home/fabs/Desktop/sosticero/sosticero-backend-internals.html",
+        "--quality",
+        "showcase",
+        "--repo-root",
+        "/home/fabs/Desktop/sosticero",
+        "--json"
+      ],
+      "receipt": {
+        "schemaVersion": 1,
+        "receiptId": "794bd3c0-89ab-49b1-af59-1d487e8e3bfa",
+        "ok": true,
+        "command": "deliver",
+        "type": "architecture",
+        "input": "/home/fabs/Desktop/sosticero/.archify/architecture-sosticero-20261028-221037/internals.json",
+        "output": "/home/fabs/Desktop/sosticero/sosticero-backend-internals.html",
+        "specification": {
+          "sha256": "40d707e740a3f406a159005bb4f83dfa591c280ab87233e071264704abaa5d9d",
+          "bytes": 14238
+        },
+        "artifact": {
+          "sha256": "69828a64a3361032cea1c109d8818e4564df779b631b09769a854a99797a6e29",
+          "bytes": 880756
+        },
+        "validation": {
+          "checksPassed": 9,
+          "checkCount": 9,
+          "compositionProfile": "showcase",
+          "compositionStatus": "pass",
+          "errors": 0,
+          "warnings": 0
+        },
+        "evidence": {
+          "verified": true,
+          "repository": "https://github.com/fabfabretti/sosticero",
+          "revision": "3a9bfa2e4138413b24042136f563fcf61689d2d1",
+          "references": 28
+        },
+        "update": {
+          "status": "unavailable",
+          "installedVersion": null,
+          "availableVersion": null,
+          "releaseNotes": null,
+          "checkedAt": null,
+          "source": null,
+          "noticeRequired": false,
+          "noticeText": null,
+          "reason": "disabled"
+        }
+      }
+    },
+    "check": {
+      "status": "pass",
+      "exitCode": 0,
+      "durationMs": 651,
+      "command": [
+        "/home/fabs/.nvm/versions/node/v24.21.0/bin/node",
+        "/home/fabs/.agents/skills/archify/bin/archify.mjs",
+        "check",
+        "/home/fabs/Desktop/sosticero/sosticero-backend-internals.html",
+        "--require-provenance"
+      ],
+      "receipt": {
+        "ok": true,
+        "file": "/home/fabs/Desktop/sosticero/sosticero-backend-internals.html",
+        "artifact": {
+          "sha256": "69828a64a3361032cea1c109d8818e4564df779b631b09769a854a99797a6e29",
+          "bytes": 880756
+        },
+        "checks": [
+          {
+            "name": "single_svg",
+            "ok": true,
+            "details": [
+              "found 1 <svg> block(s)"
+            ]
+          },
+          {
+            "name": "finite_svg",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "orthogonal_arrows",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "label_route_clearance",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "relationship_crossings",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "relationship_corridors",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "container_border_runs",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "route_rhythm",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "legend_clearance",
+            "ok": true,
+            "details": []
+          }
+        ],
+        "composition": {
+          "schemaVersion": 1,
+          "profile": "showcase",
+          "status": "pass",
+          "summary": {
+            "errors": 0,
+            "warnings": 0
+          },
+          "metrics": {
+            "properCrossings": 0,
+            "resolvedCrossovers": 1,
+            "ambiguousCorridors": 0,
+            "arrowheadCollisions": 0,
+            "containerBorderRuns": 0,
+            "labelRouteClearanceIssues": 0,
+            "labelCanvasOverflowIssues": 0,
+            "minLabelRouteClearance": 30.1,
+            "desktopReadabilityIssues": 0,
+            "viewportHeightIssues": 0,
+            "minProjectedNodeTextPx": 7.457063711911357,
+            "maxBends": 2,
+            "routesOverSuggestedBends": 0,
+            "maxStretch": 1,
+            "routesOverSuggestedStretch": 0,
+            "minSegmentPx": 16,
+            "minInteriorSegmentPx": 172,
+            "shortSegmentCount": 0,
+            "shortEndpointSegmentCount": 0,
+            "shortInteriorSegmentCount": 0,
+            "microSegmentCount": 0
+          },
+          "suggestedLimits": {
+            "bendsPerRelationship": 2,
+            "stretch": 1.35,
+            "segmentPx": 16,
+            "microSegmentPx": 8
+          },
+          "routeReview": {
+            "crossings": [
+              {
+                "left": {
+                  "id": "gate-g4",
+                  "from": "gate",
+                  "to": "g4",
+                  "label": "",
+                  "collectionIndex": 4,
+                  "artifactIndex": 5
+                },
+                "right": {
+                  "id": "gate-g5",
+                  "from": "gate",
+                  "to": "g5",
+                  "label": "",
+                  "collectionIndex": 5,
+                  "artifactIndex": 6
+                },
+                "point": [
+                  825,
+                  86
+                ],
+                "sharedNode": "gate"
+              }
+            ],
+            "crowdedSides": [
+              {
+                "node": "gate",
+                "label": "Session &amp; campus gate",
+                "side": "right",
+                "relationships": 4,
+                "sidePx": 64,
+                "neededPx": 74
+              }
+            ],
+            "detours": []
+          },
+          "leadingSpace": {
+            "measured": true,
+            "emptyTopPx": 40,
+            "emptyTopRatio": 0.058,
+            "occupiedTop": 40,
+            "viewBoxTop": 0,
+            "canvasHeight": 694,
+            "typicalNodeHeight": 100,
+            "reviewSuggested": false
+          },
+          "desktopReadability": {
+            "budgetBasis": "recognized-declared-wide",
+            "readerContract": "declared-wide-v1",
+            "availableDiagramWidth": 1346,
+            "actualBudgetPx": 1346,
+            "actualReaderWidth": 1376,
+            "desiredReaderWidth": 1383.75,
+            "viewportCap": 1376,
+            "limit": "viewport-cap",
+            "requestedTargetPx": 7.5,
+            "requestedTargetMet": false,
+            "hardFloorPx": 6,
+            "hardFloorMet": true,
+            "minimumOwner": {
+              "kind": "edge",
+              "id": "spa-gate",
+              "from": "spa",
+              "to": "gate"
+            },
+            "minimumSourceTextPx": 8,
+            "minimumProjectedTextPx": 7.457063711911357,
+            "semanticTextCount": 55
+          },
+          "issues": []
+        },
+        "provenance": "current",
+        "deliveryReceiptId": "794bd3c0-89ab-49b1-af59-1d487e8e3bfa"
+      }
+    },
+    "browser-check": {
+      "status": "skipped",
+      "exitCode": 2,
+      "durationMs": 206,
+      "command": [
+        "/home/fabs/.nvm/versions/node/v24.21.0/bin/node",
+        "/home/fabs/.agents/skills/archify/bin/archify.mjs",
+        "browser-check",
+        "/home/fabs/Desktop/sosticero/sosticero-backend-internals.html",
+        "--json",
+        "--require-provenance"
+      ],
+      "execution": "in-process",
+      "receipt": {
+        "schemaVersion": 1,
+        "ok": false,
+        "command": "browser-check",
+        "evidenceKind": "automated-browser",
+        "status": "skipped",
+        "visualReview": "not-requested",
+        "provenance": "current",
+        "deliveryReceiptId": "794bd3c0-89ab-49b1-af59-1d487e8e3bfa",
+        "artifact": {
+          "path": "/home/fabs/Desktop/sosticero/sosticero-backend-internals.html",
+          "sha256": "69828a64a3361032cea1c109d8818e4564df779b631b09769a854a99797a6e29",
+          "bytes": 880756
+        },
+        "state": {
+          "detail": "read",
+          "motion": "still"
+        },
+        "chrome": {
+          "status": "unavailable",
+          "executable": null
+        },
+        "diagnostics": [
+          {
+            "code": "viewer/chrome-unavailable",
+            "severity": "warning",
+            "message": "No supported browser found. Install Chrome/Chromium (or Microsoft Edge), or set ARCHIFY_CHROME to its executable path.",
+            "subject": {
+              "artifact": "/home/fabs/Desktop/sosticero/sosticero-backend-internals.html"
+            },
+            "evidence": {
+              "executable": null
+            },
+            "supportedFixes": [
+              "set ARCHIFY_CHROME to a Chrome/Chromium executable (or Microsoft Edge) and rerun browser-check"
+            ]
+          }
+        ],
+        "containment": {
+          "status": "skipped",
+          "policy": "fit-or-reader-declared-readable-vertical-scroll",
+          "viewports": []
+        },
+        "themeStates": {
+          "status": "skipped",
+          "viewports": []
+        },
+        "readability": {
+          "status": "skipped",
+          "minimumProjectedNodeTextPx": 6,
+          "viewports": []
+        },
+        "viewerChrome": {
+          "status": "skipped",
+          "viewports": []
+        },
+        "captures": {
+          "status": "not-requested",
+          "screenshots": [],
+          "contactSheet": null
+        },
+        "sidecars": {
+          "receipt": "sosticero-backend-internals.browser-check.json",
+          "files": []
+        },
+        "error": "No supported browser found. Install Chrome/Chromium (or Microsoft Edge), or set ARCHIFY_CHROME to its executable path."
+      }
+    }
+  },
+  "browserCheck": {
+    "requested": true,
+    "ran": false
+  },
+  "diagnostics": [
+    {
+      "code": "viewer/chrome-unavailable",
+      "severity": "warning",
+      "message": "No supported browser found. Install Chrome/Chromium (or Microsoft Edge), or set ARCHIFY_CHROME to its executable path.",
+      "subject": {
+        "artifact": "/home/fabs/Desktop/sosticero/sosticero-backend-internals.html"
+      },
+      "evidence": {
+        "executable": null
+      },
+      "supportedFixes": [
+        "set ARCHIFY_CHROME to a Chrome/Chromium executable (or Microsoft Edge) and rerun browser-check"
+      ]
+    }
+  ],
+  "evidence": {
+    "receipt": "/home/fabs/Desktop/sosticero/sosticero-backend-internals.finalize.json",
+    "summaryReceipt": "/home/fabs/Desktop/sosticero/sosticero-backend-internals.finalize-summary.json",
+    "browserCheckReceipt": "/home/fabs/Desktop/sosticero/sosticero-backend-internals.browser-check.json"
+  },
+  "visualReview": "not-requested",
+  "failedStage": "browser-check",
+  "finishedAt": "2026-10-28T21:25:58.384Z",
+  "durationMs": 3220,
+  "update": {
+    "status": "current",
+    "installedVersion": "3.2.0",
+    "availableVersion": "3.2.0",
+    "releaseNotes": null,
+    "checkedAt": "2026-10-28T21:10:58.047Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  }
+}

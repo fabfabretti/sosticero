@@ -1,0 +1,379 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Sosticero — backend internals",
+    "subtitle": "Six route groups, the rule modules they call, and the JSON documents those values land in",
+    "output": "sosticero-backend-internals.html",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/fabfabretti/sosticero",
+      "provider": "github",
+      "revision": "3a9bfa2e4138413b24042136f563fcf61689d2d1"
+    },
+    "views": [
+      {
+        "id": "read-path",
+        "label": "Read path",
+        "focus": ["gate", "g1", "g4", "g5", "m1", "m4", "m5", "d1", "d3", "d4"],
+        "note": "Loading a day, a timetable or a report."
+      },
+      {
+        "id": "write-path",
+        "label": "Write path",
+        "focus": ["gate", "g1", "g2", "g3", "m1", "m2", "m3", "d2"],
+        "note": "Assignments, absences, permits and hour bank all mutate the state document."
+      },
+      {
+        "id": "imports",
+        "label": "Imports",
+        "focus": ["g6", "m6", "m4", "d1", "d3"],
+        "note": "A timetable import replaces the dataset and starts a new dated version."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "spa",
+      "type": "frontend",
+      "icon": "frontend",
+      "label": "Frontend SPA",
+      "sublabel": "api() · 15 s polling",
+      "pos": [40, 40],
+      "size": [170, 64],
+      "sources": [
+        { "path": "frontend/src/session.ts", "line": 7, "end_line": 13, "label": "request wrapper" }
+      ]
+    },
+    {
+      "id": "gate",
+      "type": "security",
+      "icon": "security",
+      "label": "Session & campus gate",
+      "sublabel": "auth.py · cookie · CSRF · origin",
+      "tag": "generation check",
+      "pos": [270, 40],
+      "size": [230, 64],
+      "sources": [
+        { "path": "backend/auth.py", "line": 238, "end_line": 263, "label": "middleware per request" },
+        { "path": "backend/auth.py", "line": 192, "end_line": 200, "label": "route policy table" }
+      ]
+    },
+    {
+      "id": "sheets",
+      "type": "external",
+      "icon": "external",
+      "label": "Google Sheets",
+      "sublabel": "absence form rows",
+      "pos": [1190, 40],
+      "size": [190, 64],
+      "sources": [
+        { "path": "backend/inbox.py", "line": 47, "end_line": 58, "label": "authorized read" }
+      ]
+    },
+    {
+      "id": "g1",
+      "type": "backend",
+      "label": "Planner API",
+      "sublabel": "day · candidates · entries",
+      "tag": "shared writes",
+      "pos": [40, 180],
+      "size": [190, 100],
+      "sources": [
+        { "path": "backend/main.py", "line": 315, "end_line": 332, "label": "GET /api/day/{day}" },
+        { "path": "backend/main.py", "line": 761, "end_line": 772, "label": "candidates + availability" }
+      ]
+    },
+    {
+      "id": "g2",
+      "type": "backend",
+      "label": "Permits API",
+      "sublabel": "permessi · manual-permits",
+      "tag": "shared writes",
+      "pos": [270, 180],
+      "size": [190, 100],
+      "sources": [
+        { "path": "backend/main.py", "line": 534, "end_line": 546, "label": "permit register" }
+      ]
+    },
+    {
+      "id": "g3",
+      "type": "backend",
+      "label": "Banca ore API",
+      "sublabel": "paid-availability · capacity",
+      "tag": "shared writes",
+      "pos": [500, 180],
+      "size": [190, 100],
+      "sources": [
+        { "path": "backend/main.py", "line": 270, "end_line": 303, "label": "paid availability + stats/availability" }
+      ]
+    },
+    {
+      "id": "g4",
+      "type": "backend",
+      "label": "Timetable API",
+      "sublabel": "orari · overrides · receptions",
+      "tag": "import is centrale-only",
+      "pos": [730, 180],
+      "size": [190, 100],
+      "sources": [
+        { "path": "backend/main.py", "line": 347, "end_line": 366, "label": "GET /api/orari" },
+        { "path": "backend/main.py", "line": 522, "end_line": 534, "label": "override preview/save" }
+      ]
+    },
+    {
+      "id": "g5",
+      "type": "backend",
+      "label": "Reporting API",
+      "sublabel": "stats · export",
+      "tag": "read-only",
+      "pos": [960, 180],
+      "size": [190, 100],
+      "sources": [
+        { "path": "backend/main.py", "line": 264, "end_line": 269, "label": "GET /api/stats" },
+        { "path": "backend/main.py", "line": 837, "end_line": 849, "label": "export / import" }
+      ]
+    },
+    {
+      "id": "g6",
+      "type": "backend",
+      "label": "Settings & Inbox API",
+      "sublabel": "hour-types · backups · inbox",
+      "tag": "centrale-only writes",
+      "pos": [1190, 180],
+      "size": [190, 100],
+      "sources": [
+        { "path": "backend/main.py", "line": 196, "end_line": 204, "label": "hour types" },
+        { "path": "backend/main.py", "line": 951, "end_line": 967, "label": "backup list/create" },
+        { "path": "backend/inbox.py", "line": 229, "end_line": 235, "label": "inbox routes" }
+      ]
+    },
+    {
+      "id": "m1",
+      "type": "backend",
+      "icon": "decision",
+      "label": "domain.py",
+      "sublabel": "rows · candidates · validity",
+      "pos": [40, 350],
+      "size": [190, 100],
+      "sources": [
+        { "path": "backend/domain.py", "line": 9, "end_line": 18, "label": "hours, sites, tiers" }
+      ]
+    },
+    {
+      "id": "m2",
+      "type": "backend",
+      "icon": "decision",
+      "label": "recovery.py",
+      "sublabel": "ledger · one-month window",
+      "pos": [270, 350],
+      "size": [190, 100],
+      "sources": [
+        { "path": "backend/recovery.py", "line": 8, "end_line": 11, "label": "deadline clamping" }
+      ]
+    },
+    {
+      "id": "m3",
+      "type": "backend",
+      "icon": "decision",
+      "label": "paid.py · availability.py",
+      "sublabel": "declarations · capacity",
+      "pos": [500, 350],
+      "size": [190, 100],
+      "sources": [
+        { "path": "backend/paid.py", "line": 1, "end_line": 8, "label": "hour-bank rules" },
+        { "path": "backend/availability.py", "line": 1, "end_line": 10, "label": "on-paper capacity" }
+      ]
+    },
+    {
+      "id": "m4",
+      "type": "backend",
+      "icon": "decision",
+      "label": "timetables.py",
+      "sublabel": "overrides · receptions",
+      "pos": [730, 350],
+      "size": [190, 100],
+      "sources": [
+        { "path": "backend/timetables.py", "line": 1, "end_line": 16, "label": "dated versions" }
+      ]
+    },
+    {
+      "id": "m5",
+      "type": "backend",
+      "icon": "decision",
+      "label": "statistics.py",
+      "sublabel": "dated facts · reports",
+      "pos": [960, 350],
+      "size": [190, 100],
+      "sources": [
+        { "path": "backend/statistics.py", "line": 9, "end_line": 14, "label": "outcome vocabulary" }
+      ]
+    },
+    {
+      "id": "m6",
+      "type": "backend",
+      "icon": "decision",
+      "label": "hour_types.py",
+      "sublabel": "names · inbox · backup",
+      "pos": [1190, 350],
+      "size": [190, 100],
+      "sources": [
+        { "path": "backend/hour_types.py", "line": 1, "end_line": 12, "label": "canonical hour codes" },
+        { "path": "backend/teacher_names.py", "line": 1, "end_line": 12, "label": "presentation names" }
+      ]
+    },
+    {
+      "id": "d1",
+      "type": "database",
+      "icon": "database",
+      "label": "documents.dataset",
+      "sublabel": "imported timetable",
+      "pos": [40, 530],
+      "size": [190, 76],
+      "sources": [
+        { "path": "backend/storage.py", "line": 22, "end_line": 27, "label": "document read/write" }
+      ]
+    },
+    {
+      "id": "d2",
+      "type": "database",
+      "icon": "database",
+      "label": "documents.state",
+      "sublabel": "absences · assignments · permits · availability · notes",
+      "tag": "all writes land here",
+      "pos": [270, 530],
+      "size": [420, 76],
+      "sources": [
+        { "path": "backend/storage.py", "line": 5, "end_line": 5, "label": "state groups" }
+      ]
+    },
+    {
+      "id": "d3",
+      "type": "database",
+      "icon": "database",
+      "label": "documents.timetables",
+      "sublabel": "versions · overrides · receptions",
+      "pos": [730, 530],
+      "size": [190, 76],
+      "sources": [
+        { "path": "backend/main.py", "line": 126, "end_line": 141, "label": "history + overrides + receptions" }
+      ]
+    },
+    {
+      "id": "d4",
+      "type": "database",
+      "icon": "database",
+      "label": "documents.statistics",
+      "sublabel": "daily facts",
+      "pos": [960, 530],
+      "size": [190, 76],
+      "sources": [
+        { "path": "backend/main.py", "line": 235, "end_line": 240, "label": "save_state syncs facts" }
+      ]
+    },
+    {
+      "id": "d5",
+      "type": "database",
+      "icon": "database",
+      "label": "settings & blobs",
+      "sublabel": "hourTypes · names · attachments",
+      "pos": [1190, 530],
+      "size": [190, 76],
+      "sources": [
+        { "path": "backend/storage.py", "line": 14, "end_line": 14, "label": "attachments table" }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "supplenze.sqlite · documents(key, value) + attachments(id, media_type, content)",
+      "wraps": ["d1", "d2", "d3", "d4", "d5"],
+      "pad": 24
+    }
+  ],
+  "connections": [
+    { "id": "spa-gate", "from": "spa", "to": "gate", "label": "fetch" },
+    { "id": "gate-g1", "from": "gate", "to": "g1", "variant": "emphasis" },
+    { "id": "gate-g2", "from": "gate", "to": "g2" },
+    { "id": "gate-g3", "from": "gate", "to": "g3" },
+    { "id": "gate-g4", "from": "gate", "to": "g4" },
+    { "id": "gate-g5", "from": "gate", "to": "g5" },
+    { "id": "gate-g6", "from": "gate", "to": "g6" },
+    { "id": "sheets-g6", "from": "sheets", "to": "g6", "label": "form rows" },
+    { "id": "g1-m1", "from": "g1", "to": "m1", "label": "rows · candidates" },
+    { "id": "g2-m2", "from": "g2", "to": "m2", "label": "ledger · balances" },
+    { "id": "g3-m3", "from": "g3", "to": "m3", "label": "slots · records" },
+    { "id": "g4-m4", "from": "g4", "to": "m4", "label": "versions · patches" },
+    { "id": "g5-m5", "from": "g5", "to": "m5", "label": "report" },
+    { "id": "g6-m6", "from": "g6", "to": "m6", "label": "rules · names" },
+    { "id": "m1-d1", "from": "m1", "to": "d1", "label": "in memory" },
+    { "id": "m2-d2", "from": "m2", "to": "d2", "label": "in memory" },
+    { "id": "m3-d2", "from": "m3", "to": "d2", "label": "in memory" },
+    { "id": "m4-d3", "from": "m4", "to": "d3", "label": "in memory" },
+    { "id": "m5-d4", "from": "m5", "to": "d4", "label": "in memory" },
+    { "id": "m6-d5", "from": "m6", "to": "d5", "label": "in memory" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "API surface by group",
+      "items": [
+        "Planner: GET /api/day/{day}, /api/candidates, /api/availability; POST /api/entries, /api/assignments, /api/display",
+        "Permits: GET /api/permessi; POST /api/permessi, /api/manual-permits",
+        "Banca ore: GET/POST /api/paid-availability; GET /api/stats/availability",
+        "Timetable: GET /api/orari, /api/receptions; POST /api/orari/preview, /api/orari/override, /api/orari/name, /api/timetable[/preview], /api/receptions[/preview]",
+        "Reporting: GET /api/stats with campus, period and date range; GET /api/export (JSON archive)",
+        "Settings & Inbox: /api/hour-types, /api/import[/preview], /api/backups[/restore], /api/attachments/{id}, /api/inbox*"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Modules not drawn as nodes",
+      "items": [
+        "storage.py: Store.read/write over documents, WAL, 15 s busy timeout; one connection per request block",
+        "concurrency.py: sha256 digest per record, expected map → 409 record_changed, missing → 428 precondition_required",
+        "backup.py: sqlite backup API snapshot before every import and restore, prune to 10 files / 7 days",
+        "attachments.py: BLOB rows, pruned whenever state is saved; served only when referenced by state",
+        "auth.py: accounts, argon2 hashes, 12 h sessions, generation counter bumped on import/restore",
+        "display.py: the only public projection, built from today's assignments"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Write path, in order",
+      "items": [
+        "1. Gate validates cookie, CSRF and X-Data-Generation, then applies the campus policy for the route",
+        "2. Handler opens a connection and runs BEGIN IMMEDIATE (write) or BEGIN (read)",
+        "3. load() assembles the dataset version for the day and defaults every state group",
+        "4. concurrency.check(expected, snapshot, keys) rejects a stale form with 409 before any mutation",
+        "5. The rule module validates the new value; ValueError becomes 422 and nothing is written",
+        "6. save_state() re-syncs statistics for the touched days, writes state, prunes attachments, commits"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Document keys",
+      "items": [
+        "dataset: imported teachers, classes and weekly lessons (the baseline before any version)",
+        "state: abs · cf · dis · disSites · asg · permessi · permitIds · manualPermits · paidAvailability and their notes/kinds/attachments",
+        "timetables: dated versions plus the merged overrides and receptions documents",
+        "statistics: per-day outcomes (covered, uncovered, late, early, pending) rebuilt from state and timetable",
+        "hourTypes and teacherNameOverrides: policy per hour code, presentation-only renaming",
+        "attachments: id, media type, bytes; nothing is served unless state still references it"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Guards that shape behaviour",
+      "items": [
+        "Import and restore need confirm=true and the preview token; a new backup is taken first",
+        "Generation mismatch returns 409 dataset_replaced so a stale tab cannot overwrite an import",
+        "Non-Centrale accounts get 403 on hour-types, timetable, import, backups and inbox configuration",
+        "sqlite3.OperationalError surfaces as 503 with no partial write; testing mode refuses the operational directory",
+        "Every response carries X-Data-Generation and Cache-Control: no-store"
+      ]
+    }
+  ]
+}
