@@ -1,4 +1,5 @@
 import os
+import re
 import sqlite3
 from datetime import date, timedelta, datetime
 from pathlib import Path
@@ -11,7 +12,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel, StrictInt, StrictBool, StrictStr
 from .domain import normalize_dataset, rows, candidates, consultation, validate_assignment, default_availability, auto_availability, HOURS, SITES, lesson, validate_permit, CDC_NAMES
 from .storage import Store, EMPTY
-from . import backup, attachments, concurrency, auth, display
+from . import backup, attachments, concurrency, auth, display, publication
 from .hour_types import merge_types, validate_types
 from . import statistics, recovery, timetables, overrides, teacher_names, availability, receptions, paid
 from zoneinfo import ZoneInfo
@@ -343,6 +344,58 @@ def create_app(path=None, seed=None):
                 raise HTTPException(503, 'Orario non disponibile.')
             result = display.project(presented(db, ds), state, day, campus)
         return dict(day=day, campus=campus, updated=today.isoformat(), **result)
+
+    def capture_publication(day, campus):
+        now = datetime.now(ZoneInfo('Europe/Rome'))
+        if day != now.date().isoformat():
+            raise HTTPException(422, 'Puoi pubblicare soltanto le supplenze di oggi.')
+        with store.connect() as db:
+            db.execute('BEGIN')
+            try:
+                ds, state = load(db, day)
+            except ValueError:
+                raise HTTPException(503, 'Orario non disponibile.')
+            result = display.project(presented(db, ds), state, day, campus)
+        return dict(day=day, campus=campus, updated=now.isoformat(), **result)
+
+    def publication_schedule():
+        with store.connect() as db:
+            return store.read(db, 'publicationSchedule', {}).get('time', '')
+
+    publisher = publication.Publisher(database.parent / 'publication',
+        os.environ.get('PUBLICATION_STATIC_PATH', str(Path(__file__).resolve().parent.parent / 'frontend/publication-dist')),
+        capture_publication, publication_schedule)
+    publisher.register(app)
+    app.state.publisher = publisher
+
+    @app.get('/api/publication')
+    def publication_status(request: Request):
+        return publisher.status(request.state.account['campus'])
+
+    @app.get('/api/publication/schedule')
+    def get_publication_schedule():
+        return {'time': publication_schedule()}
+
+    @app.post('/api/publication/schedule')
+    def set_publication_schedule(data: dict):
+        time = data.get('time')
+        if not isinstance(time, str) or (time and not re.fullmatch(r'([01]\d|2[0-3]):[0-5]\d', time)):
+            raise ValueError('Orario non valido: usa HH:MM.')
+        with store.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            store.write(db, 'publicationSchedule', {'time': time})
+        return {'time': time}
+
+    @app.post('/api/publication', status_code=202)
+    def publish_display(request: Request, data: dict):
+        campus = request.state.account['campus']
+        if set(data) - {'day', 'campus'} or data.get('campus', campus) != campus:
+            raise HTTPException(403, 'Puoi pubblicare soltanto la tua sede.')
+        day = data.get('day')
+        if day != datetime.now(ZoneInfo('Europe/Rome')).date().isoformat():
+            raise HTTPException(422, 'Puoi pubblicare soltanto le supplenze di oggi.')
+        publisher.start(day, campus)
+        return {'started': True, 'campus': campus}
 
     @app.get('/api/orari')
     def get_orari(day: date | None = None):

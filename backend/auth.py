@@ -19,9 +19,9 @@ from fastapi import HTTPException
 
 HASHER = PasswordHasher(time_cost=2, memory_cost=19456, parallelism=1)
 COOKIE = 'sosticero_session'
-CENTRALE_WRITES = {'hour-types', 'receptions', 'receptions/preview', 'timetable', 'timetable/preview', 'import', 'import/preview', 'backups', 'backups/restore', 'inbox/connection', 'inbox/credentials', 'inbox/test'}
+CENTRALE_WRITES = {'hour-types', 'receptions', 'receptions/preview', 'timetable', 'timetable/preview', 'import', 'import/preview', 'backups', 'backups/restore', 'inbox/connection', 'inbox/credentials', 'inbox/test', 'publication/schedule'}
 SHARED_WRITES = {'paid-availability', 'entries', 'assignments', 'permessi', 'manual-permits', 'orari/name', 'orari/preview', 'orari/override'}
-READS = {'paid-availability', 'hour-types', 'stats', 'stats/availability', 'orari', 'receptions', 'permessi', 'candidates', 'availability', 'export', 'backups', 'inbox', 'inbox/connection', 'inbox/summary'}
+READS = {'publication', 'publication/schedule', 'paid-availability', 'hour-types', 'stats', 'stats/availability', 'orari', 'receptions', 'permessi', 'candidates', 'availability', 'export', 'backups', 'inbox', 'inbox/connection', 'inbox/summary'}
 PUBLICATIONS = {'timetable', 'receptions', 'import', 'backups/restore'}
 
 
@@ -196,7 +196,7 @@ def policy(path, method):
         if route in READS or re.fullmatch(r'(day|attachments)/[^/]+', route): return 'read'
     elif method == 'POST':
         if route in CENTRALE_WRITES: return 'centrale'
-        if route in SHARED_WRITES or re.fullmatch(r'inbox/[^/]+/(accept|ignore|preview)', route): return 'shared'
+        if route == 'publication' or route in SHARED_WRITES or re.fullmatch(r'inbox/[^/]+/(accept|ignore|preview)', route): return 'shared'
     raise HTTPException(404, 'Operazione non disponibile.')
 
 

@@ -7,11 +7,11 @@ Provide a compact, coherent configuration page whose grouped controls remain acc
 ## Requirements
 
 ### Requirement: Functional settings groups
-Settings SHALL organize existing controls into five groups in this order: Orari e ricevimenti, Regole supplenze, Collegamenti, Dati e backup, Aspetto. Timetable and reception imports SHALL remain distinct workflows within their shared group. The existing Settings URL and credits footer SHALL remain unchanged.
+Settings SHALL organize existing controls into six groups in this order: Orari e ricevimenti, Regole supplenze, Collegamenti, Pubblicazione, Dati e backup, Aspetto. Timetable and reception imports SHALL remain distinct workflows within their shared group. The existing Settings URL and credits footer SHALL remain unchanged.
 
 #### Scenario: Find each existing function
 - **WHEN** the user opens Settings
-- **THEN** timetable and reception imports are under Orari e ricevimenti, hour policies under Regole supplenze, Google Forms under Collegamenti, JSON archives and database backups under Dati e backup, and theme controls under Aspetto
+- **THEN** timetable and reception imports are under Orari e ricevimenti, hour policies under Regole supplenze, Google Forms under Collegamenti, the daily automatic publication time under Pubblicazione, JSON archives and database backups under Dati e backup, and theme controls under Aspetto
 
 ### Requirement: Independent accessible accordions
 Each group SHALL use the same disclosure pattern with a title, short description, expansion indicator and useful status summary. Groups SHALL start collapsed on a fresh page visit and allow multiple groups open independently. Headers SHALL be keyboard operable, expose expanded state and retain visible focus. Status loading failures SHALL NOT prevent opening a group.

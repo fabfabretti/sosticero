@@ -65,3 +65,23 @@ The production environment endpoint returned testing=false. The served frontend 
 ## Display refinement release — 2026-10-28
 
 Deployed with `./scripts/deploy.sh` as `incoming-20261028T180524-69434`, source snapshot `d2e9914712f3f6eab18d905cb2659fde73c4dd2874f4587782bccd433bf2aa6e`. The script verified the recovery snapshot at `snapshots/incoming-20261028T180524-69434`, replacement image, production environment, source marker and served frontend. Independent read-only HTTPS checks confirmed both `/display?campus=centrale` and `/display?campus=succursale` and the minimal public response with replaced-teacher names and class entry/exit notes. No production behavioral writes or data transfers were performed.
+
+## Cloudflare display publication
+
+See [display-publication.md](display-publication.md) for server-only configuration, publication recovery and provider retention. Deployments can reuse a graphical-password SSH master via `SOSTICERO_SSH_CONTROL_PATH`; ordinary invocations retain their temporary private master.
+
+## Cloudflare publication release — 2026-10-29
+
+Deployed with `./scripts/deploy.sh` as `incoming-20261029T170739-42050`, source snapshot `c968c1c09c56c4f08880e7c23feccd4679b5daad7dc03ec5683daaefbe4e3e44`. Read-only checks verified production environment, served assets, protected publication API and server-only Cloudflare configuration. A separate Cloudflare placeholder smoke deployment verified the display shell and no-store headers in approximately 21 seconds, without teacher data. Backend regression checks (278 tests), frontend checks (25 existing test files plus the new publication checks), and deployment-script checks (10 tests) passed. The isolated testing project was stopped. No production behavioral writes or actual teacher publication were used for verification.
+
+## Monitor rotation and assignment labels — 2026-10-29
+
+Deployed with ./scripts/deploy.sh as `incoming-20261029T172559-54615`, source snapshot `5df56b27b1146e5fcc6f1033231df53d4d681d74203382d987677679de09fa44`. The display adds synchronized pause/resume countdown, fade on page changes, bottom-right pagination, the paper-signature reminder, and per-slot assignment types. Display/publication backend checks (20 tests), frontend display checks and the container build passed. A synthetic multi-page browser check verified countdown movement, a stationary countdown during pause, visible assignment labels and unobstructed class schedule notes. Read-only production checks verified assets and assignment-kind fields. The isolated test project was stopped. Hosted copies receive the shell and the publishing campus's new type fields on the next explicit Pubblica.
+
+## Uniform display grid — 2026-10-29
+
+Deployed via ./scripts/deploy.sh as `incoming-20261029T173540-58540`, source snapshot `50c1f7448bd39a3a691a2ee0f80857be8c00b8c8f99e8e3ae98c44e175d6d53b`. Display tests and isolated container build passed. Browser checks at the default viewport and 1896×881 verified identical visible row heights across tables, consistent class/type stacking, 13px replaced-name text and a separator above the whole lower band. Read-only HTTPS checks confirmed production environment and revised stylesheet. The isolated project was stopped. No teacher snapshots were published.
+
+## Compact neutral display — 2026-10-29
+
+Deployed via ./scripts/deploy.sh as `incoming-20261029T174356-61691`, source snapshot `c92e9cf5f6c0a074587519eb94f3c8fafe30243b4e0b1766d7ce8f37c6af5d4b`. The display now uses 15px teacher names, 16px class codes, neutral headers, unboxed assignment codes and a plain signature reminder. The isolated build and browser checks at 1896×881 and 1280×720 confirmed uniform rows and an unclipped footer. Read-only HTTPS checks verified production environment and the new stylesheet. The isolated project was stopped; no teacher snapshots were published.

@@ -35,9 +35,9 @@ function board(data) {
 
 test('cells show all replaced names and a compact class summary uses operational times', () => {
   const result = board({ updated: '2026-10-28T08:00:00Z', teachers: [
-    { name: 'Rossi', slots: [{ period: 3, classe: '1A', room: 'A12', replaced: ['Bianchi', 'Verdi'] }] },
+    { name: 'Rossi', slots: [{ period: 3, classe: '1A', room: 'A12', kind: 'RP', replaced: ['Bianchi', 'Verdi'] }] },
   ], changes: [{ classe: '2A', action: 'ENTRA', period: 2 }, { classe: '3B', action: 'ESCE', period: 5 }] });
-  assert.ok(result.text.includes('per  Bianchi / Verdi'));
+  assert.match(result.text, /per\s+Bianchi \/ Verdi/);
   assert.ok(result.text.includes('2A   entra dopo alle 09:40'));
   assert.ok(result.text.includes('3B   esce prima alle 11:30'));
   assert.ok(!result.text.includes('aggiornamento ogni'));
@@ -60,7 +60,7 @@ test('a shorter refreshed dataset renders safely before measured pagination catc
   runInNewContext(ts.transpileModule(readFileSync('src/Display.tsx', 'utf8') + '\nexport { TeacherTable };', {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
   }).outputText, { exports, require: id => id === 'react/jsx-runtime' ? { jsx, jsxs: jsx } : {} });
-  const teachers = [{ name: 'Still assigned', slots: [{ period: 1, classe: '1A', room: 'A12', replaced: ['Bianchi', 'Verdi'] }] }];
+  const teachers = [{ name: 'Still assigned', slots: [{ period: 1, classe: '1A', room: 'A12', kind: 'RP', replaced: ['Bianchi', 'Verdi'] }] }];
   const table = exports.TeacherTable({ teachers, indices: [0, 1, 59, 89] });
   const rows = table.props.children[2].props.children;
   assert.equal(rows.length, 1);
@@ -104,7 +104,7 @@ function harness(start = '2026-10-28T08:00:00Z') {
     await flush();
   };
   return { ...exports, requests, states, listeners, timers, tick, respond, flush,
-    start: () => exports.startDisplay('centrale', state => states.push(state)),
+    start: (published = false) => exports.startDisplay('centrale', state => states.push(state), published),
     setNow: value => { now = Date.parse(value); }, last: () => states.at(-1),
   };
 }
@@ -197,4 +197,54 @@ test('waking on another day clears the old board and refreshes immediately', asy
   assert.equal(h.requests.length, 2);
   await h.respond(1); assert.equal(h.last().data.day, '2026-10-29');
   stop();
+});
+
+
+test('published campus polling bypasses browser cache and keeps snapshot time stable', async () => {
+  const h = harness(), stop = h.start(true);
+  assert.match(h.requests[0].url, /^\/centrale.json\?poll=/);
+  assert.equal(h.requests[0].options.cache, 'no-store');
+  const updated = '2026-10-28T08:00:00Z';
+  await h.respond(0, { updated });
+  await h.tick(30000); await h.respond(1, { updated });
+  assert.equal(h.last().data.updated, updated);
+  assert.notEqual(h.requests[0].url, h.requests[1].url);
+  h.requests.forEach(r => assert.ok(!r.url.includes('/api/')));
+  stop();
+});
+
+test('unpublished and previous-day static files are unavailable', async () => {
+  const h = harness(), stop = h.start(true);
+  await h.respond(0, { day: undefined, unavailable: true });
+  assert.equal(h.last().error, true);
+  assert.equal(h.last().data, undefined);
+  await h.tick(30000); await h.respond(1, { day: '2026-10-27' });
+  assert.equal(h.last().data, undefined);
+  stop();
+});
+
+test('countdown pauses with the remaining time and resumes in sync with page rotation', async () => {
+  const h = harness(), clock = { remaining: 15000 }, cycles = [];
+  let page = 0;
+  let stop = h.rotatePages(3, change => page = change(page), clock, remaining => cycles.push(remaining));
+  await h.tick(6000); stop();
+  assert.equal(clock.remaining, 9000);
+  await h.tick(20000); assert.equal(page, 0);
+  stop = h.rotatePages(3, change => page = change(page), clock, remaining => cycles.push(remaining));
+  await h.tick(8999); assert.equal(page, 0);
+  await h.tick(1); assert.equal(page, 1);
+  assert.deepEqual(cycles, [15000, 9000, 15000]);
+  stop();
+});
+
+test('display includes the paper signature reminder', () => {
+  const view = board({ teachers: [], changes: [], updated: '2026-10-28T08:00:00Z' });
+  assert.match(view.text, /Si ricorda di firmare le supplenze svolte sul tabellone cartaceo/);
+  assert.ok(view.nodes.some(n => n.props?.role === 'note'));
+});
+
+
+test('assignment kind is readable inside its slot, with older snapshots still supported', () => {
+  const view = board({ teachers: [{ name: 'Rossi', slots: [{ period: 2, classe: '1A', room: 'A1', kind: 'POT', replaced: ['Bianchi'] }] }], changes: [], updated: '2026-10-28T08:00:00Z' });
+  assert.ok(view.nodes.some(n => n.props?.className === 'display-kind' && n.props.children === 'POT'));
 });

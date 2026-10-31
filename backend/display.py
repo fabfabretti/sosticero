@@ -26,7 +26,7 @@ def project(dataset, state, day, campus):
             incomplete = True
             continue
         item = teachers.setdefault(assignment['v'], dict(name=teacher['name'], slots=[]))
-        item['slots'].append(dict(period=row['h'], classe=row['c'], room=row['aula'] or 'Aula n.d.',
+        item['slots'].append(dict(period=row['h'], classe=row['c'], room=row['aula'] or 'Aula n.d.', kind=assignment.get('t', ''),
                                   replaced=[dataset['teachers'][i]['name'] for i in row['ids']]))
     for teacher in teachers.values():
         teacher['slots'].sort(key=lambda slot: (slot['period'], slot['classe']))

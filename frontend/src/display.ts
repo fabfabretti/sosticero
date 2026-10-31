@@ -1,4 +1,4 @@
-export type DisplayTeacher = { name: string; slots: { period: number; classe: string; room: string; replaced: string[] }[] };
+export type DisplayTeacher = { name: string; slots: { period: number; classe: string; room: string; kind?: string; replaced: string[] }[] };
 export type ScheduleChange = { classe: string; action: 'ENTRA' | 'ESCE'; period: number };
 export type DisplayData = { day: string; campus: string; updated: string; teachers: DisplayTeacher[]; changes: ScheduleChange[]; incomplete: boolean };
 export type DisplayState = { day: string; data?: DisplayData; error: boolean };
@@ -33,13 +33,24 @@ export function packRows(heights: number[], available: number, columns: number) 
   return pages;
 }
 
-export function rotatePages(count: number, change: (next: (current: number) => number) => void) {
-  if (count <= 1) return;
-  const timer = setInterval(() => change(current => (current + 1) % count), 15000);
-  return () => clearInterval(timer);
+export function rotatePages(count: number, change: (next: (current: number) => number) => void,
+  clock = { remaining: 15000 }, onCycle: (remaining: number) => void = () => {}) {
+  if (count <= 1) { clock.remaining = 15000; return; }
+  let timer: ReturnType<typeof setTimeout>, deadline = 0;
+  const schedule = () => {
+    deadline = Date.now() + clock.remaining;
+    onCycle(clock.remaining);
+    timer = setTimeout(() => {
+      clock.remaining = 15000;
+      change(current => (current + 1) % count);
+      schedule();
+    }, clock.remaining);
+  };
+  schedule();
+  return () => { clock.remaining = Math.max(0, deadline - Date.now()); clearTimeout(timer); };
 }
 
-export function startDisplay(campus: string, apply: (state: DisplayState) => void) {
+export function startDisplay(campus: string, apply: (state: DisplayState) => void, published = false) {
   let state: DisplayState = { day: romeDay(), error: false };
   let pending: AbortController | undefined, stopped = false;
   let midnight: ReturnType<typeof setTimeout>;
@@ -57,7 +68,7 @@ export function startDisplay(campus: string, apply: (state: DisplayState) => voi
     pending = controller;
     const timeout = setTimeout(() => controller.abort(), 25000);
     try {
-      const response = await fetch('/api/display?campus=' + campus, {
+      const response = await fetch(published ? '/' + campus + '.json?poll=' + Date.now() : '/api/display?campus=' + campus, {
         signal: controller.signal, cache: 'no-store', credentials: 'omit',
       });
       if (!response.ok) throw new Error('Display unavailable');

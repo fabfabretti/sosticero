@@ -7,3 +7,5 @@ defusedxml==0.7.1
 google-auth[requests]==2.62.0
 
 argon2-cffi==25.1.0
+
+blake3==1.0.8
