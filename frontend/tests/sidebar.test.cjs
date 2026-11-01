@@ -120,7 +120,7 @@ function app(localStorage = { getItem: () => null, setItem() {} }, confirm = () 
       if (id === './TimetableImport') return { TimetableImport: 'timetable-import' };
       if (id === './SettingsGroup') {
         const exports = {};
-        runInNewContext(ts.transpileModule(readFileSync('src/SettingsGroup.tsx', 'utf8'), {compilerOptions: {module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX}}).outputText, {exports, require: () => ({jsx, jsxs: jsx})});
+        runInNewContext(ts.transpileModule(readFileSync('src/SettingsGroup.tsx', 'utf8'), {compilerOptions: {module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX}}).outputText, {exports, require: id => id === './Loading' ? requireLoading : ({jsx, jsxs: jsx})});
         return exports;
       }
       if (id === './Receptions') return { ReceptionImport: 'reception-import' };
@@ -252,9 +252,24 @@ test('consultation errors allow retry and successful empty results still open th
   const action = () => a.render().find(n => n.props?.['aria-label'] === 'Consulta disponibilità 1ª ora');
   action().props.onClick({ currentTarget: null }); assert.equal(action().props.disabled, true);
   a.requests.shift().resolve({ detail: 'availability failed' }, false); await settle();
-  assert.equal(action().props.disabled, false); assert.equal(drawer(a), undefined);
+  assert.equal(action().props.disabled, false);
+  assert.match(drawer(a).props.error, /availability failed/);
+  assert.equal(drawer(a).props.pending, false);
+  drawer(a).props.onClose();
   action().props.onClick({ currentTarget: null }); a.requests.shift().resolve([]); await settle();
   assert.equal(drawer(a).props.cands.length, 0);
+});
+
+test('consultation opens immediately with local pending feedback and ignores responses after close', async () => {
+  const a = await loaded({ rows: [] });
+  a.render().find(n => n.props?.['aria-label'] === 'Consulta disponibilità 1ª ora').props.onClick({ currentTarget: null });
+  assert.equal(drawer(a).props.pending, true);
+  assert.equal(drawer(a).props.cands.length, 0);
+  assert.ok(!a.render().some(n => n.props?.className?.includes('ui-operation-status')));
+  const late = a.requests.shift();
+  drawer(a).props.onClose();
+  late.resolve([{ id: 'stale' }]); await settle();
+  assert.equal(drawer(a), undefined);
 });
 
 test('only the latest slot response opens the drawer', async () => {
@@ -464,9 +479,9 @@ test('shell shows brand, glasses icon and seven tabs, defaulting to Supplenze', 
     ['#/permessi', 'Permessi'],
     ['#/orari', 'Orari'],
     ['#/banca-ore', 'Banca ore'],
-    ['#/stats', 'Stats'],
+    ['#/stats', 'Statistiche'],
     ['#/inbox', 'Inbox'],
-    ['#/settings', 'Settings'],
+    ['#/settings', 'Impostazioni'],
   ]);
   assert.equal(currentTab(a).props.href, '#/', 'home tab is current');
   assert.ok(a.render().some(n => n.props?.className === 'fill ph'), 'substitution screen renders');

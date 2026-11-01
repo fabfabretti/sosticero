@@ -120,14 +120,13 @@ export function SheetsSettings({ api, onSummary, revision }: { api: Api; onSumma
   return <section className="sheets-settings settings-subsection">
     <h2>Assenze da Google Forms</h2>
     <p className="sub">Controllo ogni 30 secondi. Le comunicazioni entrano in Inbox: il calendario cambia solo quando le accetti.</p>
-    {busy && <Loading label="Elaborazione…" />}
-    <LoadingRegion pending={loading} blocked={!ready || busy} error={loadError} retry={() => void refresh().catch(() => {})}>
+    <LoadingRegion local pending={loading || !!busy} label={busy ? "Elaborazione…" : undefined} blocked={!ready || busy} error={loadError} retry={() => void refresh().catch(() => {})}>
     <form className="ui-form" onSubmit={e => { e.preventDefault(); void run(false); }}>
       <label>URL o ID del foglio<input required value={spreadsheet} onChange={e => setSpreadsheet(e.target.value)} disabled={busy} /></label>
       <label>Nome della scheda<input required maxLength={100} value={worksheet} onChange={e => setWorksheet(e.target.value)} disabled={busy} /></label>
       <label>Chiave JSON account di servizio<input ref={fileInput} type="file" accept=".json,application/json" disabled={busy} onChange={e => setFile(e.target.files?.[0])} /></label>
       <p className="sub">{status?.email ? `Account installato: ${status.email}` : "Nessuna chiave installata."} Condividi il foglio con questo account come Visualizzatore.</p>
-      <div className="ui-actions"><button className="ui-button ui-button-primary" disabled={busy} type="submit">{busy ? <Loading label="Salvataggio…" /> : "Salva configurazione"}</button><button className="ui-button" type="button" disabled={busy || !status?.configured} onClick={() => void run(true)}>Test connessione salvata</button></div>
+      <div className="ui-actions"><button className="ui-button ui-button-primary" disabled={busy} type="submit">{busy ? <Loading label="Salvataggio…" reserve="Salva configurazione" /> : "Salva configurazione"}</button><button className="ui-button" type="button" disabled={busy || !status?.configured} onClick={() => void run(true)}>Test connessione salvata</button></div>
     </form>
     </LoadingRegion>
     {error && <p className="ui-notice ui-notice-error" role="alert">{error}</p>}
@@ -169,8 +168,7 @@ export function AbsenceInbox({ api }: { api: Api }) {
     <p className="sub">Ultima sincronizzazione: {timestamp(status.lastSuccess)} · {!status.configured ? <Link to="/settings">Configura Google Sheets</Link> : "Controllo automatico ogni 30 secondi"}</p>
     {status.error && <p className="ui-notice ui-notice-error" role="status">{status.error}</p>}
     {error && <p className="ui-notice ui-notice-error" role="alert">{error}</p>}
-    {busy && <Loading label="Elaborazione…" />}
-    <LoadingRegion pending={loading} blocked={!ready || !!busy} error={loadError} retry={() => void refresh().catch(() => {})}>
+    <LoadingRegion pending={loading || !!busy} label={busy ? "Elaborazione…" : undefined} blocked={!ready || !!busy} error={loadError} retry={() => void refresh().catch(() => {})}>
     {!items.length && ready ? <section className="ui-surface inbox-empty"><h2>{history ? "Nessuna comunicazione elaborata" : "Nessuna comunicazione da esaminare"}</h2><p className="sub">Le nuove risposte compariranno qui automaticamente.</p></section> : items.map(item => <article className="ui-surface inbox-item" key={item.id}>
       <div className="inbox-person"><span className="inbox-name">{item.teacherName || item.name || item.raw[2] || "Docente da verificare"}</span>
         {item.status === "pending" && !!item.teachers?.length && (item.nameMatched === undefined ? item.teachers.filter(t => t.name === (item.name || item.raw[2])).length !== 1 : !item.nameMatched) && <><span aria-hidden="true">→</span><select className="inbox-teacher" aria-label={`Docente associato: ${item.name || item.raw[2]}`} value={item.teacher || ""} disabled={!!busy} onChange={e => void act(item, "preview", e.target.value)}><option value="">Seleziona docente…</option>{item.teachers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></>}
@@ -189,7 +187,7 @@ export function AbsenceInbox({ api }: { api: Api }) {
           <p className="sub">Applicati a tutti i giorni della comunicazione. Le note si aggiungono a quelle già presenti.</p>
         </fieldset>
       </details>}
-      {item.status === "pending" ? <div className="inbox-actions"><button className="ui-button ui-button-primary inbox-accept" disabled={!!busy || !!item.error || !!attachmentPending[item.id]} onClick={() => void act(item, "accept")}>{busy === item.id ? <Loading label="Salvataggio…" /> : "Accetta"}</button><button className="ui-button" disabled={!!busy} onClick={() => void act(item, "ignore")}>Ignora</button></div> : <span className="inbox-result">{item.status === "accepted" ? item.acceptedBy ? `Accettata da ${item.acceptedBy.name} (${item.acceptedBy.username})` : "Accettata · autore non disponibile" : "Ignorata"}</span>}
+      {item.status === "pending" ? <div className="inbox-actions"><button className="ui-button ui-button-primary inbox-accept" disabled={!!busy || !!item.error || !!attachmentPending[item.id]} onClick={() => void act(item, "accept")}>{busy === item.id ? <Loading label="Salvataggio…" reserve="Accetta" /> : "Accetta"}</button><button className="ui-button" disabled={!!busy} onClick={() => void act(item, "ignore")}>Ignora</button></div> : <span className="inbox-result">{item.status === "accepted" ? item.acceptedBy ? `Accettata da ${item.acceptedBy.name} (${item.acceptedBy.username})` : "Accettata · autore non disponibile" : "Ignorata"}</span>}
       <details className="inbox-details"><summary aria-label={`Dettagli comunicazione di ${item.name || item.raw[2] || "docente"}`}>⋯</summary>
         <p className="sub">Inviata: {item.raw[0] || timestamp(item.submitted)}{item.processed ? ` · Elaborata: ${timestamp(item.processed)}` : ""}</p>
         {item.days && <ul>{item.days.map(day => <li key={day}>{date(day)} · Ore {item.hours?.join(", ")}{item.overlaps?.find(o => o.day === day)?.hours.length ? ` · Già presenti: ${item.overlaps.find(o => o.day === day)!.hours.join(", ")}` : ""}</li>)}</ul>}

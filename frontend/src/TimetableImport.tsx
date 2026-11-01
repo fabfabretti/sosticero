@@ -49,7 +49,7 @@ export function TimetableImport({ api, onImported }: { api: <T>(url: string, bod
       finally { if (n === request.current) setBusy(false); }
     }} /></label>
     {file && <p>{file.name}</p>}
-    <button className="ui-button ui-button-primary" disabled={busy || !file || !effective} onClick={preview}>{busy ? <Loading label="Elaborazione…" /> : 'Mostra anteprima'}</button>
+    <button className="ui-button ui-button-primary" disabled={busy || !file || !effective} onClick={preview}>{busy ? <Loading label="Elaborazione…" reserve="Mostra anteprima" /> : 'Mostra anteprima'}</button>
     {error && <p className="ui-notice ui-notice-error" role="alert">{error} Genera nuovamente l’anteprima prima di confermare.</p>}
     {success && <p className="ui-notice" role="status">{success}</p>}
     {impact && <div className="ui-surface settings-preview" aria-label="Anteprima importazione">
@@ -68,7 +68,7 @@ export function TimetableImport({ api, onImported }: { api: <T>(url: string, bod
         {d.references.map((r, n) => <p key={n}>{r.id}: {r.message}</p>)}
       </details>)}
       <p>Un backup verificato sarà creato prima dell’applicazione. Le assegnazioni non vengono cancellate o spostate automaticamente.</p>
-      <div className="ui-actions"><button className="ui-button ui-button-primary" disabled={busy} onClick={apply}>{busy ? <Loading label="Importazione…" /> : "Conferma importazione"}</button>
+      <div className="ui-actions"><button className="ui-button ui-button-primary" disabled={busy} onClick={apply}>{busy ? <Loading label="Importazione…" reserve="Conferma importazione" /> : "Conferma importazione"}</button>
       <button className="ui-button" disabled={busy} onClick={() => { invalidate(); setFile(undefined); }}>Annulla</button>
       </div>
     </div>}

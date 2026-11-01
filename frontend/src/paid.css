@@ -1,4 +1,4 @@
-.paid-page { width: 100%; min-width: 0; padding: 1.5rem; max-width: 1600px; margin: auto; }
+.paid-page { width: 100%; min-width: 0; padding: 1.5rem; max-width: 1600px; margin: 0 auto; }
 .paid-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
 .paid-heading h1 { margin: 0; }
 .paid-heading p, .paid-method, .paid-page section > p { color: var(--mute); }

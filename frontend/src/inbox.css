@@ -1,4 +1,4 @@
-.inbox-page { width: 100%; max-width: 1100px; margin: 0 auto; padding: 26px 34px; display: flex; flex-direction: column; gap: var(--ui-padding); }
+.inbox-page { width: 100%; max-width: 1100px; margin: 0 auto; padding: var(--page-padding); display: flex; flex-direction: column; gap: var(--ui-padding); }
 .inbox-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--ui-padding); flex-wrap: wrap; }
 .inbox-heading > div:first-child { display: grid; gap: var(--ui-gap); }
 .inbox-empty { padding: var(--ui-padding); display: grid; gap: var(--ui-gap); }

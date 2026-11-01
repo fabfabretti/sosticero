@@ -64,7 +64,7 @@
 .supplenze .sidebar-content {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   flex: 1;
   min-height: 0;
 }
@@ -83,9 +83,9 @@
 .supplenze tr.h th {
   background: var(--bg);
   color: var(--ink);
-  font-weight: 650;
+  font-weight: 600;
   font-size: 14px;
-  padding: 7px 12px;
+  padding: 8px 12px;
   border-top: 1px solid var(--ink);
 }
 .supplenze td.c {
@@ -168,17 +168,17 @@
   }
 }
 .dr header {
-  padding: 18px 20px 12px;
+  padding: 16px 20px;
   border-bottom: 1px solid var(--line);
   display: flex;
-  gap: 10px;
+  gap: 12px;
 }
 .dr header div {
   flex: 1;
 }
 .dr header b {
   font-size: 17px;
-  font-weight: 650;
+  font-weight: 600;
 }
 .dr header p {
   margin: 2px 0 0;
@@ -190,7 +190,7 @@
 }
 .c1 {
   display: flex;
-  gap: 10px;
+  gap: 12px;
   align-items: center;
   width: 100%;
   padding: 11px 20px;
