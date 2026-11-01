@@ -46,7 +46,7 @@ export function SubstitutionExport({ data, day, initialChoice, disabled, special
         <option value="succursale">Separata</option>
         <option value="both">Entrambe (un PDF, fogli separati)</option>
       </select></label>
-      <button className="ui-button ui-button-primary" type="button" disabled={disabled || !data || !choice || generating} onClick={() => void generate()}>{generating ? <Loading label="Generazione…" /> : 'Genera PDF'}</button>
+      <button className="ui-button ui-button-primary" type="button" disabled={disabled || !data || !choice || generating} onClick={() => void generate()}>{generating ? <Loading label="Generazione…" reserve="Genera PDF" /> : 'Genera PDF'}</button>
     </div>
 
     {error && <p className="ui-notice ui-notice-error" role="alert">{error}</p>}

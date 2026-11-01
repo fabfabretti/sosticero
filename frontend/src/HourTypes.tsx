@@ -1,4 +1,4 @@
-import { Loading, LoadingRegion } from './Loading';
+import { LoadingRegion } from './Loading';
 import { useQuietRefresh } from './useQuietRefresh';
 import { useEffect, useState } from "react";
 export type HourType = { label: string; available: boolean; visible: boolean; school: boolean | null; color: string };
@@ -25,8 +25,8 @@ export function HourTypes({ api, onSummary, revision }: { api: <T>(url: string, 
     <h2 id="hour-types-title">Tipi di ora</h2>
     <p className="sub">Le regole valgono per tutti i docenti e tutti i giorni. “Presso questa scuola” descrive l’attività e non cambia la disponibilità.</p>
     {data?.needsReimport && <p className="sub">Reimporta l’orario originale per recuperare tutte le sigle: il precedente import conservava solo POT, UTC, UTS e DIS.</p>}
-    {pending ? <Loading label="Salvataggio…" /> : <p className="ui-notice" role="status">{message}</p>}{error && <p className="ui-notice ui-notice-error" role="alert">{error}</p>}
-    <LoadingRegion pending={loading} blocked={!ready || pending} error={loadError} retry={() => void refresh().catch(() => {})}>{data && <fieldset disabled={pending || !ready}>
+    {!pending && <p className="ui-notice" role="status">{message}</p>}{error && <p className="ui-notice ui-notice-error" role="alert">{error}</p>}
+    <LoadingRegion local pending={loading || pending} label={pending ? "Salvataggio…" : undefined} blocked={!ready || pending} error={loadError} retry={() => void refresh().catch(() => {})}>{data && <fieldset disabled={pending || !ready}>
       <legend className="sr-only">Regole per tipo di ora</legend>
       <div className="hour-type-head" aria-hidden="true"><span>Tipo</span><span>Disponibile per supplenze</span><span>Mostra tra i candidati</span><span>Presso questa scuola</span></div>
       {Object.entries(data.types).sort((a,b) => a[1].label.localeCompare(b[1].label)).map(([id, p]) => <div className="hour-type-row" key={id}>

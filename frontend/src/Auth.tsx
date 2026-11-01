@@ -46,8 +46,8 @@ export function Auth({ children }: { children: React.ReactNode }) {
   }, []);
   return <AccountContext.Provider value={account}>
     {ready && account && <div key={identity} inert={locked || loggingOut} aria-hidden={locked || undefined}>{children}</div>}
-    {!ready && <Loading label="Accesso in corso…" />}
-    {loggingOut && <Loading label="Uscita in corso…" />}
+    {!ready && <Loading overlay label="Accesso in corso…" />}
+    {loggingOut && <Loading overlay label="Uscita in corso…" />}
     {ready && !locked && error && <p role="alert">{error}</p>}
     {ready && (locked || !account) && <div className="auth-backdrop"><section className="auth-login ui-surface" role="dialog" aria-modal="true" aria-labelledby="login-title">
       <h1 id="login-title">Accedi a Sosticero</h1>
@@ -55,7 +55,7 @@ export function Auth({ children }: { children: React.ReactNode }) {
         <label>Nome utente<input autoFocus autoComplete="username" value={username} onChange={e=>setUsername(e.target.value)} required disabled={busy}/></label>
         <label>Password<input type="password" autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)} required disabled={busy}/></label>
         {error && <p role="alert">{error}</p>}
-        <button className="ui-button ui-button-primary" disabled={busy}>{busy ? <Loading label="Accesso in corso…" /> : "Accedi"}</button>
+        <button className="ui-button ui-button-primary" disabled={busy}>{busy ? <Loading label="Accesso in corso…" reserve="Accedi" /> : "Accedi"}</button>
       </form>
     </section></div>}
   </AccountContext.Provider>;

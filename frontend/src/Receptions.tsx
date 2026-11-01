@@ -58,7 +58,7 @@ export function ReceptionImport({ api, onSummary, onImported, revision }: { api:
   return <section className="reception-import settings-subsection" aria-label="Ricevimenti">
     <h2>Ricevimenti</h2>
     <p>Importa l’Excel con docente, giorno e ora. R compare in Orari e non può essere usato come recupero permesso. Le sedi mancanti restano da verificare.</p>
-    <LoadingRegion pending={loading} blocked={false} error={loadError} retry={() => void refresh().catch(() => {})} />
+    <LoadingRegion local pending={loading} blocked={false} error={loadError} retry={() => void refresh().catch(() => {})} />
     {!!document?.versions.length && <details><summary>Versioni ricevimenti ({document.versions.length})</summary>{document.versions.map(version => <p key={version.effective}>Dal {version.effective}: {version.rows.length} ricevimenti · {version.rows.filter(row => !row.site).length} sedi da verificare</p>)}</details>}
     <div className="ui-form">
       <label>Decorrenza<input type="date" value={effective} required disabled={busy} onChange={e => { invalidate(); setEffective(e.target.value); }} /></label>
@@ -75,7 +75,7 @@ export function ReceptionImport({ api, onSummary, onImported, revision }: { api:
         } catch (e) { if (current === request.current) setError(String(e)); }
         finally { if (current === request.current) setBusy(false); }
       }} /></label>
-      <button className="ui-button ui-button-primary" disabled={busy || !file || !effective} onClick={preview}>{busy ? <Loading label="Elaborazione…" /> : 'Mostra anteprima ricevimenti'}</button>
+      <button className="ui-button ui-button-primary" disabled={busy || !file || !effective} onClick={preview}>{busy ? <Loading label="Elaborazione…" reserve="Mostra anteprima ricevimenti" /> : 'Mostra anteprima ricevimenti'}</button>
     </div>
     {file && <p>{file.name}</p>}
     {error && !impact && <p className="ui-notice ui-notice-error" role="alert">{error}</p>}
@@ -112,7 +112,7 @@ export function ReceptionImport({ api, onSummary, onImported, revision }: { api:
       {reviewed && !impact.ready && <p className="ui-notice ui-notice-error" role="status">Importazione bloccata: risolvi o salta le {unresolved} righe evidenziate, poi clicca «Verifica abbinamenti».</p>}
       {reviewed && impact.ready && <p className="ui-notice" role="status">Verifica completata. Clicca «Conferma ricevimenti» per importare.</p>}
       <div className="ui-actions">
-      <button className="ui-button ui-button-primary" disabled={busy || (reviewed && !impact.ready)} onClick={reviewed ? apply : preview}>{busy ? <Loading label="Elaborazione…" /> : reviewed ? 'Conferma ricevimenti' : 'Verifica abbinamenti'}</button>
+      <button className="ui-button ui-button-primary" disabled={busy || (reviewed && !impact.ready)} onClick={reviewed ? apply : preview}>{busy ? <Loading label="Elaborazione…" reserve={reviewed ? "Conferma ricevimenti" : "Verifica abbinamenti"} /> : reviewed ? 'Conferma ricevimenti' : 'Verifica abbinamenti'}</button>
       <button className="ui-button" disabled={busy} onClick={() => { invalidate(); setImpact(undefined); setFile(undefined); setChoices({}); }}>Annulla</button>
       </div>
     </div>}

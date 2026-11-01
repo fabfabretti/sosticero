@@ -245,7 +245,7 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
         try { await paintLoading(); generateTimetablePdf(projectTimetableExport(data.dataset), data.day, data.effective).save(`orari-${data.day}.pdf`); }
         catch (e) { setError(`Impossibile generare il PDF: ${e instanceof Error ? e.message : String(e)}`); }
         finally { setExporting(false); }
-      }}>{exporting ? <Loading label="Generazione…" /> : 'Scarica PDF completo'}</button>
+      }}>{exporting ? <Loading label="Generazione…" reserve="Scarica PDF completo" /> : 'Scarica PDF completo'}</button>
       <span className="sub">Salva o annulla le modifiche prima di esportare.</span>
     </div>
     <div className="orari-legend" aria-label="Legenda sedi">
@@ -255,8 +255,7 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
     </div>
     {error && <p className="ui-notice ui-notice-error" role="alert">{error}</p>}
     {nameStatus && <p className="ui-notice" role="status">{nameStatus}</p>}
-    {busy && <Loading label="Elaborazione…" />}
-    <LoadingRegion pending={loading} blocked={!ready || busy || exporting} error={loadError} retry={() => void quietRefresh().catch(() => {})}>
+    <LoadingRegion pending={loading || busy} label={busy ? "Elaborazione…" : undefined} blocked={!ready || busy || exporting} error={loadError} retry={() => void quietRefresh().catch(() => {})}>
     {data && !filtered.length && <p>Nessun docente trovato.</p>}
     <div className="orari-grids">{filtered.map(g => {
       const editing = draft?.teacher === g.id;
@@ -280,7 +279,7 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
           </div>
           <p className="sub">Cambia solo il nome, anche nelle giornate passate. Permessi e recuperi restano sullo stesso conto.</p>
           <div className="orari-name-actions">
-            <button className="ui-button ui-button-primary" disabled={busy || !nameDraft.name.trim() || !nameDraft.originalName.trim()}>{busy ? <Loading label="Salvataggio…" /> : 'Salva nome'}</button>
+            <button className="ui-button ui-button-primary" disabled={busy || !nameDraft.name.trim() || !nameDraft.originalName.trim()}>{busy ? <Loading label="Salvataggio…" reserve="Salva nome" /> : 'Salva nome'}</button>
             {nameDraft.previous && <button type="button" className="ui-button" disabled={busy} onClick={() => void saveName(true)}>Rimuovi nome personalizzato</button>}
             <button type="button" className="ui-button" disabled={busy} onClick={() => { rememberTimetable(g.id); setNameDraft(undefined); setError(''); }}>Annulla</button>
           </div>
@@ -292,7 +291,7 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
           <div className="orari-edit-toolbar" role="group" aria-label={`Modifica orario di ${g.name}`}>
             <label>Dal<input type="date" required value={draft.start} disabled={busy} onChange={e => startAt(e.target.value)} /></label>
             <label>Al<input aria-label="Fino al (facoltativo)" type="date" min={draft.start} value={draft.end} disabled={busy || draft.reset} onChange={e => change({ end: e.target.value })} /></label>
-            <button className="ui-button ui-button-primary" disabled={busy || (!!draft.end && draft.end < draft.start)} onClick={() => save()}>{busy ? <Loading label="Salvataggio…" /> : 'Salva'}</button>
+            <button className="ui-button ui-button-primary" disabled={busy || (!!draft.end && draft.end < draft.start)} onClick={() => save()}>{busy ? <Loading label="Salvataggio…" reserve="Salva" /> : 'Salva'}</button>
             <button className="ui-button" disabled={busy} onClick={() => { if (data) change({ reset: true, end: '', cells: week(data.imported, g.id) }); }}>Ripristina</button>
             <button className="ui-button" disabled={busy} onClick={discard}>Annulla</button>
           </div>

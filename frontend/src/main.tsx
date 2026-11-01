@@ -70,9 +70,9 @@ const TABS = [
   { path: "/permessi", label: "Permessi" },
   { path: "/orari", label: "Orari" },
   { path: "/banca-ore", label: "Banca ore" },
-  { path: "/stats", label: "Stats" },
+  { path: "/stats", label: "Statistiche" },
   { path: "/inbox", label: "Inbox" },
-  { path: "/settings", label: "Settings" },
+  { path: "/settings", label: "Impostazioni" },
 ];
 // Unknown routes fall back to Supplenze (home).
 const screenFor = (pathname: string) =>
@@ -222,7 +222,7 @@ function Permessi() {
     <svg className="warning-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 22 21H2Z" fill="none" stroke="currentColor" strokeWidth="2"/><path d="M12 9v5m0 3v1" stroke="currentColor" strokeWidth="2"/></svg>
   </HourHelp>;
   return <div className="app ui-page permessi">
-    <div className="loading-permit-status"><LoadingRegion pending={refreshing} blocked={false} error={loadError ? (error || loadError) : undefined} retry={() => void refresh().catch(() => {})} />{busy && <Loading label="Salvataggio…" />}</div>
+    <div className="loading-permit-status"><LoadingRegion pending={refreshing || busy} label={busy ? "Salvataggio…" : undefined} blocked={false} error={loadError ? (error || loadError) : undefined} retry={() => void refresh().catch(() => {})} /></div>
     <aside inert={!ready || busy} className={!ready || busy ? "ui-loading-content" : undefined}>
     {conflict && <div role="alert"><p>Il record è cambiato. I valori inseriti sono rimasti nel modulo.</p><button className="ui-button" onClick={async () => { try { await refresh(); reset(); setConflict(false); setError(""); } catch (e) { setError(String(e)); } }}>Ricarica valori salvati</button></div>}
     <form className="permit-form" onSubmit={e => { e.preventDefault(); if (manual) { if (teacher && Number.isInteger(Number(manualHours)) && Number(manualHours) > 0) void save({ id: teacher, hours: Number(manualHours), note, editing: editingManual }, "manual-permits"); return; } if (invalidDates || !teacher || !selected.length) return; void save({ day, id: teacher, requested_on: requestedOn || null, note, attachment, classification: original ? editClassification : newClassification, hours: selected, ...(original ? { original_day: original.day, original_id: original.id } : {}) }); }}>
@@ -264,7 +264,7 @@ function Permessi() {
 
         <p className="sub">Massimo giornaliero: {maximum} ore · Selezionate: {selected.length}. Sono comprese tutte le attività in orario, inclusi POT e DIS.</p>
         </>}
-        <button className="ui-button ui-button-primary permit-save" type="submit" disabled={attachmentPending || conflict || !teacher || (manual ? !Number.isInteger(Number(manualHours)) || Number(manualHours) < 1 : invalidDates || !selected.length)}>{busy ? <Loading label="Salvataggio…" /> : manual ? "Salva saldo manuale" : "Salva permesso"}</button>
+        <button className="ui-button ui-button-primary permit-save" type="submit" disabled={attachmentPending || conflict || !teacher || (manual ? !Number.isInteger(Number(manualHours)) || Number(manualHours) < 1 : invalidDates || !selected.length)}>{busy ? <Loading label="Salvataggio…" reserve={manual ? "Salva saldo manuale" : "Salva permesso"} /> : manual ? "Salva saldo manuale" : "Salva permesso"}</button>
         {(original || editingManual) && <button className="ui-button" type="button" onClick={reset}>Annulla modifica</button>}
       </fieldset>
       <div className="permit-feedback" aria-live="polite">{!manual && invalidDates && <p role="alert">Inserisci date valide nel formato gg/mm/aaaa.</p>}{(error || (!manual && overLimit)) && <p role="alert">{error || `Superato il massimo giornaliero di ${maximum} ore di permesso.`}</p>}</div>
@@ -320,7 +320,7 @@ function Settings() {
   const [theme, setTheme] = useState(() => document.documentElement.dataset.theme || (window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
   const [data, setData] = useState<Data>(),
     [error, setError] = useState("");
-  const { refresh, loading: settingsLoading, ready: settingsReady, loadError: settingsError } = useQuietRefresh(
+  const { refresh, ready: settingsReady, loadError: settingsError } = useQuietRefresh(
     () => api<Data>("day/" + localDate(new Date())), setData, archiveBusy || backupBusy, 'settings-overview', true,
   );
   useEffect(() => { void refresh().catch(() => {}); }, []);
@@ -362,11 +362,10 @@ function Settings() {
     } finally { archiveRunning.current = false; setArchiveBusy(false); }
   };
   return <section className="ui-page settings">
-    <h1>Settings</h1>
+    <h1>Impostazioni</h1>
     <p className="settings-intro settings-muted">Configurazione, collegamenti e gestione dei dati.</p>
     {readOnly && <p className="ui-notice" role="status">Configurazione condivisa: modifiche riservate alla sede Centrale.</p>}
-    <LoadingRegion pending={settingsLoading} blocked={false} error={settingsError} retry={() => void refresh().catch(() => {})} />
-    {(archiveBusy || backupBusy) && <Loading label="Elaborazione dati…" />}
+    <LoadingRegion pending={archiveBusy || backupBusy} label={archiveBusy || backupBusy ? "Elaborazione dati…" : undefined} blocked={false} error={settingsError} retry={() => void refresh().catch(() => {})} />
     <fieldset className="settings-permissions" disabled={readOnly || archiveBusy || backupBusy || !settingsReady}>
     <SettingsGroup title="Orari e ricevimenti" description="Importa e verifica gli impegni settimanali." status={[data ? `${Object.keys(data.dataset.teachers).length} docenti · ${data.dataset.classes.length} classi` : error ? 'Orario non disponibile' : 'Caricamento…', receptionSummary].join(' · ')}>
       <TimetableImport api={api} onImported={() => { void refresh().catch(() => {}); setBackupRevision(value => value + 1); }} />
@@ -428,7 +427,7 @@ function Shell() {
         <Stub label={tab.label} />
       )}
       {tab.path === "/settings" && (
-        <footer className="credits">by Fabs 🤝🏻 Big Pickle, 2026</footer>
+        <footer className="credits">Fabs e Big Pickle, 2026</footer>
       )}
     </div>
   );
@@ -616,6 +615,8 @@ function Supplenze() {
     invalidate();
     candidateBaseline.current = data?.concurrency;
     setLoadingCandidates(true);
+    setCands([]);
+    setOpen(r);
     setError("");
     try {
       const c = await api<Candidate[]>(
@@ -637,6 +638,8 @@ function Supplenze() {
     const n = ++candidateRequest.current;
     invalidate();
     setLoadingCandidates(true);
+    setCands([]);
+    setConsultation({ h, sede: filter === "all" ? null : filter });
     setError("");
     try {
       const c = await api<Candidate[]>("availability?" + new URLSearchParams({ day, hour: String(h), campus: filter }));
@@ -1216,7 +1219,7 @@ function Supplenze() {
           )}
           {conflict && conflictSummary && <p className="ui-notice" role="status">{conflictSummary}</p>}
           {conflict && <button className="ui-button" onClick={async () => { try { await refresh(); setEditingKind(undefined); setEditingDis(undefined); setDisTeacher(undefined); setEditAttachment(undefined); setQuery(""); setChosen(undefined); setEntryNote(""); setEntryAttachment(undefined); setConflict(false); setError(""); } catch (e) { setError(String(e)); } }}>Ricarica valori salvati</button>}
-          {entryOpen && <LoadingRegion pending={refreshing} blocked={false} error={loadError} retry={() => void refresh().catch(() => {})} />}
+          {entryOpen && <LoadingRegion local pending={refreshing} blocked={false} error={loadError} retry={() => void refresh().catch(() => {})} />}
           <form className="entry-form ui-form" onSubmit={e => { e.preventDefault(); void add(); }}>
             <label htmlFor="q">Cerca docente o classe</label>
             <div className="entry-search">
@@ -1273,7 +1276,7 @@ function Supplenze() {
                 </div>
               )}
             </div>
-            <button className="ui-button ui-button-primary entry-submit" type="submit" disabled={attachmentPending || busy || !ready || conflict || duplicate || !target || (!wholeDay && !entryHours.length)}>{busy ? <Loading label="Salvataggio…" /> : "Aggiungi"}</button>
+            <button className="ui-button ui-button-primary entry-submit" type="submit" disabled={attachmentPending || busy || !ready || conflict || duplicate || !target || (!wholeDay && !entryHours.length)}>{busy ? <Loading label="Salvataggio…" reserve="Aggiungi" /> : "Aggiungi"}</button>
             </div>
             {duplicate && <p className="ui-notice" role="status">{target?.label}: già registrato per questa data.</p>}
             {entrySuccess && <p className="ui-notice" role="status">{entrySuccess}</p>}
@@ -1311,8 +1314,8 @@ function Supplenze() {
           </form>
         </div>
       </div>}
-      {(loadingCandidates || (busy && !entryOpen)) && <div className="ui-operation-status"><Loading label={loadingCandidates ? "Caricamento disponibilità…" : "Salvataggio…"} /></div>}
-      {consultation && <CandidateDrawer open={consultation} cands={cands} busy={busy} name={name} readOnlyReason="Solo consultazione" returnFocus={consultationTrigger.current} onAssign={() => {}} onClose={() => { ++candidateRequest.current; setConsultation(undefined); setLoadingCandidates(false); }} />}
+      {busy && !entryOpen && <Loading overlay label="Salvataggio…" />}
+      {consultation && <CandidateDrawer open={consultation} cands={cands} pending={loadingCandidates} error={error} busy={busy} name={name} readOnlyReason="Solo consultazione" returnFocus={consultationTrigger.current} onAssign={() => {}} onClose={() => { ++candidateRequest.current; setConsultation(undefined); setLoadingCandidates(false); }} />}
       {open && (
         <CandidateDrawer
           open={open}
@@ -1320,6 +1323,8 @@ function Supplenze() {
           current={assigned[open.k]?.v}
           currentCategory={assigned[open.k]?.t}
           busy={busy}
+          pending={loadingCandidates}
+          error={error}
           readOnlyReason={!canAssign(open.sede) ? `Assegnazione riservata alla sede ${open.sede || "non indicata"}` : undefined}
           name={name}
           onClose={() => {
@@ -1384,10 +1389,9 @@ function BackupSection({ onSummary, revision, onRestored, onPendingChange }: { o
     <h2>Backup del database</h2>
     <p className="settings-muted">Copie complete del database. Il ripristino sostituisce i dati attuali.</p>
     <div className="ui-actions"><button className="ui-button ui-button-primary" onClick={() => void run()} disabled={loading || !backupsReady}>Crea backup manuale</button></div>
-    {loading && <Loading label="Elaborazione…" />}
     {error && <p className="ui-notice ui-notice-error" role="alert">{error}</p>}
     {success && <p className="ui-notice" role="status">{success}</p>}
-    <LoadingRegion pending={listing} blocked={!backupsReady || loading} error={loadError ? (error || loadError) : undefined} retry={() => void loadBackups().catch(() => {})}>
+    <LoadingRegion local pending={listing || loading} label={loading ? "Elaborazione…" : undefined} blocked={!backupsReady || loading} error={loadError ? (error || loadError) : undefined} retry={() => void loadBackups().catch(() => {})}>
     {loaded && !backups.length ? <p className="settings-muted">Nessun backup disponibile</p> : <ul className="settings-list">
       {backups.map(backup => <li key={backup.filename}>
         <div><strong>{backup.filename}</strong><small className="settings-muted">{new Date(backup.created_at).toLocaleString('it-IT')} · {formatSize(backup.size)}</small></div>

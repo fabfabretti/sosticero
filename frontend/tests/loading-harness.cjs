@@ -7,7 +7,7 @@ function compile(file, globals) {
   runInNewContext(ts.transpileModule(readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText, { exports, ...globals });
   return exports;
 }
-const loading = compile('src/Loading.tsx', { require: () => ({ jsx, jsxs: jsx }), requestAnimationFrame: fn => fn() });
+const loading = compile('src/Loading.tsx', { require: id => id === 'react-dom' ? { createPortal: node => node } : ({ jsx, jsxs: jsx }), document: { body: {} }, requestAnimationFrame: fn => fn() });
 function quiet(react) {
   return compile('src/useQuietRefresh.ts', {
     require: () => ({ ...react, useLayoutEffect: react.useLayoutEffect || react.useEffect }),

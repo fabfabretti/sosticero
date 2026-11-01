@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
 const { runInNewContext } = require('node:vm');
 const ts = require('typescript');
+const { loading } = require('./loading-harness.cjs');
 
 function render(props) {
   const effects = [], cleanups = [], listeners = new Map(), nodes = [];
@@ -19,6 +20,7 @@ function render(props) {
     compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022 },
   }).outputText, { exports, document, window: { confirm() { throw Error('Unexpected confirmation'); } }, require(id) {
     if (id === 'react') return { useRef: value => ({ current: value }), useEffect: fn => effects.push(fn) };
+    if (id === './Loading') return loading;
     if (id === 'react/jsx-runtime') return { jsx, jsxs: jsx };
     throw Error(id);
   } });
@@ -81,4 +83,12 @@ test('duplicate teacher entries select explicit recovery or paid category and ma
   buttons.forEach(b => b.props.onClick());
   assert.deepEqual(calls, [['pot', false, 'RP'], ['pot', false, 'PAID']]);
   assert.ok(c.nodes.some(n => n.type === 'h3' && n.props.children === 'Disponibile a pagamento'));
+});
+
+test('pending consultation keeps feedback inside the drawer and hides the empty result', () => {
+  const c = render({open: {h: 2, sede: null}, cands: [], busy: false, pending: true, name: id => id, onClose() {}, onAssign() {}});
+  const region = c.nodes.find(n => n.type === loading.LoadingRegion);
+  assert.equal(region.props.local, true);
+  assert.equal(region.props.pending, true);
+  assert.ok(!c.nodes.some(n => n.props?.children === 'Nessun docente disponibile per questa ora e sede.'));
 });

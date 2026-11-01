@@ -1,3 +1,4 @@
+import { LoadingRegion } from "./Loading";
 import { useEffect, useRef } from "react";
 import type { Row, Candidate } from "./types";
 const category = (c: Candidate) =>
@@ -33,6 +34,8 @@ export function CandidateDrawer({
   current,
   currentCategory,
   busy,
+  pending = false,
+  error,
   name,
   onClose,
   onAssign,
@@ -44,6 +47,8 @@ export function CandidateDrawer({
   current?: string;
   currentCategory?: string;
   busy: boolean;
+  pending?: boolean;
+  error?: string;
   readOnlyReason?: string;
   returnFocus?: HTMLElement | null;
   name: (id: string) => string;
@@ -103,7 +108,8 @@ export function CandidateDrawer({
         </header>
         {reason && <p role="status" className="ui-notice" id="candidate-permission">{reason}</p>}
         <div className="lst">
-          {consultation && !cands.length && <p role="status">Nessun docente disponibile per questa ora e sede.</p>}
+          <LoadingRegion local pending={pending} error={error}>
+          {consultation && !pending && !error && !cands.length && <p role="status">Nessun docente disponibile per questa ora e sede.</p>}
           {cands.map((c, index) => {
             const cross = !!(c.loc && open.sede && c.loc !== open.sede);
             return (
@@ -189,6 +195,7 @@ export function CandidateDrawer({
               </div>
             );
           })}
+          </LoadingRegion>
         </div>
       </div>
     </>

@@ -37,7 +37,7 @@ export function Publication({ day, campus, disabled }: { day: string; campus: st
   };
   return <div className="publication ui-scope" aria-label="Pubblicazione supplenze">
     <button type="button" className="ui-button ui-button-primary" disabled={disabled || sending || !status?.configured || status.busy || status.uncertain} onClick={() => void publish()}>
-      {sending || status?.busy ? <Loading label="Pubblicazione…" /> : 'Pubblica'}
+      {sending || status?.busy ? <Loading label="Pubblicazione…" reserve="Pubblica" /> : 'Pubblica'}
     </button>
     <div className="publication-meta"><span>{campus === 'centrale' ? 'Centrale' : 'Succursale'}</span>
     {status?.configured && <a href={status.url} target="_blank" rel="noopener noreferrer">Apri display pubblico</a>}</div>

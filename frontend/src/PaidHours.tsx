@@ -54,8 +54,7 @@ export function PaidHours({ api }: { api: Api }) {
     <div className="ui-actions"><label>Settimana del <input type="date" value={day} disabled={editing || busy} onChange={e => setDay(e.target.value)} /></label>
       <button className="ui-button" aria-pressed={editing} disabled={busy || !data || !ready} onClick={() => { setEditing(!editing); setQuery(""); setError(""); }}>{editing ? "Fine modifica" : "Modifica disponibilità"}</button></div></header>
     {error && <p role="alert" className="ui-notice ui-notice-error">{error}</p>}
-    {busy && <Loading label="Salvataggio…" />}
-    <LoadingRegion pending={loading} blocked={!ready || busy} error={loadError} retry={() => void refresh().catch(() => {})}>
+    <LoadingRegion pending={loading || busy} label={busy ? "Salvataggio…" : undefined} blocked={!ready || busy} error={loadError} retry={() => void refresh().catch(() => {})}>
     {data && <>
       {editing && slot && <dialog ref={dialog} className="paid-dialog" aria-labelledby="paid-dialog-title" onCancel={e => { if (busy) e.preventDefault(); else setSlot(undefined); }} onClick={e => { if (e.target === e.currentTarget && !busy) { const r = e.currentTarget.getBoundingClientRect(); if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) setSlot(undefined); } }}>
         <div className="paid-dialog-heading"><h2 id="paid-dialog-title">Disponibilità · {weekdays[slot.weekday]}, {slot.hour}ª ora</h2><button className="ui-button" aria-label="Chiudi disponibilità" disabled={busy} onClick={() => setSlot(undefined)}>×</button></div>

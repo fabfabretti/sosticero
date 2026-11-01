@@ -99,7 +99,7 @@ export function StatsAvailability({ campus, onReady }: { campus: string; preview
     </div>
     {!date && <p role="alert">Seleziona una data per vedere la settimana.</p>}
 
-    <LoadingRegion pending={loading} blocked={!ready} error={loadError} retry={() => setRetry(retry + 1)}>{data && <>
+    <LoadingRegion local pending={loading} blocked={!ready} error={loadError} retry={() => setRetry(retry + 1)}>{data && <>
       <AvailabilityTable data={data} selected={selected} />
       <p className="availability-ratio"><strong>POT disponibili: {fmt(data.pot.enabled)} / {fmt(data.pot.total)} ore · {fmt(data.pot.percentage)}{data.pot.percentage === null ? "" : "%"}</strong><span>Riferimento atteso: {data.pot.reference}%</span></p>
       <p className="stats-method">POT + ALF + PE abilitati / totale in orario nella settimana {data.start} — {data.end}. Ore disabilitate incluse nel totale; DI.S e recuperi esclusi. {data.pot.total === 0 && "Nessuna ora POT/ALF/PE nella sede selezionata."}</p>
