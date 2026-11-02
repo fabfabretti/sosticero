@@ -1078,11 +1078,6 @@ function Supplenze() {
           {data?.issues.map((i) => (
             <p role="alert" key={i.key}>
               Assegnazione da verificare: {i.context ? `${i.context.teacherName}, ${i.context.h}ª, ${i.context.c}, ${i.context.site || 'sede ignota'} → ${i.context.substituteName}` : i.key}: {i.message}{" "}
-              <label>Sposta su una riga attuale <select aria-label="Riga per risolvere il conflitto" disabled={!canAssign(i.context?.site)} defaultValue="" onChange={e => {
-                const key = e.target.value;
-                if (key && window.confirm('Spostare questa assegnazione sulla riga selezionata? Sarà verificata prima del salvataggio.')) void mutate('assignments', {day, key, value: assigned[i.key]?.v, replace_key: i.key});
-                e.target.value = '';
-              }}><option value="">Seleziona…</option>{data?.rows.filter(r => r.k !== i.key && !assigned[r.k] && canAssign(r.sede)).map(r => <option key={r.k} value={r.k}>{r.h}ª · {r.c}</option>)}</select></label>{" "}
               <button
                 className="lk"
                 disabled={!canAssign(i.context?.site)} title={!canAssign(i.context?.site) ? "Modifica riservata alla sede della riga" : undefined}
