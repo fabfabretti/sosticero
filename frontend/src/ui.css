@@ -8,7 +8,7 @@
   --ui-control-height: 36px;
   --ui-radius: var(--control-radius);
   --ui-form-width: 640px;
-  --ui-danger: color-mix(in srgb, var(--ink) 35%, #c34242);
+  --ui-danger: var(--danger);
   --ui-surface: var(--pan);
   --ui-border: var(--line);
   min-width: 0;
@@ -20,25 +20,25 @@
 .ui-page h3 { margin: 0; font-size: 15px; color: var(--ink); font-weight: 600; line-height: 1.4; }
 .ui-page :where(p) { margin: 0; line-height: 1.45; }
 .ui-page .sub { color: var(--mute); font-size: 12px; }
-.ui-page a { color: var(--acc); }
+.ui-page a { color: var(--ink); }
 .ui-surface { min-width: 0; background: var(--ui-surface); border: 1px solid var(--ui-border); border-radius: var(--ui-radius); }
 .ui-table { width: 100%; border-collapse: collapse; font-size: 13px; border: 0; background: transparent; }
 .ui-table :is(th, td) { text-align: left; padding: var(--ui-padding); border-bottom: 1px solid var(--ui-border); vertical-align: top; }
 .ui-form { display: grid; gap: var(--ui-field-gap); min-width: 0; }
 .ui-page :is(label:has(> input:not([type="checkbox"])), label:has(> select), label:has(> textarea), .ui-field) { display: grid; gap: var(--ui-label-gap); width: 100%; min-width: 0; font-size: 13px; font-weight: 500; color: var(--ink); line-height: 1.4; }
-.ui-page :is(input:not([type="checkbox"]), select, textarea) { font: inherit; font-size: 13px; color: var(--ink); background: var(--bg); border: 1px solid var(--ui-border); border-radius: var(--ui-radius); padding: var(--ui-control-padding); min-height: var(--ui-control-height); min-width: 0; width: 100%; }
+.ui-page :is(input:not([type="checkbox"]), select, textarea) { font: inherit; font-size: 13px; color: var(--ink); background: var(--surface-2); border: 1px solid var(--border-strong); border-radius: var(--ui-radius); padding: var(--ui-control-padding); min-height: var(--ui-control-height); min-width: 0; width: 100%; }
 .ui-page textarea { min-height: 64px; resize: vertical; }
-.ui-page input[type="checkbox"] { width: 18px; height: 18px; flex: 0 0 auto; accent-color: var(--acc); }
+.ui-page input[type="checkbox"] { width: 18px; height: 18px; flex: 0 0 auto; accent-color: var(--accent); }
 .ui-actions { display: flex; align-items: end; gap: var(--ui-gap); flex-wrap: wrap; }
 .ui-actions .ui-field { flex: 1 1 240px; }
 :is(.ui-page, .ui-scope) .ui-button, .ui-page :is(.classification button, .attachment-field > button) { display: inline-flex; align-items: center; justify-content: center; width: auto; min-height: var(--ui-control-height); padding: var(--ui-control-padding); border: 1px solid var(--ui-border); border-radius: var(--ui-radius); background: var(--ui-surface); color: var(--ink); font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; justify-self: start; }
-:is(.ui-page, .ui-scope) .ui-button-primary, .ui-page .classification button.on { background: var(--acc); color: var(--on); border-color: var(--acc); }
+:is(.ui-page, .ui-scope) .ui-button-primary { background: var(--acc); color: var(--on); border-color: var(--acc); }
 :is(.ui-page, .ui-scope) .ui-button-danger { color: var(--ui-danger); }
-:is(.ui-page, .ui-scope) .ui-button.on:not(.ui-button-primary) { background: var(--soft); color: var(--acc); border-color: var(--acc); }
+:is(.ui-page, .ui-scope) .ui-button.on:not(.ui-button-primary) { background: var(--accent-subtle); color: var(--text); border-color: var(--accent-border); }
 :is(.ui-page, .ui-scope) .ui-button:hover:not(:disabled), .ui-page :is(.classification button, .attachment-field > button):hover:not(:disabled) { filter: brightness(.95); }
 .ui-page :disabled, .ui-scope .ui-button:disabled { opacity: .55; cursor: not-allowed; }
 .ui-page :is(summary, button, input, select, textarea, .attachment-paste):focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
-.ui-notice { padding: var(--ui-control-padding); background: var(--soft); border-left: 2px solid var(--acc); font-size: 13px; overflow-wrap: anywhere; }
+.ui-notice { padding: var(--ui-control-padding); background: var(--info-bg); border-left: 2px solid var(--info-border); font-size: 13px; overflow-wrap: anywhere; }
 .ui-notice:empty { display: none; }
 .ui-notice-error { color: var(--ui-danger); border-color: var(--ui-danger); }
 .ui-page .classification { margin: 0; gap: var(--ui-gap); flex-wrap: wrap; }
@@ -61,13 +61,17 @@
 @media print { .ui-loading, .ui-loading-content { display: none !important; } }
 .loading-permit-status { grid-column: 1 / -1; }
 
-.ui-operation-status { width: 320px; min-height: 96px; justify-content: center; gap: 12px; max-width: calc(100vw - 32px); position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 200; padding: 20px; border: 1px solid var(--line); border-radius: 8px; background: var(--pan); color: var(--ink); font-size: 16px; box-shadow: 0 8px 32px #0003; pointer-events: none; }
+.ui-operation-status { width: 320px; min-height: 96px; justify-content: center; gap: 12px; max-width: calc(100vw - 32px); position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 200; padding: 20px; border: 1px solid var(--line); border-radius: 8px; background: var(--pan); color: var(--ink); font-size: 16px; box-shadow: 0 8px 32px var(--shadow-overlay); pointer-events: none; }
 .ui-operation-status > .ui-spinner { width: 24px; height: 24px; }
 
 @media screen {
-  body:has(.ui-operation-status)::before { content: ""; position: fixed; inset: 0; z-index: 199; background: #0006; pointer-events: none; }
+  body:has(.ui-operation-status)::before { content: ""; position: fixed; inset: 0; z-index: 199; background: var(--backdrop); pointer-events: none; }
 }
 
 .ui-loading-region { position: relative; min-width: 0; min-height: 64px; }
 .ui-section-status { position: absolute; top: 16px; left: 50%; transform: translateX(-50%); z-index: 1; max-width: calc(100% - 16px); padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--control-radius); background: var(--pan); color: var(--ink); pointer-events: none; }
 @media print { .ui-section-status { display: none; } }
+
+.ui-page .classification button.on { background: var(--accent-subtle); color: var(--text); border-color: var(--accent-border); }
+:is(.ui-page, .ui-scope) .ui-button-primary:hover:not(:disabled) { background: var(--accent-hover); filter: none; }
+.ui-notice-error { background: var(--danger-bg); }

@@ -17,7 +17,7 @@ type Report = {
 type Api = <T>(path: string, body?: unknown) => Promise<T>;
 const weekdays = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì"];
 const campus = (s: string) => s === "centrale" ? "Centrale" : "Succursale";
-const attribution = (site?: string) => site ? <span className="paid-attribution" title={`Inserito da ${campus(site)}`} aria-label={`Inserito da ${campus(site)}`}>{site === "centrale" ? "C" : "S"}</span> : null;
+const attribution = (site?: string) => site ? <span className={`paid-attribution campus-${site}`} title={`Inserito da ${campus(site)}`} aria-label={`Inserito da ${campus(site)}`}>{site === "centrale" ? "C" : "S"}</span> : null;
 const dateLabel = (d: string) => d.split("-").reverse().join("/");
 
 export function PaidHours({ api }: { api: Api }) {

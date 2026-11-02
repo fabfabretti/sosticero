@@ -10,8 +10,8 @@
 .inbox-absence { display: flex; align-items: center; flex-wrap: wrap; gap: var(--ui-gap); flex: 1 1 200px; min-width: 0; }
 .inbox-absence strong { font-weight: 500; }
 .inbox-hours { flex-wrap: wrap; }
-.inbox-hours span { display: inline-grid; place-items: center; width: 24px; height: 24px; font-size: 12px; border: 1px solid var(--ui-border); border-radius: var(--ui-radius); color: var(--mute); }
-.inbox-hours span.on { background: var(--acc); border-color: var(--acc); color: var(--on); font-weight: 600; }
+.inbox-hours span { display: inline-grid; place-items: center; width: 24px; height: 24px; font-size: 12px; border: 1px solid var(--border-strong); border-radius: var(--ui-radius); color: var(--mute);  background: transparent; }
+.inbox-hours span.on { background: var(--accent-subtle); border-color: var(--accent-border); color: var(--text); font-weight: 600; }
 .inbox-submitted { color: var(--mute); font-size: 12px; }
 .inbox-result { color: var(--mute); }
 .inbox-details { flex: 0 0 auto; min-width: 0; }
