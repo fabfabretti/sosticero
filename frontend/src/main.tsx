@@ -9,6 +9,7 @@ import { useQuietRefresh } from "./useQuietRefresh";
 import { ClassificationChoices } from "./ClassificationChoices";
 import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import "./tokens.css";
 import "./style.css";
 import './ui.css';
 import './settings.css';

@@ -11,7 +11,7 @@ import type { Metric, StatReport } from "./stats-report";
 
 const metrics: Metric[] = ["demand", "teacherHours", "teachers"];
 const heatMetrics: Metric[] = ["demand", "teachers"];
-const strokes = ["var(--acc)", "var(--stats-absence)", "var(--stats-teachers)"];
+const strokes = ["var(--accent)", "var(--info)", "var(--warn)"];
 const dashes = [undefined, "7 3", "2 3"];
 type ChartPoint = { label: string; demand: number | null; teacherHours: number | null; teachers: number | null };
 
@@ -23,7 +23,7 @@ function Trend({ series, bars = false }: { series: ChartPoint[]; bars?: boolean 
         <CartesianGrid stroke="var(--line)" strokeDasharray="3 3" vertical={false} />
         <XAxis dataKey="label" stroke="var(--mute)" tick={{ fontSize: 12 }} tickFormatter={v => /^\d{4}-/.test(v) ? `${v.slice(8)}/${v.slice(5, 7)}` : v} />
         <YAxis stroke="var(--mute)" tickFormatter={v => fmt(Number(v))} width={44} />
-        <Tooltip formatter={value => fmt(Number(value))} contentStyle={{ background: "var(--pan)", color: "var(--ink)", borderColor: "var(--line)" }} />
+        <Tooltip cursor={{ fill: "var(--surface-3)", stroke: "var(--border)" }} formatter={value => fmt(Number(value))} contentStyle={{ background: "var(--pan)", color: "var(--ink)", borderColor: "var(--line)" }} />
         <Legend />
         {(bars ? ["demand" as Metric] : metrics).map((key, i) => bars
           ? <Bar key={key} dataKey={key} name={metricNames[key]} fill={strokes[i]} maxBarSize={24} isAnimationActive={false} />

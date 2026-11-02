@@ -31,7 +31,7 @@
 .orari-card-actions { margin-left: auto; justify-content: end; }
 .orari-modified, .orari-review { font-size: 10px; padding: 3px 5px; border-radius: 3px; border: 1px solid var(--line); }
 .orari-modified { color: var(--mute); }
-.orari-review { color: #b45309; background: #fef3c7; }
+.orari-review { color: var(--warn); background: var(--warn-bg); }
 .orari-legend { display: flex; gap: 16px; flex-wrap: wrap; margin: 0; }
 .orari-legend > span { display: inline-flex; gap: 5px; align-items: center; font-size: 12px; color: var(--campus-mark); }
 .orari-legend i { width: 12px; height: 12px; border: 1px solid var(--campus-edge); border-radius: 3px; background: var(--campus-fill); }
@@ -48,14 +48,14 @@
 .orari-session .orari-site { background: transparent; border: 0; padding: 0; min-width: 0; height: auto; color: var(--campus-mark); font-size: 11px; font-weight: 700; }
 .orari-special .orari-site { color: var(--campus-ink); }
 .orari-session.orari-disabled { opacity: .65; text-decoration: line-through; border-style: dashed; }
-.orari-editing { border-color: var(--acc); }
+.orari-editing { border-color: var(--accent-border); }
 .orari-edit-toolbar { display: flex; flex-wrap: wrap; align-items: end; gap: var(--ui-gap); padding-block: var(--ui-gap); }
 .orari-edit-hint { color: var(--mute); font-size: 11px; margin: 4px 0 8px; }
 .orari-cell-button { padding: 0; background: transparent; border: 0; width: 100%; text-align: left; cursor: grab; touch-action: none; user-select: none; font: inherit; }
 .orari-cell-button:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
 .orari-drag-source { opacity: .35; }
-.orari-destination { background: var(--soft); outline: 2px dashed var(--acc); outline-offset: -2px; }
-.orari-drag-preview { position: fixed; z-index: 100; pointer-events: none; width: 112px; padding: 5px; background: var(--pan); border: 1px solid var(--line); border-radius: 7px; box-shadow: 0 6px 20px #0004; }
+.orari-destination { background: var(--accent-subtle); outline: 2px dashed var(--acc); outline-offset: -2px; }
+.orari-drag-preview { position: fixed; z-index: 100; pointer-events: none; width: 112px; padding: 5px; background: var(--pan); border: 1px solid var(--line); border-radius: 7px; box-shadow: 0 6px 20px var(--shadow-deep); }
 .orari-drag-preview .orari-session { font-size: 12px; }
 .orari-drag-preview small { display: block; font-size: 10px; color: var(--mute); margin-top: 4px; }
 .orari-impact, .orari-conflicts { border-top: 1px solid var(--line); margin-top: 10px; padding: 10px 0; font-size: 12px; }
@@ -73,8 +73,8 @@
 .orari-name-fields, .orari-name-actions { display: flex; flex-wrap: wrap; gap: var(--ui-gap); }
 .orari-name-fields label { flex: 1 1 180px; }
 .orari-name-actions { margin-top: 10px; align-items: center; }
-.orari-activity-editor { width: min(380px, calc(100vw - 32px)); box-sizing: border-box; padding: var(--ui-padding); border: 1px solid var(--line); border-radius: var(--ui-radius); background: var(--pan); color: var(--ink); box-shadow: 0 16px 50px #0004; max-height: calc(100dvh - 32px); overflow: visible; }
-.orari-activity-editor::backdrop { background: #0006; }
+.orari-activity-editor { width: min(380px, calc(100vw - 32px)); box-sizing: border-box; padding: var(--ui-padding); border: 1px solid var(--line); border-radius: var(--ui-radius); background: var(--pan); color: var(--ink); box-shadow: 0 16px 50px var(--shadow-deep); max-height: calc(100dvh - 32px); overflow: visible; }
+.orari-activity-editor::backdrop { background: var(--backdrop); }
 .orari-activity-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
 .orari-activity-header h3 { margin: 0 0 4px; font-size: 17px; }
 .orari-activity-header .sub { margin: 0; }
