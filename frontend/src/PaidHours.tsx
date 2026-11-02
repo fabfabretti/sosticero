@@ -6,9 +6,10 @@ import type { Baseline } from "./concurrency";
 import type { Teacher } from "./types";
 import { norm, teacherSearchText } from "./timetables";
 import "./paid.css";
+import { generatePaidPdf } from "./paidPdf";
 
 type SlotTeacher = { id: string; name: string; sites: string[]; uncertain: boolean; why: string; addedBy?: string };
-type Report = {
+export type Report = {
   dates: string[]; teachers: Record<string, Teacher>; declarations: Record<string, Record<string, number[]>>;
   cells: { weekday: number; hour: number; teachers: SlotTeacher[] }[];
   totals: Record<string, number>; concurrency: Baseline;
@@ -52,6 +53,11 @@ export function PaidHours({ api }: { api: Api }) {
   }
   return <main className="ui-page paid-page"><header className="paid-heading"><div><h1>Banca ore</h1><p>Disponibilità settimanali per supplenze a pagamento</p></div>
     <div className="ui-actions"><label>Settimana del <input type="date" value={day} disabled={editing || busy} onChange={e => setDay(e.target.value)} /></label>
+      <button className="ui-button" disabled={busy || !data || !ready} onClick={() => {
+        if (!data || !ready || busy) return;
+        try { generatePaidPdf(data).save(`banca-ore-${data.dates[0]}.pdf`); }
+        catch (e) { setError(`Impossibile generare il PDF: ${e instanceof Error ? e.message : String(e)}`); }
+      }}>Stampa / PDF</button>
       <button className="ui-button" aria-pressed={editing} disabled={busy || !data || !ready} onClick={() => { setEditing(!editing); setQuery(""); setError(""); }}>{editing ? "Fine modifica" : "Modifica disponibilità"}</button></div></header>
     {error && <p role="alert" className="ui-notice ui-notice-error">{error}</p>}
     <LoadingRegion pending={loading || busy} label={busy ? "Salvataggio…" : undefined} blocked={!ready || busy} error={loadError} retry={() => void refresh().catch(() => {})}>
