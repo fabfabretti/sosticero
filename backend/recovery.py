@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 
 def deadline(day):
     d = date.fromisoformat(day)
-    year, month = (d.year + 1, 1) if d.month == 12 else (d.year, d.month + 1)
+    year, month = d.year + (d.month + 1) // 12, (d.month + 1) % 12 + 1
     return date(year, month, min(d.day, monthrange(year, month)[1])).isoformat()
 
 

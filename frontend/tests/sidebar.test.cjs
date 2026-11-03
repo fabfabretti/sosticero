@@ -94,6 +94,7 @@ function app(localStorage = { getItem: () => null, setItem() {} }, confirm = () 
     document,
     fetch: fetcher,
     require(id) {
+      if (id === './attribution') return { authorLabel: a => typeof a === 'string' ? a : a?.name || 'Autore non disponibile' };
       if (id === './Publication') return { Publication: 'publication-controls' };
       if (id === './Loading') return requireLoading;
       if (id === './BuildInfo') return { BuildWarning: () => null, builtAt: '2026-10-28T12:00:00.000Z' };
@@ -689,7 +690,7 @@ test('permit recovery register shows dated links, expiry, totals and refreshes o
   };
   a.requests.shift().resolve(response); await settle();
   const nodes = a.render();
-  assert.ok(nodes.some(n => n.type === 'tr' && n.props.className === 'permit-outstanding'));
+  assert.ok(nodes.some(n => n.type === 'tr' && n.props.className?.split(' ').includes('permit-outstanding')));
   assert.ok(nodes.some(n => n.props.className === 'permit-expired' && n.props.children === 'Scadute'));
   assert.ok(!nodes.some(n => n.type === 'td' && n.props.children === '12/11/2026'));
   assert.ok(!nodes.some(n => n.type === 'th' && ['Scadenza recupero', 'Ore recuperate'].includes(n.props.children)));
@@ -706,13 +707,13 @@ test('completed permit is struck independently of the teacher balance and keeps 
     permessi: { '2026-10-12': { t: [2] }, '2026-10-19': { t: [2] } },
     permitCreators: { '2026-10-19': { t: 'succursale' } },
     balances: { t: { remaining: 1 } },
-    recoveries: { '2026-10-12': { t: { remaining: 0, recoveries: [] } }, '2026-10-19': { t: { remaining: 1, recoveries: [] } } },
+    recoveries: { '2026-10-12': { t: { deadline: '2026-12-12', remaining: 0, recoveries: [] } }, '2026-10-19': { t: { deadline: '2026-12-19', remaining: 1, recoveries: [] } } },
   }); await settle();
   const nodes = a.render();
   assert.equal(nodes.filter(n => n.type === 'tr' && n.props.className === 'permit-complete').length, 1);
-  assert.equal(nodes.filter(n => n.type === 'tr' && n.props.className === 'permit-outstanding').length, 1);
+  assert.equal(nodes.filter(n => n.type === 'tr' && n.props.className?.split(' ').includes('permit-outstanding')).length, 1);
   assert.equal(nodes.filter(n => n.props?.['aria-label'] === 'Modifica permesso di Contartase' && !n.props.disabled).length, 2);
-  assert.ok(nodes.some(n => n.props?.className === 'permit-campus campus-succursale' && n.props['aria-label'] === 'Succursale'));
+  assert.ok(nodes.some(n => n.props?.className === 'author-name' && n.props.title === 'succursale'));
 });
 
 const entryData = { ...data, dataset: { ...data.dataset, teachers: {

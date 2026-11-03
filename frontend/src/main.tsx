@@ -1,3 +1,4 @@
+import { authorLabel, type Author } from './attribution';
 import { Loading, LoadingRegion } from './Loading';
 import { PaidHours } from "./PaidHours";
 import { BuildWarning, builtAt } from './BuildInfo';
@@ -133,8 +134,9 @@ function Permessi() {
   const [manual, setManual] = useState(false);
   const [manualHours, setManualHours] = useState("");
   const [editingManual, setEditingManual] = useState(false);
-  const [sort, setSort] = useState<{ field: "date" | "requested"; ascending: boolean }>({ field: "date", ascending: false });
-  const [data, setData] = useState<{ generation?: number; concurrency: Baseline; timetableVersions?: { effective: string | null; dataset: Data["dataset"] }[]; dataset: Data["dataset"]; permitAttachments?: AttachmentMap; permessi: Record<string, Record<string, number[]>>; permitRequests?: Record<string, Record<string, string>>; permitNotes?: Record<string, Record<string, string>>; manualPermitNotes?: Record<string, string>; permitKinds?: Record<string, Record<string, AbsenceKind>>; permitCreators?: Record<string, Record<string, string>>; recoveries?: Record<string, Record<string, import("./types").PermitRecovery>>; balances?: Record<string, { remaining: number; expired: number; eligible: number }>; manualPermits?: Record<string, { id: string; hours: number; recovered: number; remaining: number; recoveries: { date: string; h: number; key: string }[] }> }>();
+  const [creatorFilter, setCreatorFilter] = useState("");
+  const [sort, setSort] = useState<{ field: "date" | "requested" | "days"; ascending: boolean }>({ field: "date", ascending: false });
+  const [data, setData] = useState<{ generation?: number; concurrency: Baseline; timetableVersions?: { effective: string | null; dataset: Data["dataset"] }[]; dataset: Data["dataset"]; permitAttachments?: AttachmentMap; permessi: Record<string, Record<string, number[]>>; permitRequests?: Record<string, Record<string, string>>; permitNotes?: Record<string, Record<string, string>>; manualPermitNotes?: Record<string, string>; permitKinds?: Record<string, Record<string, AbsenceKind>>; permitCreators?: Record<string, Record<string, Author>>; recoveries?: Record<string, Record<string, import("./types").PermitRecovery>>; balances?: Record<string, { remaining: number; expired: number; eligible: number }>; manualPermits?: Record<string, { id: string; hours: number; recovered: number; remaining: number; recoveries: { date: string; h: number; key: string }[] }> }>();
   const [dayInput, setDayInput] = useState(italianDate(localDate(new Date())));
   const [requestedInput, setRequestedInput] = useState(italianDate(localDate(new Date())));
   const day = parseItalianDate(dayInput);
@@ -213,11 +215,20 @@ function Permessi() {
       setBusy(false);
     }
   };
-  const records = Object.entries(data?.permessi || {}).flatMap(([date, teachers]) =>
-    Object.entries(teachers).map(([id, periods]) => ({ date, id, periods, recovery: data?.recoveries?.[date]?.[id], requested: data?.permitRequests?.[date]?.[id] || "" })),
-  ).sort((a, b) => {
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Rome", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  const allRecords = Object.entries(data?.permessi || {}).flatMap(([date, teachers]) =>
+    Object.entries(teachers).map(([id, periods]) => {
+      const recovery = data?.recoveries?.[date]?.[id];
+      const author = data?.permitCreators?.[date]?.[id];
+      const creator = author && typeof author !== "string" ? author.id || author.username : author || "unknown";
+      return { date, id, periods, recovery, creator, author, requested: data?.permitRequests?.[date]?.[id] || "", days: recovery ? Math.round((Date.parse(recovery.deadline) - Date.parse(today)) / 86400000) : null };
+    }),
+  );
+  const creators = [...new Map(allRecords.map(r => [r.creator, authorLabel(r.author)])).entries()].sort((a, b) => a[1].localeCompare(b[1], "it"));
+  const records = allRecords.filter(r => !creatorFilter || r.creator === creatorFilter).sort((a, b) => {
     const left = a[sort.field], right = b[sort.field];
-    return Number(!left) - Number(!right) || (sort.ascending ? 1 : -1) * left.localeCompare(right) || b.date.localeCompare(a.date) || (data?.dataset.teachers[a.id]?.name || a.id).localeCompare(data?.dataset.teachers[b.id]?.name || b.id);
+    const missing = (v: typeof left) => v === null || v === "";
+    return Number(missing(left)) - Number(missing(right)) || (sort.ascending ? 1 : -1) * (typeof left === "number" && typeof right === "number" ? left - right : String(left).localeCompare(String(right))) || b.date.localeCompare(a.date) || (data?.dataset.teachers[a.id]?.name || a.id).localeCompare(data?.dataset.teachers[b.id]?.name || b.id);
   });
   const warning = (text: string) => <HourHelp text={text}>
     <svg className="warning-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 22 21H2Z" fill="none" stroke="currentColor" strokeWidth="2"/><path d="M12 9v5m0 3v1" stroke="currentColor" strokeWidth="2"/></svg>
@@ -273,14 +284,16 @@ function Permessi() {
     </aside>
     <main inert={!ready || busy} className={!ready || busy ? "ui-loading-content" : undefined}>
     <h1>Permessi</h1>
-    <p className="sub">Per i permessi con data, recupero entro un mese dal permesso, scadenza inclusa. Le assegnazioni RP future riservano già le ore e sono elencate per data.</p>
+    <p className="sub">Per i permessi con data, recupero entro due mesi dal permesso, scadenza inclusa. Le assegnazioni RP future riservano già le ore e sono elencate per data.</p>
 
-    <div className="ui-surface permit-table"><table className="ui-table"><thead><tr><th>Docente</th><th>Sede lezioni</th><th>Inserito da</th>{([ ["date", "Data permesso"], ["requested", "Data richiesta"] ] as const).map(([field, title]) => <th key={field} aria-sort={sort.field === field ? (sort.ascending ? "ascending" : "descending") : "none"}><button className="lk" onClick={() => setSort({ field, ascending: sort.field === field ? !sort.ascending : false })}>{title}{sort.field === field ? (sort.ascending ? " ↑" : " ↓") : " ↕"}</button></th>)}{["Ore di permesso", "Dettaglio recuperi", "Ore da recuperare", "Azioni"].map(title => <th key={title}>{title}</th>)}</tr></thead>
-      <tbody>{records.map(r => <tr key={r.date + r.id} className={(r.recovery?.remaining ?? r.periods.length) === 0 ? "permit-complete" : "permit-outstanding"}>
+    <label>Inserito da<select aria-label="Filtra per inserito da" value={creatorFilter} onChange={e => setCreatorFilter(e.target.value)}><option value="">Tutti</option>{creators.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>
+    <div className="ui-surface permit-table"><table className="ui-table"><thead><tr><th>Docente</th><th>Sede lezioni</th><th>Inserito da</th>{([ ["date", "Data permesso"], ["requested", "Data richiesta"], ["days", "Giorni alla scadenza"] ] as const).map(([field, title]) => <th key={field} aria-sort={sort.field === field ? (sort.ascending ? "ascending" : "descending") : "none"}><button className="lk" onClick={() => setSort({ field, ascending: sort.field === field ? !sort.ascending : field === "days" })}>{title}{sort.field === field ? (sort.ascending ? " ↑" : " ↓") : " ↕"}</button></th>)}{["Ore di permesso", "Dettaglio recuperi", "Ore da recuperare", "Azioni"].map(title => <th key={title}>{title}</th>)}</tr></thead>
+      <tbody>{records.map(r => <tr key={r.date + r.id} className={(r.recovery?.remaining ?? r.periods.length) === 0 ? "permit-complete" : `permit-outstanding${r.days !== null && r.days < 30 ? " permit-urgent" : ""}`}>
         <td><span className="permit-name">{data?.dataset.teachers[r.id]?.name || r.id}</span><RecordInfo text={data?.permitNotes?.[r.date]?.[r.id]} links={[{ label: "Apri allegato permesso", id: data?.permitAttachments?.[r.date]?.[r.id] }]} /></td>
         <td>{teachingSites(r.id, r.date).length ? teachingSites(r.id, r.date).map(campusTag) : '—'}</td>
-        <td>{data?.permitCreators?.[r.date]?.[r.id] ? campusTag(data.permitCreators[r.date][r.id]) : '—'}</td><td>{r.date.split("-").reverse().join("/")}</td>
+        <td>{data?.permitCreators?.[r.date]?.[r.id] ? <span className="author-name" title={authorLabel(data.permitCreators[r.date][r.id], true)}>{authorLabel(data.permitCreators[r.date][r.id])}</span> : '—'}</td><td>{r.date.split("-").reverse().join("/")}</td>
         <td>{data?.permitRequests?.[r.date]?.[r.id]?.split("-").reverse().join("/") || "—"}</td>
+        <td title={r.recovery ? `Scadenza: ${italianDate(r.recovery.deadline)}` : undefined}>{r.days ?? "—"}</td>
         <td>{r.periods.map(h => <span className="permit-period" key={h}>{h}ª{(r.periods.length > dailyMaximum(r.id, r.date) || !scheduled(r.id, r.date, h)) && warning([r.periods.length > dailyMaximum(r.id, r.date) ? "Superato il massimo giornaliero di ore di permesso." : "", !scheduled(r.id, r.date, h) ? `${h}ª ora: nessuna attività prevista nell’orario per questa ora` : ""].filter(Boolean).join(" "))}</span>)}</td>
         <td>{r.recovery?.recoveries.length ? <ul className="recovery-details">{r.recovery.recoveries.map(item => <li key={item.date + item.key}>{item.date.split("-").reverse().join("/")} · {item.h}ª ora</li>)}</ul> : "—"}</td>
         <td><span className="permit-remaining">{r.recovery?.remaining ?? r.periods.length}</span>{r.recovery?.expired && <strong className="permit-expired">Scadute</strong>}</td>
@@ -299,7 +312,7 @@ function Permessi() {
         <button className="x" disabled={busy} aria-label={`Rimuovi saldo manuale di ${data?.dataset.teachers[id]?.name || id}`} onClick={() => { if (window.confirm(`Eliminare il saldo manuale di ${data?.dataset.teachers[id]?.name || id}?`)) void save({ id, hours: null }, "manual-permits"); }}>×</button></td>
       </tr>)}</tbody></table></div>
     </section>}
-    {data && !records.length && !Object.keys(data.manualPermits || {}).length && <p className="none">Nessun permesso registrato.</p>}
+    {data && !records.length && !Object.keys(data.manualPermits || {}).length && <p className="none">{creatorFilter ? "Nessun permesso per questo autore." : "Nessun permesso registrato."}</p>}
     </main>
   </div>;
 }

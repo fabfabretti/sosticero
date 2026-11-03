@@ -47,13 +47,13 @@ class RecoveryTest(unittest.TestCase):
         return self.client.get('/api/candidates', params=dict(day=DAY, key=f'absent|{h}|1A')).json()
 
     def test_deadlines(self):
-        for day, end in [('2027-01-31', '2027-02-28'), ('2028-01-31', '2028-02-29'),
-                         ('2026-12-31', '2027-01-31'), (DAY, '2026-11-12')]:
+        for day, end in [('2027-12-31', '2028-02-29'), ('2026-12-31', '2027-02-28'),
+                         ('2026-07-31', '2026-09-30'), (DAY, '2026-12-12')]:
             self.assertEqual(recovery.deadline(day), end)
         ledger = recovery.ledger(self.client.get('/api/export').json())
-        for day, expected in [('2026-10-04', 1), ('2026-11-05', 1), ('2026-11-06', 0)]:
+        for day, expected in [('2026-10-04', 1), ('2026-12-05', 1), ('2026-12-06', 0)]:
             self.assertEqual(len(recovery.eligible(ledger, 'rp', day)), expected)
-        _, balances = recovery.summary(self.client.get('/api/export').json(), '2026-11-06')
+        _, balances = recovery.summary(self.client.get('/api/export').json(), '2026-12-06')
         self.assertEqual(balances['rp'], dict(remaining=1, expired=1, eligible=0))
 
     def test_ranking_and_restrictions(self):
@@ -85,7 +85,7 @@ class RecoveryTest(unittest.TestCase):
         self.assertEqual(a['permitId'], pid)
         for body in [dict(day='2026-10-05', id='rp', hours=None),
                      dict(day='2026-10-05', id='bottom', hours=[2], original_day='2026-10-05', original_id='rp'),
-                     dict(day='2026-09-07', id='rp', hours=[2], original_day='2026-10-05', original_id='rp')]:
+                     dict(day='2026-08-03', id='rp', hours=[2], original_day='2026-10-05', original_id='rp')]:
             self.assertEqual(self.client.post('/api/permessi', json=body).status_code, 422)
         self.client.post('/api/permessi', json=dict(day='2026-09-21', id='rp', hours=[2], original_day='2026-10-05', original_id='rp')).raise_for_status()
         self.assertEqual(self.register()['recoveries']['2026-09-21']['rp']['id'], pid)
@@ -113,7 +113,7 @@ class RecoveryTest(unittest.TestCase):
     def test_archive_migration_and_timetable_history(self):
         self.assign(1).raise_for_status()
         archive = self.client.get('/api/export').json()
-        self.assertEqual(archive['schema'], 8)
+        self.assertEqual(archive['schema'], 9)
         self.client.post('/api/import', json=archive).raise_for_status()
         for mutation in ('missing', 'wrongteacher', 'nonrp', 'over', 'window', 'duplicate'):
             bad = copy.deepcopy(archive); a = bad['asg'][DAY]['absent|1|1A']

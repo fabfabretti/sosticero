@@ -85,3 +85,18 @@ Deployed via ./scripts/deploy.sh as `incoming-20261029T173540-58540`, source sna
 ## Compact neutral display — 2026-10-29
 
 Deployed via ./scripts/deploy.sh as `incoming-20261029T174356-61691`, source snapshot `c92e9cf5f6c0a074587519eb94f3c8fafe30243b4e0b1766d7ce8f37c6af5d4b`. The display now uses 15px teacher names, 16px class codes, neutral headers, unboxed assignment codes and a plain signature reminder. The isolated build and browser checks at 1896×881 and 1280×720 confirmed uniform rows and an unclipped footer. Read-only HTTPS checks verified production environment and the new stylesheet. The isolated project was stopped; no teacher snapshots were published.
+
+### Permit deadlines and register — 2026-11-03
+
+Deployed with `./scripts/deploy.sh` as `incoming-20261103T142823-164418`, source
+`bff42a5c2e06b6562cec75324e90c083968422396fdd0feb4d9308ea3bc52f37`.
+Dated permits now expire after two calendar months, clamped to the target month's
+last day. The register shows sortable days remaining, highlights outstanding rows
+under 30 days and filters by author account identity. Nine recovery tests, the
+register tests and production builds passed. The frontend suite passed 29 files;
+the remaining sidebar file exposed two outdated permit fixtures/assertions, which
+were corrected and its focused permit checks then passed. The isolated container's
+mount, allocated localhost port, testing environment, red TESTING ribbon and served
+bundle were checked; the project was stopped afterward. Deployment and independent
+read-only HTTPS checks confirmed the expected source marker and testing=false.
+No production behavioral writes were used.
