@@ -621,7 +621,7 @@ function Supplenze() {
     setError("");
     try {
       const c = await api<Candidate[]>(
-        "candidates?" + new URLSearchParams({ day, key: r.k }),
+        "candidates?" + new URLSearchParams({ day, key: r.k, include_manual: "true" }),
       );
       if (n === candidateRequest.current) {
         setCands(c);
@@ -1154,8 +1154,9 @@ function Supplenze() {
                             {assigned[r.k]
                               ? entryExitCellLabel(r.k, assigned) || name(assigned[r.k].v)
                               : "Scegli il supplente"}
-                            <small>{assigned[r.k]?.v === "UNCOVERED" ? "Nessun supplente trovato" : (assigned[r.k]?.t === "SPECIAL" ? "" : (assigned[r.k]?.t === "PAID" ? "A pagamento" : assigned[r.k]?.t === "CP" ? "Compresenza - POT" : assigned[r.k]?.t === "CA" ? "Compresenza - ALF" : assigned[r.k]?.t))}</small>
+                            <small>{assigned[r.k]?.v === "UNCOVERED" ? "Nessun supplente trovato" : (assigned[r.k]?.t === "SPECIAL" ? "" : (assigned[r.k]?.t === "PAID" ? "A pagamento" : assigned[r.k]?.t === "MANUAL" ? "Manuale" : assigned[r.k]?.t === "CP" ? "Compresenza - POT" : assigned[r.k]?.t === "CA" ? "Compresenza - ALF" : assigned[r.k]?.t))}</small>
                           </button>
+                          {assigned[r.k]?.note && <p className="sub">{assigned[r.k].note}</p>}
                           {assignmentIssues[r.k] && <p id={`assignment-issue-${r.k}`} className="ui-notice ui-notice-error" role="alert">Da riassegnare: {assignmentIssues[r.k]}</p>}
                           {assigned[r.k]?.t === "RP" && <RecoveryActions key={`${day}|${r.k}|${assigned[r.k].v}|${assigned[r.k].permitId}`} day={day} row={r}
                             assignment={assigned[r.k]} permit={data?.recoveryRequests?.[r.k]} busy={busy} canAssign={canAssign(r.sede)}
@@ -1322,6 +1323,7 @@ function Supplenze() {
           cands={cands.map(c => ({ ...c, name: entryExitLabel(c.id, open.h) || c.name }))}
           current={assigned[open.k]?.v}
           currentCategory={assigned[open.k]?.t}
+          currentNote={assigned[open.k]?.note}
           busy={busy}
           pending={loadingCandidates}
           error={error}
@@ -1332,14 +1334,14 @@ function Supplenze() {
             setLoadingCandidates(false);
             setOpen(undefined);
           }}
-          onAssign={async (value, exceptional, category) => {
+          onAssign={async (value, exceptional, category, note) => {
             if (!canAssign(open.sede) || busy || !ready || loadedDay !== day) return;
             const selectedRow = open;
             invalidate();
             ++candidateRequest.current; setLoadingCandidates(false); setOpen(undefined);
             setBusy(true); setError("");
             try {
-              await api("assignments", { day, key: selectedRow.k, value, exceptional, category, expected: preconditions(candidateBaseline.current, "assignments", { day, key: selectedRow.k }) });
+              await api("assignments", { day, key: selectedRow.k, value, exceptional, category, note, expected: preconditions(candidateBaseline.current, "assignments", { day, key: selectedRow.k }) });
               ++candidateRequest.current; setLoadingCandidates(false); setOpen(undefined);
               try { await refresh(); } catch { setError("Assegnazione salvata. Impossibile aggiornare i dati: usa Riprova."); }
             } catch (e) {
@@ -1347,7 +1349,7 @@ function Supplenze() {
               try {
                 const latest = await refresh();
                 candidateBaseline.current = latest?.concurrency;
-                setCands(await api<Candidate[]>("candidates?" + new URLSearchParams({ day, key: selectedRow.k }))); setOpen(selectedRow); }
+                setCands(await api<Candidate[]>("candidates?" + new URLSearchParams({ day, key: selectedRow.k, include_manual: "true" }))); setOpen(selectedRow); }
               catch { setOpen(undefined); }
             } finally { setBusy(false); }
           }}

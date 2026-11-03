@@ -9,8 +9,8 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from fastapi.middleware.gzip import GZipMiddleware
-from pydantic import BaseModel, StrictInt, StrictBool, StrictStr
-from .domain import normalize_dataset, rows, candidates, consultation, validate_assignment, default_availability, auto_availability, HOURS, SITES, lesson, validate_permit, CDC_NAMES
+from pydantic import BaseModel, Field, StrictInt, StrictBool, StrictStr
+from .domain import normalize_dataset, rows, candidates, manual_candidates, consultation, validate_assignment, default_availability, auto_availability, HOURS, SITES, lesson, validate_permit, CDC_NAMES
 from .storage import Store, EMPTY
 from . import backup, attachments, concurrency, auth, display, publication
 from .hour_types import merge_types, validate_types
@@ -63,6 +63,7 @@ class PaidAvailability(ConditionalWrite):
 
 
 class Assignment(ConditionalWrite):
+    note: StrictStr | None = Field(default=None, max_length=2000)
     category: StrictStr | None = None
     notified: StrictBool | None = None
     accepted: StrictBool | None = None
@@ -811,7 +812,7 @@ def create_app(path=None, seed=None):
                 for c in consultation(ds, state, day.isoformat(), hour, campus, rules)]
 
     @app.get('/api/candidates')
-    def get_candidates(day: date, key: str):
+    def get_candidates(day: date, key: str, include_manual: bool = False):
         with store.connect() as db:
             ds, state = load(db, day.isoformat())
             rules = policies(db, ds)
@@ -820,7 +821,7 @@ def create_app(path=None, seed=None):
         if not row:
             raise ValueError('Supplenza non presente.')
         return [dict(c, name=labels[c['id']]['name']) if c['id'] in labels else c
-                for c in candidates(ds, state, day.isoformat(), row, rules)]
+                for c in (candidates(ds, state, day.isoformat(), row, rules) + (manual_candidates(ds, state, day.isoformat(), row) if include_manual else []))]
 
     @app.post('/api/assignments')
     def assign(e: Assignment, request: Request):
@@ -878,6 +879,8 @@ def create_app(path=None, seed=None):
                 if not unchanged:
                     assignments.pop(e.key, None)
                 assignments[e.key] = validate_assignment(ds, state, e.day.isoformat(), e.key, e.value, policies(db, ds), e.exceptional, saved=bool(unchanged), category=e.category)
+                if assignments[e.key]['t'] == 'MANUAL' and e.note and e.note.strip():
+                    assignments[e.key]['note'] = e.note.strip()
                 if assignments[e.key]['t'] == 'PAID' and not unchanged:
                     row = current_rows[e.key]
                     assignments[e.key].update(assignedBy=request.state.account['campus'], notified=False,

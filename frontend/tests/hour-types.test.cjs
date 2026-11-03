@@ -16,7 +16,7 @@ function component(file, confirm = () => true) {
   runInNewContext(ts.transpileModule(readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText, {
     exports, window: { confirm }, document: { addEventListener() {}, removeEventListener() {} },
     require(id) {
-      if (id === './Loading') return requireLoading; if (id === './useQuietRefresh') return {useQuietRefresh:(load,apply)=>({ready:true,loading:false,loadError:"",refresh:async()=>apply(await load()),invalidate(){}})}; if (id === 'react') return react; if (id === 'react/jsx-runtime') return { jsx, jsxs: jsx }; throw Error(id); },
+      if (id === './ManualAssignmentDialog') return { ManualAssignmentDialog() {} }; if (id === './Loading') return requireLoading; if (id === './useQuietRefresh') return {useQuietRefresh:(load,apply)=>({ready:true,loading:false,loadError:"",refresh:async()=>apply(await load()),invalidate(){}})}; if (id === 'react') return react; if (id === 'react/jsx-runtime') return { jsx, jsxs: jsx }; throw Error(id); },
   });
   return { render(props) { cursor = 0; const tree = Object.values(exports)[0](props); const nodes = []; function walk(n) { if (Array.isArray(n)) return n.forEach(walk); if (!n || typeof n !== 'object') return; nodes.push(n); walk(n.props?.children); } walk(tree); return nodes; }, start() { effects.forEach(f => f()); } };
 }

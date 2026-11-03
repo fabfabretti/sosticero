@@ -467,3 +467,14 @@
   .supplenze-heading h1 { font-size: 22px; }
   .supplenze .publication { flex-basis: 150px; }
 }
+
+.manual-assignment {
+  margin: auto;
+  color: var(--text);
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+}
+.manual-assignment::backdrop { background: #0006; }
+.manual-assignment textarea { width: 100%; resize: vertical; }
+
+.manual-assignment-trigger { margin: 12px 20px; }

@@ -64,7 +64,7 @@ test('candidate drawer keeps uncertain reception adjacency outside the favorable
   const exports = {};
   const jsx = (type, props) => ({ type, props });
   runInNewContext(ts.transpileModule(readFileSync('src/CandidateDrawer.tsx', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText, {
-    exports, require(id) { return id === 'react' ? { useEffect() {}, useRef: () => ({ current: null }) } : { jsx, jsxs: jsx }; },
+    exports, require(id) { return id === 'react' ? { useState: value => [value, () => {}], useEffect() {}, useRef: () => ({ current: null }) } : { jsx, jsxs: jsx }; },
   });
   const nodes = [];
   const candidate = { id: 'one', name: 'One', ty: 'RP', convenient: true, tag: 'Ora favorevole', classes: [] };

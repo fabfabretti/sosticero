@@ -13,13 +13,15 @@ function render(props) {
     activeElement: trigger,
     addEventListener: (event, fn) => listeners.set(event, fn),
     removeEventListener: event => listeners.delete(event),
+    querySelector: () => null,
     querySelectorAll: () => nodes.filter(n => n.type === 'button' && !n.props.disabled),
   };
   const exports = {}, jsx = (type, props) => ({ type, props });
   runInNewContext(ts.transpileModule(readFileSync('src/CandidateDrawer.tsx', 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022 },
   }).outputText, { exports, document, window: { confirm() { throw Error('Unexpected confirmation'); } }, require(id) {
-    if (id === 'react') return { useRef: value => ({ current: value }), useEffect: fn => effects.push(fn) };
+    if (id === 'react') return { useState: value => [value, () => {}], useRef: value => ({ current: value }), useEffect: fn => effects.push(fn) };
+    if (id === './ManualAssignmentDialog') return { ManualAssignmentDialog() {} };
     if (id === './Loading') return loading;
     if (id === 'react/jsx-runtime') return { jsx, jsxs: jsx };
     throw Error(id);
@@ -45,7 +47,7 @@ test('consultation reuses guarded buttons, labels campuses and restores focus on
   assert.equal(c.nodes.find(n => n.props?.role === 'dialog').props['aria-label'], 'Consulta disponibilità');
   assert.ok(c.nodes.some(n => n.props?.children === 'Solo consultazione'));
   assert.ok(c.nodes.some(n => n.props?.children === 'Sede non indicata'));
-  const buttons = c.nodes.filter(n => n.type === 'button' && n.props.className?.startsWith('c1'));
+  const buttons = c.nodes.filter(n => n.type === 'button' && n.props.className?.startsWith('c1') && n.props.children !== 'Assegna manualmente…');
   assert.equal(buttons.length, 2);
   for (const button of buttons) { assert.equal(button.props['aria-disabled'], true); button.props.onClick(); }
   assert.equal(assignments, 0);
@@ -66,7 +68,7 @@ test('empty consultation explains the result; real-row cross-campus read-only an
   for (const readOnlyReason of ['Assegnazione riservata alla sede centrale', undefined]) {
     const c = render({ ...base, open, readOnlyReason, cands: [candidate], onAssign: () => assigned++ });
     assert.equal(c.nodes.find(n => n.props?.role === 'dialog').props['aria-label'], 'Scegli il supplente');
-    c.nodes.find(n => n.type === 'button' && n.props.className === 'c1').props.onClick();
+    c.nodes.find(n => n.type === 'button' && n.props.className === 'c1' && n.props.children !== 'Assegna manualmente…').props.onClick();
   }
   assert.equal(assigned, 1);
 });
@@ -76,7 +78,7 @@ test('duplicate teacher entries select explicit recovery or paid category and ma
   const c = render({ open: { h: 1, sede: 'centrale', c: '1A', ids: ['absent'] },
     cands: [{ ...candidate, ty: 'RP', convenient: true }, { ...candidate, ty: 'PAID', typeLabel: 'A pagamento', paidCount: 2 }],
     current: 'pot', currentCategory: 'PAID', busy: false, name: id => id, onClose() {}, onAssign: (...args) => calls.push(args) });
-  const buttons = c.nodes.filter(n => n.type === 'button' && n.props.className?.startsWith('c1'));
+  const buttons = c.nodes.filter(n => n.type === 'button' && n.props.className?.startsWith('c1') && n.props.children !== 'Assegna manualmente…');
   assert.equal(buttons.length, 2);
   assert.equal(buttons[0].props.className.includes('sel'), false);
   assert.equal(buttons[1].props.className.includes('sel'), true);

@@ -1,5 +1,6 @@
+import { ManualAssignmentDialog } from "./ManualAssignmentDialog";
 import { LoadingRegion } from "./Loading";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Row, Candidate } from "./types";
 const category = (c: Candidate) =>
   ({
@@ -33,6 +34,7 @@ export function CandidateDrawer({
   cands,
   current,
   currentCategory,
+  currentNote,
   busy,
   pending = false,
   error,
@@ -46,6 +48,7 @@ export function CandidateDrawer({
   cands: Candidate[];
   current?: string;
   currentCategory?: string;
+  currentNote?: string;
   busy: boolean;
   pending?: boolean;
   error?: string;
@@ -53,8 +56,9 @@ export function CandidateDrawer({
   returnFocus?: HTMLElement | null;
   name: (id: string) => string;
   onClose: () => void;
-  onAssign: (id: string, exceptional?: boolean, category?: string) => void;
+  onAssign: (id: string, exceptional?: boolean, category?: string, note?: string) => void;
 }) {
+  const [manual, setManual] = useState(false);
   const close = useRef<HTMLButtonElement>(null);
   const consultation = !open.ids;
   const reason = consultation ? "Solo consultazione" : readOnlyReason;
@@ -62,6 +66,7 @@ export function CandidateDrawer({
     const trigger = returnFocus || document.activeElement as HTMLElement | null;
     close.current?.focus();
     const key = (e: KeyboardEvent) => {
+      if (document.querySelector("dialog[open]")) return;
       if (e.key === "Escape") onClose();
       if (e.key === "Tab") {
         const nodes = Array.from(
@@ -110,7 +115,8 @@ export function CandidateDrawer({
         <div className="lst">
           <LoadingRegion local pending={pending} error={error}>
           {consultation && !pending && !error && !cands.length && <p role="status">Nessun docente disponibile per questa ora e sede.</p>}
-          {cands.map((c, index) => {
+          {!consultation && <button className="ui-button manual-assignment-trigger" disabled={!!reason || busy || pending || !!error} onClick={() => setManual(true)}>Assegna manualmente…</button>}
+          {cands.filter(c => c.ty !== "MANUAL").map((c, index) => {
             const cross = !!(c.loc && open.sede && c.loc !== open.sede);
             return (
               <div key={`${c.campus || 'unknown'}-${c.id}-${c.ty}`}>
@@ -198,6 +204,7 @@ export function CandidateDrawer({
           </LoadingRegion>
         </div>
       </div>
+      {manual && <ManualAssignmentDialog teachers={cands.filter(c => c.ty === "MANUAL")} hour={open.h} current={currentCategory === "MANUAL" ? current : undefined} currentNote={currentCategory === "MANUAL" ? currentNote : undefined} onClose={() => setManual(false)} onAssign={(...args) => { setManual(false); onAssign(...args); }} />}
     </>
   );
 }

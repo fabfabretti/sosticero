@@ -393,8 +393,37 @@ def candidates(ds, state, day, row, policies=None, selected=None):
     return sorted(result, key=candidate_order)
 
 
+def manual_candidates(ds, state, day, row):
+    from .receptions import at
+    result = []
+    for i, teacher in ds['teachers'].items():
+        warnings = []
+        l = lesson(ds, i, day, row['h'])
+        if l and (not l['classes'] or not all(class_out(state, day, c, row['h'], row['k']) for c in l['classes'])):
+            warnings.append('Ora occupata: ' + (', '.join(l['classes']) or 'attività in orario'))
+        if at(ds, i, day, row['h']):
+            warnings.append('Ricevimento in questa ora')
+        if row['h'] in absences(state, day).get(i, []):
+            warnings.append('Assente in questa ora')
+        if any(k != row['k'] and int(k.split('|')[1]) == row['h'] and a['v'] == i for k, a in state['asg'].get(day, {}).items()):
+            warnings.append('Già assegnato a una supplenza in questa ora')
+        if teacher.get('retired'):
+            warnings.append('Docente non attivo')
+        result.append(dict(id=i, name=teacher['name'], ty='MANUAL', loc=None, why='', tag=' · '.join(warnings), today=0, total=0))
+    return result
+
+
 def validate_assignment(ds, state, day, key, value, policies=None, exceptional=False, saved=False, category=None):
     from .receptions import at
+    old = state['asg'].get(day, {}).get(key)
+    manual = category == 'MANUAL' or saved and old and old.get('t') == 'MANUAL' and old['v'] == value
+    if manual:
+        row = next((r for r in rows(ds, state, day) if r['k'] == key), None)
+        if not row or value not in ds['teachers']:
+            raise ValueError('Docente o supplenza non più presente.')
+        if not exceptional:
+            raise ValueError('Assegnazione manuale: conferma esplicita necessaria.')
+        return dict(v=value, t='MANUAL', c=row['c'], exceptional=True, **({'note': old['note']} if saved and old and old.get('note') else {}))
     if value in ds['teachers'] and int(key.split('|')[1]) in absences(state, day).get(value, []):
         raise ValueError('Assente')
     row = next((r for r in rows(ds, state, day) if r['k'] == key), None)
