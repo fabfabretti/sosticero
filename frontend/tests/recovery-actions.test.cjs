@@ -26,7 +26,7 @@ function component(clipboard) {
 }
 const row = { k: 'absent|3|1A', h: 3, c: '1A', aula: '12', sede: 'centrale' };
 const permit = { date: '2026-10-12', periods: [2] };
-const props = () => ({ day: '2026-10-27', row, permit, assignment: { v: 'rp', t: 'RP' }, canAssign: true, busy: false, onAccept() {} });
+const props = () => ({ day: '2026-10-27', row, permit, assignment: { v: 'rp', t: 'RP' }, canAssign: true, busy: false, onAccept() {}, onCommunicate() {} });
 const buttons = nodes => nodes.filter(n => n.type === 'button');
 const status = nodes => nodes.find(n => n.props?.role === 'status').props.children;
 const settle = () => new Promise(resolve => setImmediate(resolve));
@@ -51,9 +51,9 @@ test('acceptance guarded by campus and busy state; copying stays read-only acros
   const copied = [], c = component({ writeText: async value => { copied.push(value); } });
   let mutations = 0;
   const p = { ...props(), onAccept: () => mutations++ };
-  buttons(c.render(p))[0].props.onClick(); assert.equal(mutations, 1);
+  buttons(c.render(p))[1].props.onClick(); assert.equal(mutations, 1);
   p.canAssign = false;
-  const [accept, copy] = buttons(c.render(p));
+  const [, accept, copy] = buttons(c.render(p));
   assert.equal(accept.props.disabled, true);
   assert.match(accept.props['aria-label'], /riservata alla sede centrale/);
   accept.props.onClick(); assert.equal(mutations, 1);
@@ -63,19 +63,37 @@ test('acceptance guarded by campus and busy state; copying stays read-only acros
   assert.equal(status(c.render(p)), 'Copiato');
   assert.equal(p.assignment.accepted, undefined);
   p.canAssign = true; p.busy = true;
-  buttons(c.render(p))[0].props.onClick(); assert.equal(mutations, 1);
+  buttons(c.render(p))[1].props.onClick(); assert.equal(mutations, 1);
   p.assignment.accepted = true;
-  assert.equal(buttons(c.render(p))[0].props['aria-pressed'], true);
+  assert.equal(buttons(c.render(p))[1].props['aria-pressed'], true);
 });
 
 test('clipboard failures and unresolved permit have accessible feedback', async () => {
   for (const clipboard of [undefined, { writeText: async () => { throw Error('denied'); } }]) {
     const c = component(clipboard), p = props();
-    buttons(c.render(p))[1].props.onClick(); await settle();
+    buttons(c.render(p))[2].props.onClick(); await settle();
     assert.match(status(c.render(p)), /Copia non riuscita/);
     assert.equal(p.assignment.accepted, undefined);
   }
   const c = component(), p = { ...props(), permit: undefined };
-  assert.equal(buttons(c.render(p))[1].props.disabled, true);
+  assert.equal(buttons(c.render(p))[2].props.disabled, true);
   assert.match(status(c.render(p)), /Permesso collegato non disponibile/);
+});
+
+test('communication is independent of acceptance and guarded by campus and busy state', () => {
+  const c = component(), p = props();
+  let calls = 0;
+  p.onCommunicate = () => calls++;
+  buttons(c.render(p))[0].props.onClick();
+  assert.equal(calls, 1);
+  p.assignment.communicated = true;
+  assert.equal(buttons(c.render(p))[0].props['aria-pressed'], true);
+  assert.equal(buttons(c.render(p))[1].props['aria-pressed'], false);
+  for (const blocked of [{ canAssign: false, busy: false }, { canAssign: true, busy: true }]) {
+    Object.assign(p, blocked);
+    const button = buttons(c.render(p))[0];
+    assert.equal(button.props.disabled, true);
+    button.props.onClick();
+    assert.equal(calls, 1);
+  }
 });

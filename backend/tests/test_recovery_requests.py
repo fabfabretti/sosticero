@@ -78,6 +78,22 @@ class RecoveryRequestsTest(unittest.TestCase):
         self.assign(None).raise_for_status()
         self.assertEqual(self.mark(accepted=True).status_code, 422)
 
+    def test_communication_is_independent_persistent_and_importable(self):
+        before = self.state()
+        self.mark(accepted=True).raise_for_status()
+        for value in (True, False, True):
+            self.mark(communicated=value).raise_for_status()
+            current = TestClient(create_app(self.path)).get('/api/export').json()
+            self.assertIs(current['asg'][DAY][self.key]['communicated'], value)
+            self.assertTrue(current['asg'][DAY][self.key]['accepted'])
+            self.assertEqual(recovery.summary(current), recovery.summary(before))
+            self.client.post('/api/import', json=current).raise_for_status()
+        other = TestClient(create_app(self.path), campus='succursale')
+        self.assertEqual(other.post('/api/assignments', json=dict(day=DAY, key=self.key, communicated=False)).status_code, 403)
+        self.assign('normal').raise_for_status()
+        self.assertNotIn('communicated', self.state()['asg'][DAY][self.key])
+        self.assertEqual(self.mark(communicated=True).status_code, 422)
+
     def test_request_metadata_uses_fixed_link_and_manual_source(self):
         self.client.post('/api/permessi', json=dict(day='2026-09-28', id='rp', hours=[3])).raise_for_status()
         details = self.client.get('/api/day/' + DAY).json()['recoveryRequests']

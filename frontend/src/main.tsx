@@ -1159,6 +1159,7 @@ function Supplenze() {
                           {assignmentIssues[r.k] && <p id={`assignment-issue-${r.k}`} className="ui-notice ui-notice-error" role="alert">Da riassegnare: {assignmentIssues[r.k]}</p>}
                           {assigned[r.k]?.t === "RP" && <RecoveryActions key={`${day}|${r.k}|${assigned[r.k].v}|${assigned[r.k].permitId}`} day={day} row={r}
                             assignment={assigned[r.k]} permit={data?.recoveryRequests?.[r.k]} busy={busy} canAssign={canAssign(r.sede)}
+                            onCommunicate={() => void mutate("assignments", { day, key: r.k, communicated: !assigned[r.k].communicated })}
                             onAccept={() => void mutate("assignments", { day, key: r.k, accepted: !assigned[r.k].accepted })} />}
                           {assigned[r.k]?.t === "PAID" && <PaidActions key={`${day}|${r.k}|${assigned[r.k].v}`} day={day} row={r} assignment={assigned[r.k]} busy={busy} canAssign={canAssign(r.sede)} onNotify={() => void mutate("assignments", { day, key: r.k, notified: !assigned[r.k].notified })} />}
                           {entryExitBoundary(r.k, assigned) && <span className="opt communicated">

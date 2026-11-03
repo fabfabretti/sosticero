@@ -22,9 +22,9 @@ Grazie mille e cordiali saluti,
 Fabiola Fabretti`;
 }
 
-export function RecoveryActions({ day, row, assignment, permit, busy, canAssign, onAccept }: {
+export function RecoveryActions({ day, row, assignment, permit, busy, canAssign, onAccept, onCommunicate }: {
   day: string; row: Row; assignment: Assignment; permit?: RecoveryRequest;
-  busy: boolean; canAssign: boolean; onAccept: () => void;
+  busy: boolean; canAssign: boolean; onAccept: () => void; onCommunicate: () => void;
 }) {
   const [feedback, setFeedback] = useState("");
   const reason = `Assegnazione riservata alla sede ${row.sede || "non indicata"}`;
@@ -41,6 +41,12 @@ export function RecoveryActions({ day, row, assignment, permit, busy, canAssign,
   }
   return <span className="recovery-actions">
     <span className="opt communicated">
+      <button type="button" className={assignment.communicated ? "on" : ""} aria-pressed={assignment.communicated === true}
+        disabled={busy || !canAssign} title={!canAssign ? reason : undefined}
+        aria-label={`Comunicato ${row.c}, ${row.h}ª ora${!canAssign ? `. ${reason}` : ""}`}
+        onClick={() => { if (!busy && canAssign) onCommunicate(); }}>
+        {assignment.communicated && <span aria-hidden="true">✓ </span>}Comunicato
+      </button>
       <button type="button" className={assignment.accepted ? "on" : ""} aria-pressed={assignment.accepted === true}
         disabled={busy || !canAssign} title={!canAssign ? reason : undefined}
         aria-label={`Accettata ${row.c}, ${row.h}ª ora${!canAssign ? `. ${reason}` : ""}`}
