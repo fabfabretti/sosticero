@@ -3,7 +3,6 @@ import type { Report } from './PaidHours';
 
 const days = ['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì'];
 const date = (value: string) => value.split('-').reverse().join('/');
-const site = (value: string) => value === 'centrale' ? 'Centrale' : 'Succursale';
 
 export function generatePaidPdf(report: Report) {
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4', compress: true });
@@ -21,7 +20,7 @@ export function generatePaidPdf(report: Report) {
   };
   const header = () => {
     font(true, 12);
-    doc.text('I.S.S. "M.O. LUCIANO DAL CERO"', 10, 16);
+    doc.text('I.S.I.S.S. M.O. Luciano Dal Cero', 10, 16);
     doc.text('BANCA ORE', 287, 16, { align: 'right' });
     font();
     doc.text('Disponibilità ricorrenti per supplenze a pagamento', 10, 23);
@@ -36,7 +35,7 @@ export function generatePaidPdf(report: Report) {
     font();
     const cells: string[][] = days.map((_, weekday) => {
       const teachers = report.cells.find(c => c.weekday === weekday && c.hour === hour)?.teachers || [];
-      return teachers.length ? teachers.flatMap(t => doc.splitTextToSize(`${t.name} - ${t.why || (t.uncertain ? 'Sede da verificare' : t.sites.length === 2 ? 'Entrambe' : t.sites.map(site).join(' / '))}${t.addedBy ? ` [${t.addedBy === 'centrale' ? 'C' : 'S'}]` : ''}`, 49) as string[]) : ['-'];
+      return teachers.length ? teachers.flatMap(t => doc.splitTextToSize(t.name, 49) as string[]) : ['-'];
     });
     let offset = 0;
     const count = Math.max(...cells.map(c => c.length));
@@ -52,7 +51,6 @@ export function generatePaidPdf(report: Report) {
   const pages = doc.getNumberOfPages();
   for (let page = 1; page <= pages; page++) {
     doc.setPage(page); font(false, 8);
-    doc.text('C / S = sede di inserimento. Sedi calcolate dall’orario; assenze e supplenze verificate all’assegnazione.', 10, 197);
     doc.text(`Pagina ${page} / ${pages}`, 287, 203, { align: 'right' });
   }
   return doc;

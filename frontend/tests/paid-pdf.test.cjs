@@ -12,7 +12,7 @@ test('weekly availability uses A4 landscape and selectable names, sites and date
   assert.ok(Math.abs(doc.internal.pageSize.getWidth() - 297) < .1);
   assert.ok(Math.abs(doc.internal.pageSize.getHeight() - 210) < .1);
   const text = doc.internal.pages.slice(1).flat().join('\n');
-  for (const value of ['Rossi Mario - Centrale [S]', '02/11/2026', '06/11/2026', 'BANCA ORE']) assert.ok(text.includes(value), value);
+  for (const value of ['Rossi Mario', '02/11/2026', '06/11/2026', 'BANCA ORE', 'I.S.I.S.S. M.O. Luciano Dal Cero']) assert.ok(text.includes(value), value);
   if (process.env.PAID_SAMPLE) fs.writeFileSync(process.env.PAID_SAMPLE, Buffer.from(doc.output('arraybuffer')));
 });
 test('crowded slots continue across pages without dropping names', () => {
@@ -21,5 +21,19 @@ test('crowded slots continue across pages without dropping names', () => {
   const doc = exportsPdf.generatePaidPdf(crowded);
   assert.ok(doc.getNumberOfPages() > 1);
   const text = doc.internal.pages.slice(1).flat().join('\n');
-  for (let i = 0; i < 200; i++) assert.ok(text.includes(`Docente ${i} -`));
+  for (let i = 0; i < 200; i++) assert.ok(text.includes(`Docente ${i}`));
+});
+
+test('PDF shows names without sites, explanations or attribution', () => {
+  const data = structuredClone(report);
+  data.cells[0].teachers = [
+    { name: 'Entrambi', sites: ['centrale', 'succursale'], addedBy: 'centrale', uncertain: true },
+    { name: 'Occupato', sites: [], why: 'Impegnato nell’orario', addedBy: 'succursale' },
+  ];
+  const doc = exportsPdf.generatePaidPdf(data);
+  const text = doc.internal.pages.slice(1).flat().join('\n');
+  assert.ok(text.includes('(Entrambi)'));
+  assert.doesNotMatch(text, /C\/S|Centrale|Succursale/);
+  assert.ok(text.includes('(Occupato)'));
+  assert.doesNotMatch(text, /Entrambe|Impegnato|Sede da verificare|\[C\]|\[S\]/);
 });
