@@ -30,6 +30,30 @@ class RulesTest(unittest.TestCase):
     def cs(self):
         return candidates(self.ds, self.state, DAY, self.row)
 
+    def test_saved_compresenza_becomes_absent_for_every_role(self):
+        from backend.timetables import issues
+        for role in ('curricolare', 'ITP', 'sostegno'):
+            for group in ('abs', 'permessi'):
+                for original, substitute in (('absent', 'co'), ('co', 'absent')):
+                    with self.subTest(role=role, group=group, substitute=substitute):
+                        ds = copy.deepcopy(self.ds)
+                        ds['teachers'][substitute]['role'] = role
+                        state = copy.deepcopy(EMPTY)
+                        state['abs'][DAY] = {original: [2]}
+                        key = rows(ds, state, DAY)[0]['k']
+                        assignment = validate_assignment(ds, state, DAY, key, substitute)
+                        self.assertEqual(assignment['t'], 'C')
+                        state['asg'][DAY] = {key: assignment}
+                        state[group].setdefault(DAY, {})[substitute] = [1]
+                        self.assertEqual(issues(ds, state, DAY), [])
+                        state[group][DAY][substitute] = [2]
+                        self.assertEqual(issues(ds, state, DAY), [dict(key=key, message='Assente')])
+                        self.assertEqual(state['asg'][DAY][key], assignment)
+                        with self.assertRaisesRegex(ValueError, '^Assente$'):
+                            validate_assignment(ds, state, DAY, key, substitute)
+                        del state[group][DAY][substitute]
+                        self.assertEqual(issues(ds, state, DAY), [])
+
     def test_coteaching_requires_class_period_and_known_campus(self):
         self.assertEqual(next(c for c in self.cs() if c['id'] == 'co')['ty'], 'C')
         self.assertNotIn('wrongcampus', [c['id'] for c in self.cs()])

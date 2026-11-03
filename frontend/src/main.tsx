@@ -949,6 +949,7 @@ function Supplenze() {
   const rs =
       data?.rows.filter((r) => filter === "all" || r.sede === filter) || [],
     assigned = data?.state.asg[day] || {};
+  const assignmentIssues = Object.fromEntries((data?.issues || []).map(i => [i.key, i.message]));
   const nextDay = schoolDate(new Date(day + "T12:00"), 1);
   const pendingReminders = Object.entries(assigned)
     .filter(([key, a]) => !a.communicated && entryExitBoundary(key, assigned))
@@ -1067,7 +1068,7 @@ function Supplenze() {
             })}
           </h1>
           <p className="sub">
-            {rs.length} ore da coprire, {rs.filter((r) => assigned[r.k]).length}{" "}
+            {rs.length} ore da coprire, {rs.filter((r) => assigned[r.k] && !assignmentIssues[r.k]).length}{" "}
             assegnate
           </p>
           {data?.timetable && <p className="sub">Orario: {data.timetable.effective ? `dal ${italianDate(data.timetable.effective)}` : 'versione iniziale'}</p>}
@@ -1146,7 +1147,8 @@ function Supplenze() {
                         </td>
                         <td>
                           <button
-                            className={"fill " + (!assigned[r.k] ? "ph" : assigned[r.k].v === "UNCOVERED" ? "uncovered" : "")}
+                            className={"fill " + (assignmentIssues[r.k] ? "uncovered" : !assigned[r.k] ? "ph" : assigned[r.k].v === "UNCOVERED" ? "uncovered" : "")}
+                            aria-describedby={assignmentIssues[r.k] ? `assignment-issue-${r.k}` : undefined}
                             onClick={() => void choose(r)}
                           >
                             {assigned[r.k]
@@ -1154,6 +1156,7 @@ function Supplenze() {
                               : "Scegli il supplente"}
                             <small>{assigned[r.k]?.v === "UNCOVERED" ? "Nessun supplente trovato" : (assigned[r.k]?.t === "SPECIAL" ? "" : (assigned[r.k]?.t === "PAID" ? "A pagamento" : assigned[r.k]?.t === "CP" ? "Compresenza - POT" : assigned[r.k]?.t === "CA" ? "Compresenza - ALF" : assigned[r.k]?.t))}</small>
                           </button>
+                          {assignmentIssues[r.k] && <p id={`assignment-issue-${r.k}`} className="ui-notice ui-notice-error" role="alert">Da riassegnare: {assignmentIssues[r.k]}</p>}
                           {assigned[r.k]?.t === "RP" && <RecoveryActions key={`${day}|${r.k}|${assigned[r.k].v}|${assigned[r.k].permitId}`} day={day} row={r}
                             assignment={assigned[r.k]} permit={data?.recoveryRequests?.[r.k]} busy={busy} canAssign={canAssign(r.sede)}
                             onAccept={() => void mutate("assignments", { day, key: r.k, accepted: !assigned[r.k].accepted })} />}

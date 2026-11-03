@@ -395,6 +395,8 @@ def candidates(ds, state, day, row, policies=None, selected=None):
 
 def validate_assignment(ds, state, day, key, value, policies=None, exceptional=False, saved=False, category=None):
     from .receptions import at
+    if value in ds['teachers'] and int(key.split('|')[1]) in absences(state, day).get(value, []):
+        raise ValueError('Assente')
     row = next((r for r in rows(ds, state, day) if r['k'] == key), None)
     if not row:
         raise ValueError('Supplenza non più presente nell’orario o nelle assenze.')

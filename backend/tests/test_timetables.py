@@ -43,6 +43,18 @@ class TimetableTest(unittest.TestCase):
     def entry(self, day=DAY, **extra):
         self.client.post('/api/entries', json=dict(day=day, group='abs', id='absent', hours=[2], note='Keep me', **extra)).raise_for_status()
 
+    def test_absence_flags_existing_compresenza_and_can_be_reassigned(self):
+        self.entry()
+        key = self.get()['rows'][0]['k']
+        self.client.post('/api/assignments', json=dict(day=DAY, key=key, value='co')).raise_for_status()
+        self.client.post('/api/entries', json=dict(day=DAY, group='abs', id='co', hours=[2])).raise_for_status()
+        data = self.get()
+        self.assertEqual([(i['key'], i['message']) for i in data['issues']], [(key, 'Assente')])
+        self.assertEqual(data['issues'][0]['context']['substitute'], 'co')
+        self.assertEqual(data['state']['asg'][DAY][key]['v'], 'co')
+        self.client.post('/api/assignments', json=dict(day=DAY, key=key, value='dis')).raise_for_status()
+        self.assertEqual(self.get()['issues'], [])
+
     def test_migration_preserves_and_is_idempotent(self):
         self.entry()
         store = Store(str(self.path))
