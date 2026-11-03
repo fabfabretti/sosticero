@@ -59,7 +59,7 @@ def request_details(state, day):
 
 
 def usable(p, day):
-    return p['date'] is None or p['date'] <= day <= p['deadline']
+    return p['date'] is None or day <= p['deadline']
 
 
 def eligible(permits, teacher, day):
@@ -116,5 +116,5 @@ def validate(state):
 def protect(state, pid, teacher, day, hours):
     p = ledger(state).get(pid)
     if p and p['recoveries'] and (hours is None or teacher != p['teacher'] or len(hours) < p['recovered']
-            or any(not day <= r['date'] <= deadline(day) for r in p['recoveries'])):
+            or any(r['date'] > deadline(day) for r in p['recoveries'])):
         raise ValueError('Permesso con recuperi collegati: risolvi prima le assegnazioni RP interessate.')
