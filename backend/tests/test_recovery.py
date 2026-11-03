@@ -51,7 +51,7 @@ class RecoveryTest(unittest.TestCase):
                          ('2026-12-31', '2027-01-31'), (DAY, '2026-11-12')]:
             self.assertEqual(recovery.deadline(day), end)
         ledger = recovery.ledger(self.client.get('/api/export').json())
-        for day, expected in [('2026-10-04', 0), ('2026-11-05', 1), ('2026-11-06', 0)]:
+        for day, expected in [('2026-10-04', 1), ('2026-11-05', 1), ('2026-11-06', 0)]:
             self.assertEqual(len(recovery.eligible(ledger, 'rp', day)), expected)
         _, balances = recovery.summary(self.client.get('/api/export').json(), '2026-11-06')
         self.assertEqual(balances['rp'], dict(remaining=1, expired=1, eligible=0))
@@ -161,12 +161,22 @@ class RecoveryTest(unittest.TestCase):
         self.assertEqual(r.status_code, 422)
         self.assertEqual(self.register()['recoveries']['2026-10-05']['rp']['recovered'], 2)
 
-    def test_expired_future_hidden_and_released(self):
+    def test_expired_hidden_future_available_and_released(self):
         self.client.post('/api/permessi', json=dict(day='2026-10-05', id='rp', hours=None)).raise_for_status()
         self.permit('2026-08-03')
         self.assertNotIn('rp', [c['id'] for c in self.cs(1)])
         self.permit('2026-10-19')
-        self.assertNotIn('rp', [c['id'] for c in self.cs(1)])
+        self.assertEqual(next(c for c in self.cs(1) if c['id'] == 'rp')['ty'], 'RP')
+        self.assign(1).raise_for_status()
+        self.assertEqual(self.register()['recoveries']['2026-10-19']['rp']['remaining'], 0)
+        self.assertNotIn('rp', [c['id'] for c in self.cs(4)])
+        self.assertFalse(self.client.get('/api/day/' + DAY).json()['issues'])
+        archive = self.client.get('/api/export').json()
+        self.client.post('/api/import', json=archive).raise_for_status()
+        self.client.post('/api/permessi', json=dict(day='2026-10-26', id='rp', hours=[2],
+                         original_day='2026-10-19', original_id='rp')).raise_for_status()
+        self.assertEqual(self.register()['recoveries']['2026-10-26']['rp']['recovered'], 1)
+        self.assign(1, None).raise_for_status()
         self.permit('2026-10-05')
         raw = copy.deepcopy(self.raw)
         raw['orario'].append(dict(docente='rp', giorno='lun', ora=1, classi=[], sede='centrale', attivita_originale='GM'))
