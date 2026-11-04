@@ -12,7 +12,7 @@ import threading
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
-from fastapi import HTTPException, Request
+from fastapi import HTTPException, Query, Request
 from . import timetables, teacher_names, attachments
 from .domain import HOURS, absences
 
@@ -297,11 +297,24 @@ class Inbox:
             return dict(ok=True)
 
         @app.get('/api/inbox')
-        def listing(history: bool = False):
+        def listing(history: bool = False, page: int | None = Query(default=None, ge=1)):
             with self.store.connect() as db:
                 db.execute('BEGIN')
-                ids = db.execute("SELECT id FROM inbox WHERE " + ("status!='pending'" if history else "status='pending'") + ' ORDER BY rowid DESC').fetchall()
-                return [self.preview(db, self.item(db, r[0])) for r in ids]
+                query = "SELECT id FROM inbox WHERE " + ("status!='pending'" if history else "status='pending'") + ' ORDER BY rowid DESC'
+                ids = db.execute(query + ' LIMIT 26 OFFSET ?', ((page - 1) * 25,)).fetchall() if page is not None else db.execute(query).fetchall()
+                selected = ids[:25] if page is not None else ids
+                if history:
+                    # Processed entries need display data, not fresh acceptance validation.
+                    timetable_history = self.store.read(db, 'timetables')
+                    catalog = {i: t for v in timetable_history['versions'] for i, t in v['dataset']['teachers'].items()} if timetable_history else {}
+                    names = teacher_names.teachers(catalog, self.store.read(db, 'teacherNameOverrides', teacher_names.empty()))
+                    items = []
+                    for row in selected:
+                        item = self.item(db, row[0])
+                        items.append(dict(item, **parse(item['raw']), teacherName=names.get(item['teacher'], {}).get('name')))
+                else:
+                    items = [self.preview(db, self.item(db, r[0])) for r in selected]
+                return dict(items=items, hasMore=len(ids) > 25) if page is not None else items
 
         @app.post('/api/inbox/{identifier}/preview')
         def preview(identifier: str, data: dict):

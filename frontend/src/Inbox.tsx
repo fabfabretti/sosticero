@@ -10,6 +10,7 @@ import { Link } from "react-router";
 type Api = <T>(url: string, body?: unknown) => Promise<T>;
 export type InboxStatus = { generation?: number; version?: string; pending: number; received?: number; configured: boolean; email?: string; spreadsheet?: string; worksheet?: string; lastSuccess?: string; error?: string };
 type Item = { generation?: number; acceptedBy?: {id:string;username:string;name:string} | null; id: string; raw: string[]; status: string; processed?: string; submitted?: string; name?: string; case?: string; start?: string; end?: string; days?: string[]; hours?: number[]; teacher?: string; nameMatched?: boolean; teacherName?: string; teachers?: { id: string; name: string }[]; overlaps?: { day: string; hours: number[] }[]; error: string };
+type HistoryPage = { items: Item[]; hasMore: boolean; generation?: number };
 const date = (value?: string) => value ? value.split("-").reverse().join("/") : "—";
 const timestamp = (value?: string) => value ? new Date(value).toLocaleString("it-IT") : "Mai";
 
@@ -139,20 +140,23 @@ export function SheetsSettings({ api, onSummary, revision }: { api: Api; onSumma
 export function AbsenceInbox({ api }: { api: Api }) {
   const [history, setHistory] = useState(false), [items, setItems] = useState<Item[]>([]);
   const [error, setError] = useState("");
+  const [page, setPage] = useState(1), [hasMore, setHasMore] = useState(false);
   const [busy, setBusy] = useState<string>();
   const [drafts, setDrafts] = useState<Record<string, { classification?: AbsenceKind; note?: string; attachment?: ImageDraft }>>({});
   const status = useInboxStatus(api);
   const [attachmentPending, setAttachmentPending] = useState<Record<string, boolean>>({});
   const overrides = useRef(new Map<string, Item>());
   const { refresh, invalidate, loading, ready, loadError } = useQuietRefresh(
-    () => api<Item[]>("inbox?history=" + history),
-    next => {
-      setItems(next.map(item => ({ ...item, generation: (next as Item[] & {generation?:number}).generation })).map(item => item.status === 'pending' ? overrides.current.get(item.id) || item : item));
+    () => api<(Item[] & { generation?: number }) | HistoryPage>(history ? `inbox?history=true&page=${page}` : "inbox?history=false"),
+    result => {
+      const next = Array.isArray(result) ? result : result.items;
+      setHasMore(!Array.isArray(result) && result.hasMore);
+      setItems(next.map(item => ({ ...item, generation: result.generation })).map(item => item.status === 'pending' ? overrides.current.get(item.id) || item : item));
       setError('');
       if (!history) window.dispatchEvent(new CustomEvent('inbox-changed', { detail: { pending: next.length } }));
-    }, !!busy || Object.values(attachmentPending).some(Boolean) || Object.keys(drafts).length > 0, String(history),
+    }, !!busy || Object.values(attachmentPending).some(Boolean) || Object.keys(drafts).length > 0, `${history}:${page}`,
   );
-  useEffect(() => { void refresh().catch(() => {}); }, [history]);
+  useEffect(() => { void refresh().catch(() => {}); }, [history, page]);
   const act = async (item: Item, action: string, teacher?: string) => {
     if (busy || !ready || Object.values(attachmentPending).some(Boolean)) return;
     invalidate(); setBusy(item.id); setError("");
@@ -164,7 +168,7 @@ export function AbsenceInbox({ api }: { api: Api }) {
     finally { setBusy(undefined); }
   };
   return <main className="ui-page inbox-page">
-    <div className="inbox-heading"><div><h1>Inbox</h1><p className="sub">Comunicazioni di assenza da Google Forms</p></div><div className="inbox-actions"><button className={!history ? "ui-button on" : "ui-button"} aria-pressed={!history} disabled={!!busy} onClick={() => setHistory(false)}>Da esaminare</button><button className={history ? "ui-button on" : "ui-button"} aria-pressed={history} disabled={!!busy} onClick={() => setHistory(true)}>Cronologia</button></div></div>
+    <div className="inbox-heading"><div><h1>Inbox</h1><p className="sub">Comunicazioni di assenza da Google Forms</p></div><div className="inbox-actions"><button className={!history ? "ui-button on" : "ui-button"} aria-pressed={!history} disabled={!!busy} onClick={() => setHistory(false)}>Da esaminare</button><button className={history ? "ui-button on" : "ui-button"} aria-pressed={history} disabled={!!busy} onClick={() => { setPage(1); setHistory(true); }}>Cronologia</button></div></div>
     <p className="sub">Ultima sincronizzazione: {timestamp(status.lastSuccess)} · {!status.configured ? <Link to="/settings">Configura Google Sheets</Link> : "Controllo automatico ogni 30 secondi"}</p>
     {status.error && <p className="ui-notice ui-notice-error" role="status">{status.error}</p>}
     {error && <p className="ui-notice ui-notice-error" role="alert">{error}</p>}
@@ -195,6 +199,11 @@ export function AbsenceInbox({ api }: { api: Api }) {
       </details>
       {item.error && <p className="ui-notice ui-notice-error">{item.error}</p>}
     </article>)}
+    {history && <nav className="inbox-actions" aria-label="Pagine cronologia">
+      <button className="ui-button" disabled={!ready || loading || page === 1} onClick={() => setPage(p => p - 1)}>Precedente</button>
+      <span className="sub" role="status">Pagina {page}</span>
+      <button className="ui-button" disabled={!ready || loading || !hasMore} onClick={() => setPage(p => p + 1)}>Successiva</button>
+    </nav>}
     </LoadingRegion>
   </main>;
 }

@@ -135,6 +135,7 @@ function Permessi() {
   const [manualHours, setManualHours] = useState("");
   const [editingManual, setEditingManual] = useState(false);
   const [creatorFilter, setCreatorFilter] = useState("");
+  const [permitPage, setPermitPage] = useState(1);
   const [sort, setSort] = useState<{ field: "date" | "requested" | "days"; ascending: boolean }>({ field: "date", ascending: false });
   const [data, setData] = useState<{ generation?: number; concurrency: Baseline; timetableVersions?: { effective: string | null; dataset: Data["dataset"] }[]; dataset: Data["dataset"]; permitAttachments?: AttachmentMap; permessi: Record<string, Record<string, number[]>>; permitRequests?: Record<string, Record<string, string>>; permitNotes?: Record<string, Record<string, string>>; manualPermitNotes?: Record<string, string>; permitKinds?: Record<string, Record<string, AbsenceKind>>; permitCreators?: Record<string, Record<string, Author>>; recoveries?: Record<string, Record<string, import("./types").PermitRecovery>>; balances?: Record<string, { remaining: number; expired: number; eligible: number }>; manualPermits?: Record<string, { id: string; hours: number; recovered: number; remaining: number; recoveries: { date: string; h: number; key: string }[] }> }>();
   const [dayInput, setDayInput] = useState(italianDate(localDate(new Date())));
@@ -230,6 +231,10 @@ function Permessi() {
     const missing = (v: typeof left) => v === null || v === "";
     return Number(missing(left)) - Number(missing(right)) || (sort.ascending ? 1 : -1) * (typeof left === "number" && typeof right === "number" ? left - right : String(left).localeCompare(String(right))) || b.date.localeCompare(a.date) || (data?.dataset.teachers[a.id]?.name || a.id).localeCompare(data?.dataset.teachers[b.id]?.name || b.id);
   });
+  const permitPages = Math.max(1, Math.ceil(records.length / 25));
+  const currentPermitPage = Math.min(permitPage, permitPages);
+  const visibleRecords = records.slice((currentPermitPage - 1) * 25, currentPermitPage * 25);
+  useEffect(() => { setPermitPage(currentPermitPage); }, [currentPermitPage]);
   const warning = (text: string) => <HourHelp text={text}>
     <svg className="warning-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 22 21H2Z" fill="none" stroke="currentColor" strokeWidth="2"/><path d="M12 9v5m0 3v1" stroke="currentColor" strokeWidth="2"/></svg>
   </HourHelp>;
@@ -286,9 +291,9 @@ function Permessi() {
     <h1>Permessi</h1>
     <p className="sub">Per i permessi con data, recupero entro due mesi dal permesso, scadenza inclusa. Le assegnazioni RP future riservano già le ore e sono elencate per data.</p>
 
-    <label>Inserito da<select aria-label="Filtra per inserito da" value={creatorFilter} onChange={e => setCreatorFilter(e.target.value)}><option value="">Tutti</option>{creators.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>
-    <div className="ui-surface permit-table"><table className="ui-table"><thead><tr><th>Docente</th><th>Sede lezioni</th><th>Inserito da</th>{([ ["date", "Data permesso"], ["requested", "Data richiesta"], ["days", "Giorni alla scadenza"] ] as const).map(([field, title]) => <th key={field} aria-sort={sort.field === field ? (sort.ascending ? "ascending" : "descending") : "none"}><button className="lk" onClick={() => setSort({ field, ascending: sort.field === field ? !sort.ascending : field === "days" })}>{title}{sort.field === field ? (sort.ascending ? " ↑" : " ↓") : " ↕"}</button></th>)}{["Ore di permesso", "Dettaglio recuperi", "Ore da recuperare", "Azioni"].map(title => <th key={title}>{title}</th>)}</tr></thead>
-      <tbody>{records.map(r => <tr key={r.date + r.id} className={(r.recovery?.remaining ?? r.periods.length) === 0 ? "permit-complete" : `permit-outstanding${r.days !== null && r.days < 30 ? " permit-urgent" : ""}`}>
+    <label>Inserito da<select aria-label="Filtra per inserito da" value={creatorFilter} onChange={e => { setCreatorFilter(e.target.value); setPermitPage(1); }}><option value="">Tutti</option>{creators.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>
+    <div className="ui-surface permit-table"><table className="ui-table"><thead><tr><th>Docente</th><th>Sede lezioni</th><th>Inserito da</th>{([ ["date", "Data permesso"], ["requested", "Data richiesta"], ["days", "Giorni alla scadenza"] ] as const).map(([field, title]) => <th key={field} aria-sort={sort.field === field ? (sort.ascending ? "ascending" : "descending") : "none"}><button className="lk" onClick={() => { setSort({ field, ascending: sort.field === field ? !sort.ascending : field === "days" }); setPermitPage(1); }}>{title}{sort.field === field ? (sort.ascending ? " ↑" : " ↓") : " ↕"}</button></th>)}{["Ore di permesso", "Dettaglio recuperi", "Ore da recuperare", "Azioni"].map(title => <th key={title}>{title}</th>)}</tr></thead>
+      <tbody>{visibleRecords.map(r => <tr key={r.date + r.id} className={(r.recovery?.remaining ?? r.periods.length) === 0 ? "permit-complete" : `permit-outstanding${r.days !== null && r.days < 30 ? " permit-urgent" : ""}`}>
         <td><span className="permit-name">{data?.dataset.teachers[r.id]?.name || r.id}</span><RecordInfo text={data?.permitNotes?.[r.date]?.[r.id]} links={[{ label: "Apri allegato permesso", id: data?.permitAttachments?.[r.date]?.[r.id] }]} /></td>
         <td>{teachingSites(r.id, r.date).length ? teachingSites(r.id, r.date).map(campusTag) : '—'}</td>
         <td>{data?.permitCreators?.[r.date]?.[r.id] ? <span className="author-name" title={authorLabel(data.permitCreators[r.date][r.id], true)}>{authorLabel(data.permitCreators[r.date][r.id])}</span> : '—'}</td><td>{r.date.split("-").reverse().join("/")}</td>
@@ -300,6 +305,11 @@ function Permessi() {
         <td className="permit-actions"><button className="lk" aria-label={`Modifica permesso di ${data?.dataset.teachers[r.id]?.name || r.id}`} title="Modifica permesso" disabled={busy} onClick={() => { setAttachment(undefined); setManual(false); setEditingManual(false); setDayInput(italianDate(r.date)); setRequestedInput(italianDate(data?.permitRequests?.[r.date]?.[r.id] || "")); selectTeacher(r.id); setSelected(r.periods); setNote(data?.permitNotes?.[r.date]?.[r.id] || ""); setEditClassification(data?.permitKinds?.[r.date]?.[r.id] || null); setOriginal({ day: r.date, id: r.id }); setError(""); }}><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15Z" fill="none" stroke="currentColor" strokeWidth="1.6"/></svg></button>
         <button className="x" aria-label={`Rimuovi permesso di ${data?.dataset.teachers[r.id]?.name || r.id}`} title="Rimuovi permesso" disabled={busy} onClick={() => { if (window.confirm(`Eliminare il permesso di ${data?.dataset.teachers[r.id]?.name || r.id} del ${italianDate(r.date)}?`)) void save({ day: r.date, id: r.id, hours: null }); }}>×</button></td>
       </tr>)}</tbody></table></div>
+    <nav className="ui-actions" aria-label="Pagine permessi">
+      <button className="ui-button" disabled={busy || currentPermitPage === 1} onClick={() => setPermitPage(p => p - 1)}>Precedente</button>
+      <span className="sub" role="status">Pagina {currentPermitPage} di {permitPages} · {records.length} permessi</span>
+      <button className="ui-button" disabled={busy || currentPermitPage === permitPages} onClick={() => setPermitPage(p => p + 1)}>Successiva</button>
+    </nav>
     {!!Object.keys(data?.manualPermits || {}).length && <section className="manual-permits">
       <h2>Saldi manuali</h2>
       <p className="sub">Ore pregresse senza data e senza scadenza automatica.</p>

@@ -65,6 +65,26 @@ class InboxTest(unittest.TestCase):
     def action(self, item, action='accept', **data):
         return self.client.post('/api/inbox/' + item['id'] + '/' + action, json=data)
 
+    def test_history_pagination_bounds_preview_work_and_preserves_order(self):
+        with self.inbox.store.connect() as db:
+            for i in range(51):
+                db.execute("INSERT INTO inbox (id,source,raw,status) VALUES (?,?,?,?)",
+                           (str(i), 'test', json.dumps(response()), 'accepted' if i % 2 else 'ignored'))
+            db.execute("INSERT INTO inbox (id,source,raw) VALUES ('pending','test',?)", (json.dumps(response()),))
+        pages = []
+        with patch.object(self.inbox, 'load', side_effect=AssertionError('History must not load operational state')), patch.object(self.inbox, 'preview', wraps=self.inbox.preview) as preview:
+            for page, count in ((1, 25), (2, 25), (3, 1), (4, 0)):
+                preview.reset_mock()
+                result = self.client.get(f'/api/inbox?history=true&page={page}').json()
+                self.assertEqual(len(result['items']), count)
+                self.assertEqual(preview.call_count, 0)
+                self.assertEqual(result['hasMore'], page < 3)
+                pages.extend(item['id'] for item in result['items'])
+        self.assertEqual(pages, [str(i) for i in reversed(range(51))])
+        self.assertEqual(len(self.client.get('/api/inbox').json()), 1)
+        self.assertEqual(self.client.get('/api/inbox?history=true&page=0').status_code, 422)
+        self.assertEqual(self.client.get('/api/inbox?history=true&page=abc').status_code, 422)
+
     def test_key_validation_permissions_and_safe_errors(self):
         self.configure()
         original = self.inbox.key.read_bytes()

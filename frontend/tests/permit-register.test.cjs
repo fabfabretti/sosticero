@@ -38,7 +38,7 @@ test('campus tags expose full names with compact visible labels', () => {
 });
 
 test('permit register sorts remaining days numerically and filters by account identity', () => {
-  const block = source.slice(source.indexOf('  const today = new Intl.DateTimeFormat'), source.indexOf('  const warning ='));
+  const block = source.slice(source.indexOf('  const today = new Intl.DateTimeFormat'), source.indexOf('  const permitPages ='));
   const evaluate = (ascending, creatorFilter = '') => runInNewContext(ts.transpileModule(block + '\nrecords;', {
     compilerOptions: { target: ts.ScriptTarget.ES2022 },
   }).outputText, { data: {
@@ -51,4 +51,15 @@ test('permit register sorts remaining days numerically and filters by account id
   assert.equal(evaluate(false).map(r => r.id).join(), 'a,b,c');
   assert.equal(evaluate(true, 'two').map(r => r.id).join(), 'b');
   assert.equal(evaluate(true)[2].days - evaluate(true)[0].days, 28);
+});
+
+test('pagination clamps the current page when records shrink', () => {
+  const block = source.slice(source.indexOf('  const permitPages ='), source.indexOf('  const warning ='));
+  let clamped;
+  const result = runInNewContext(ts.transpileModule(block + '\n({currentPermitPage,visibleRecords});', {
+    compilerOptions: {target:ts.ScriptTarget.ES2022},
+  }).outputText, {records:[{id:'remaining'}],permitPage:3,useEffect:fn=>fn(),setPermitPage:p=>{clamped=p;}});
+  assert.equal(result.currentPermitPage, 1);
+  assert.equal(result.visibleRecords[0].id, 'remaining');
+  assert.equal(clamped, 1);
 });

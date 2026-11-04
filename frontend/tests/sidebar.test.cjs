@@ -1387,3 +1387,26 @@ test('a successful write followed by a failed reload offers retry without repeat
   const retry=nodes.find(n=>n.type==='button' && n.props.children==='Riprova');assert.ok(retry);retry.props.onClick();
   assert.ok(a.requests.every(r=>r.url.startsWith('/api/day/')),'retry reads rather than repeating the write');
 });
+
+test('permit pagination follows global ordering and filtering', async () => {
+  const records = Object.fromEntries(Array.from({length: 51}, (_, i) => [`2026-${String(1 + Math.floor(i / 28)).padStart(2, '0')}-${String(1 + i % 28).padStart(2, '0')}`, {t:[1]}]));
+  const a = await permitsLoaded(records);
+  const rows = () => a.render().filter(n => n.type === 'tr' && n.props.className?.startsWith('permit-'));
+  const content = node => typeof node === 'string' || typeof node === 'number' ? String(node) : Array.isArray(node) ? node.map(content).join('') : node ? content(node.props?.children) : '';
+  const next = () => clickText(a, 'Successiva');
+  assert.equal(rows().length, 25);
+  assert.ok(content(rows()[0]).includes('23/02/2026'));
+  next(); assert.equal(rows().length, 25);
+  next(); assert.equal(rows().length, 1);
+  assert.ok(content(rows()[0]).includes('01/01/2026'));
+  assert.equal(a.render().find(n => n.type === 'button' && n.props.children === 'Successiva').props.disabled, true);
+  a.render().find(n => n.type === 'button' && content(n).startsWith('Data permesso')).props.onClick();
+  assert.equal(rows().length, 25);
+  assert.ok(content(rows()[0]).includes('01/01/2026'));
+  next(); next();
+  a.render().find(n => n.props?.['aria-label'] === 'Filtra per inserito da').props.onChange({target:{value:'missing'}});
+  assert.equal(rows().length, 0);
+  assert.ok(content(a.render()).includes('Pagina 1 di 1 · 0 permessi'));
+  a.render().find(n => n.props?.['aria-label'] === 'Filtra per inserito da').props.onChange({target:{value:''}});
+  assert.equal(rows().length, 25);
+});

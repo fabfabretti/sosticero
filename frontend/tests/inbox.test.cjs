@@ -61,7 +61,7 @@ test('Settings uploads raw key, saves source and reports connection failures wit
 test('Inbox blocks invalid acceptance, resolves teacher, accepts and exposes history', async () => {
   const item = { id: 'one', raw: ['16/10/2026', 'daily', 'Unknown'], status: 'pending', name: 'Unknown', error: 'Seleziona docente', teachers: [{ id: 'a', name: 'Anna' }], days: ['2026-10-19'], hours: [1] };
   const h = harness('AbsenceInbox', {
-    'inbox/summary': { pending: 1, configured: true }, 'inbox?history=false': [item], 'inbox?history=true': [],
+    'inbox/summary': { pending: 1, configured: true }, 'inbox?history=false': [item], 'inbox?history=true&page=1': {items:[],hasMore:false},
     'inbox/one/preview': { ...item, teacher: 'a', error: '' }, 'inbox/one/accept': { ok: true },
   });
   h.render(); await settle();
@@ -72,7 +72,7 @@ test('Inbox blocks invalid acceptance, resolves teacher, accepts and exposes his
   button(h, 'Accetta').props.onClick(); await settle();
   assert.equal(h.calls.find(c => c.url === 'inbox/one/accept').body.teacher, 'a');
   button(h, 'Cronologia').props.onClick(); h.render(); await settle();
-  assert.ok(h.calls.some(c => c.url === 'inbox?history=true'));
+  assert.ok(h.calls.some(c => c.url === 'inbox?history=true&page=1'));
 });
 
 test('Summary polling announces contextual counts without navigation or form data requests', async () => {
@@ -178,4 +178,28 @@ test('Inbox keeps optional absence details through polling and submits them on a
   assert.equal(body.classification, 'trip');
   assert.equal(body.note, 'Trip notes');
   assert.equal(body.attachment.data, 'example');
+});
+
+
+test('History requests one page at a time and resets when reopened', async () => {
+  const item = id => ({id, raw:[], status:'ignored', error:''});
+  const h = harness('AbsenceInbox', {
+    'inbox/summary': {pending:0,configured:true}, 'inbox?history=false': [],
+    'inbox?history=true&page=1': {items:[item('first')],hasMore:true},
+    'inbox?history=true&page=2': {items:[item('last')],hasMore:false},
+  });
+  h.render(); await settle();
+  button(h, 'Cronologia').props.onClick(); h.render(); await settle();
+  assert.equal(button(h, 'Precedente').props.disabled, true);
+  assert.equal(button(h, 'Successiva').props.disabled, false);
+  button(h, 'Successiva').props.onClick(); h.render(); await settle();
+  assert.equal(button(h, 'Successiva').props.disabled, true);
+  assert.equal(button(h, 'Precedente').props.disabled, false);
+  assert.ok(text(h.render()).includes('Pagina 2'));
+  button(h, 'Precedente').props.onClick(); h.render(); await settle();
+  assert.ok(text(h.render()).includes('Pagina 1'));
+  button(h, 'Successiva').props.onClick(); h.render(); await settle();
+  button(h, 'Da esaminare').props.onClick(); h.render(); await settle();
+  button(h, 'Cronologia').props.onClick(); h.render(); await settle();
+  assert.ok(text(h.render()).includes('Pagina 1'));
 });
