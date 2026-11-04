@@ -44,12 +44,16 @@ export function AttachmentField({ value, saved, onChange, disabled = false, onPe
   </div>;
 }
 
-export function RecordInfo({ text = "", links = [] }: { text?: string; links?: { label: string; id?: string }[] }) {
+export function RecordInfo({ text = "", links = [], label = "Informazioni e allegati", hover = false }: { text?: string; links?: { label: string; id?: string }[]; label?: string; hover?: boolean }) {
   const popup = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const [expanded, setExpanded] = useState(false);
   const popupId = useId();
-  const hide = () => popup.current?.hidePopover();
+  const pinned = useRef(false);
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const hide = () => { clearTimeout(hideTimer.current); pinned.current = false; popup.current?.hidePopover(); };
+  const show = () => { clearTimeout(hideTimer.current); position(); popup.current?.showPopover(); };
+  const leave = () => { hideTimer.current = setTimeout(() => { if (!pinned.current) hide(); }, 150); };
   const position = () => {
     const r = trigger.current!.getBoundingClientRect();
     const p = popup.current!;
@@ -64,15 +68,25 @@ export function RecordInfo({ text = "", links = [] }: { text?: string; links?: {
     window.addEventListener("scroll", onScroll, true);
     window.addEventListener("resize", hide);
     return () => {
+      clearTimeout(hideTimer.current);
       window.removeEventListener("scroll", onScroll, true);
       window.removeEventListener("resize", hide);
     };
   }, []);
   if (!text && !links.some(link => link.id)) return null;
-  return <span className="record-info">
-    <button type="button" className="info-trigger" ref={trigger} aria-label="Informazioni e allegati" aria-expanded={expanded} aria-haspopup="dialog"
-      popoverTarget={popupId} popoverTargetAction="toggle" onClick={position}>i</button>
-    <div id={popupId} popover="auto" role="dialog" aria-label="Informazioni e allegati" className="tip record-popover" ref={popup} onToggle={e => setExpanded(e.newState === "open")}
+  return <span className="record-info"
+    onMouseEnter={hover ? show : undefined} onMouseLeave={hover ? leave : undefined}
+    onFocus={hover ? show : undefined}
+    onBlur={hover ? e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) hide(); } : undefined}
+    onKeyDown={hover ? e => { if (e.key === "Escape") { e.preventDefault(); hide(); } } : undefined}>
+    <button type="button" className="info-trigger" ref={trigger} aria-label={label} aria-expanded={expanded} aria-haspopup="dialog"
+      popoverTarget={popupId} popoverTargetAction="toggle" onClick={e => {
+        if (!hover) { position(); return; }
+        e.preventDefault();
+        if (pinned.current) hide();
+        else { show(); pinned.current = true; }
+      }}>i</button>
+    <div id={popupId} popover="auto" role="dialog" aria-label={label} className="tip record-popover" ref={popup} onToggle={e => { setExpanded(e.newState === "open"); if (e.newState !== "open") pinned.current = false; }}
       onKeyDown={e => { if (e.key === "Escape") { e.preventDefault(); hide(); trigger.current?.focus(); } }}>
       {text && <p>{text}</p>}
       {links.filter(link => link.id).map(link => <a key={link.label} href={imageUrl(link.id!)} target="_blank" rel="noopener">{link.label}</a>)}

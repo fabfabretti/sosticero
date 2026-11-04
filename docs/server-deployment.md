@@ -100,3 +100,24 @@ mount, allocated localhost port, testing environment, red TESTING ribbon and ser
 bundle were checked; the project was stopped afterward. Deployment and independent
 read-only HTTPS checks confirmed the expected source marker and testing=false.
 No production behavioral writes were used.
+
+### Statistics tabs and absence breakdowns — 2026-11-04
+
+Deployed with `./scripts/deploy.sh` as `incoming-20261104T124419-146290`, source
+`08437cbd6b75310c93b60c419c9f2938bc4a80cc66ed70f1fc104c5cd2b45978`.
+Statistiche now groups historical analyses, weekly availability and class/teacher
+summaries into remembered tabs, with contextual metric help and absence-type
+percentages based on teacher-hours. CSV and full print preview include the new
+breakdowns; availability retains its independently selected week.
+
+The 34 focused backend tests and all 31 frontend test files passed, along with
+production builds. Final focused checks also covered name overrides, teachers
+removed from later timetables and the pie legend. The unique isolated project
+verified its disposable mount, allocated port, testing environment and red ribbon;
+browser checks covered tab persistence, future-week preservation, empty historical
+periods, both themes, narrow-screen help and complete preview chart dimensions.
+The test project was stopped. Deployment verified the existing production mount,
+complete recovery snapshot, expected replacement image and HTTPS release.
+Independent read-only HTTPS checks confirmed testing=false, the exact source
+marker and available `index-zjN6TU02.js` / `index-CesPA8lM.css` assets. No production
+behavioral writes or test-data transfers were performed.

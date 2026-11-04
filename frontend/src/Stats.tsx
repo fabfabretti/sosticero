@@ -1,14 +1,24 @@
 import { useQuietRefresh } from './useQuietRefresh';
-import { Loading, LoadingRegion } from './Loading';
+import { LoadingRegion } from './Loading';
 import { sessionFetch } from './session';
-import { useEffect, useState } from "react";
-import { CartesianGrid, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, LineChart, Line, BarChart, Bar } from "recharts";
-import { campuses, periods, metricNames, outcomes, weekdays, typeNames, formatNumber as fmt, reportCsv } from "./stats-report";
+import { useEffect, useState, type ReactNode } from "react";
+import { CartesianGrid, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, LineChart, Line, BarChart, Bar, PieChart, Pie, Cell } from "recharts";
+import { campuses, periods, metricNames, outcomes, weekdays, typeNames, absenceKindNames, formatNumber as fmt, reportCsv } from "./stats-report";
 import { StatsCalendar, presetRange, todayInRome } from "./StatsCalendar";
 import { HeatCell } from "./HeatCell";
 import { StatsAvailability, absenceExplanation } from "./StatsAvailability";
+import { RecordInfo } from "./Attachments";
 import type { Metric, StatReport } from "./stats-report";
 
+const tabs = { trends: "Andamento", availability: "A disposizione", people: "Classi e docenti" };
+type StatsTab = keyof typeof tabs;
+const metricHelp: Record<Metric, string> = {
+  demand: "Ore di classe che richiedono una sostituzione, anche se già assegnata. Ogni classe e ora conta una volta. Gli esiti registrati possono essere incompleti. Ore = periodi dell’orario.",
+  teacherHours: absenceExplanation + " Ore = periodi dell’orario. Assenza e permesso sovrapposti contano una volta.",
+  teachers: "Ogni docente assente conta una volta al giorno, anche se attivo in entrambe le sedi. Il totale nel periodo è espresso in giorni-docente, non in persone distinte.",
+};
+const averageHelp = " Media sui soli giorni con assenze registrate; giorni vuoti e futuri esclusi. Stesse date per tutte le sedi.";
+const pieColors = ["var(--danger)", "var(--warn)", "var(--info)", "var(--accent)", "var(--mute)"];
 const metrics: Metric[] = ["demand", "teacherHours", "teachers"];
 const heatMetrics: Metric[] = ["demand", "teachers"];
 const strokes = ["var(--accent)", "var(--info)", "var(--warn)"];
@@ -33,7 +43,7 @@ function Trend({ series, bars = false }: { series: ChartPoint[]; bars?: boolean 
   </div>;
 }
 
-function Values({ headings, rows, caption }: { headings: string[]; rows: (string | number | null)[][]; caption: string }) {
+function Values({ headings, rows, caption }: { headings: string[]; rows: ReactNode[][]; caption: string }) {
   return <div className="stats-scroll" tabIndex={0} role="region" aria-label={caption}><table>
     <caption>{caption}</caption><thead><tr>{headings.map(h => <th scope="col" key={h}>{h}</th>)}</tr></thead>
     <tbody>{rows.map((row, i) => <tr key={i}>{row.map((v, j) => j === 0 ? <th scope="row" key={j}>{typeof v === "number" ? fmt(v) : v}</th> : <td key={j}>{typeof v === "number" || v === null ? fmt(v) : v}</td>)}</tr>)}</tbody>
@@ -51,6 +61,15 @@ export function Stats() {
   useEffect(() => {
     try { localStorage.setItem("stats-campus", campus); } catch { /* Browser storage may be unavailable. */ }
   }, [campus]);
+  const [activeTab, setActiveTab] = useState<StatsTab>(() => {
+    try {
+      const saved = localStorage.getItem("stats-tab");
+      return saved === "availability" || saved === "people" ? saved : "trends";
+    } catch { return "trends"; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("stats-tab", activeTab); } catch { /* Browser storage may be unavailable. */ }
+  }, [activeTab]);
   const [period, setPeriod] = useState("all");
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
@@ -120,20 +139,37 @@ export function Stats() {
         <p className="stats-scope"><strong>{campuses[data.campus]}</strong> · {data.start} — {data.end} · {data.days} {data.days === 1 ? "giorno registrato" : "giorni registrati"}</p>
         {!data.days ? <section className="stats-panel"><h2>Nessun giorno con assenze registrate</h2><p>Seleziona un altro periodo. Le date future sono escluse dalle statistiche.</p></section> : <>
           <div className="stats-cards" aria-label="Medie giornaliere">
-            {metrics.map(k => <section className="stats-card" key={k}><h2>{metricNames[k]}</h2><div><strong>{fmt(data.averages[k])}</strong><span> / giorno</span></div><p>{fmt(data.totals[k])} {k === "teachers" ? "giorni-docente" : "ore"} nel periodo</p></section>)}
+            {metrics.map(k => <section className="stats-card" key={k}><h2>{metricNames[k]}<RecordInfo text={metricHelp[k] + averageHelp} label={"Informazioni: " + metricNames[k]} hover /></h2><div><strong>{fmt(data.averages[k])}</strong><span> / giorno</span></div><p>{fmt(data.totals[k])} {k === "teachers" ? "giorni-docente" : "ore"} nel periodo</p></section>)}
           </div>
-          <p className="stats-method">{absenceExplanation}</p>
-          <p className="stats-method">Ore da coprire: ore di classe che richiedono una sostituzione, anche se già assegnata. Ogni classe e ora conta una volta. Gli esiti registrati in questa istanza possono essere incompleti.</p>
           <div className="stats-outcomes" aria-label="Esito delle ore da coprire">{Object.entries(outcomes).map(([k, title]) => <div key={k} className={"outcome-" + k}><span>{title}</span><strong>{fmt(data.totals[k as keyof typeof outcomes])}</strong></div>)}</div>
         </>}
+        {(!!data.provenance.reconstructed || data.issues > 0 || data.unknown.teacherHours > 0 || data.unknown.demand > 0) && <p className="stats-warning" role="status">
+          {!!data.provenance.reconstructed && <span>{fmt(data.provenance.reconstructed)} ore ricostruite: contesto storico non verificabile. </span>}
+          {data.issues > 0 && <span>{fmt(data.issues)} assegnazioni da verificare, escluse dalle coperture valide. </span>}
+          {(data.unknown.teacherHours > 0 || data.unknown.demand > 0) && <span>Tutte le sedi: {fmt(data.unknown.teacherHours)} ore di assenza e {fmt(data.unknown.demand)} ore da coprire senza sede, incluse solo nel Totale.</span>}
+        </p>}
         <details className="stats-notes" open={preview}>
           <summary>Metodo e qualità dei dati{!!data.provenance.reconstructed && " · dati storici ricostruiti"}{data.issues > 0 && ` · ${data.issues} assegnazioni da verificare`}</summary>
           <p className="stats-method">Medie sui soli giorni con assenze registrate; giorni vuoti esclusi. Stesse date per tutte le sedi. Ore = periodi dell’orario. I docenti sono contati una volta al giorno; un docente attivo in entrambe le sedi conta una sola volta nel Totale.</p>
           {!!data.provenance.reconstructed && <p className="stats-method">{fmt(data.provenance.reconstructed)} ore di assenza ricostruite dall’orario disponibile al momento della migrazione: il contesto storico non è verificabile.</p>}
           {(data.unknown.teacherHours > 0 || data.unknown.demand > 0 || data.issues > 0) && <p className="stats-method">Tutte le sedi: {fmt(data.unknown.teacherHours)} ore di assenza e {fmt(data.unknown.demand)} ore da coprire senza sede (incluse solo nel Totale). {fmt(data.issues)} assegnazioni da verificare, escluse dalle coperture valide.</p>}
+          {metrics.map(k => <p className="stats-method" key={k}>{metricNames[k]}: {metricHelp[k]}</p>)}
+          <p className="stats-method">Tipi di assenza: percentuali sulle ore dei docenti assenti. Se assenza e permesso si sovrappongono, priorità a Last minute, In sciopero, In gita, Programmata. Senza classificazione registrata: Non classificata.</p>
           <p className="stats-method">Senza supplente = nessun supplente trovato, dichiarato esplicitamente. In attesa = nessun esito registrato. Entrata e uscita sono conteggiate separatamente.</p>
         </details>
-        {!!data.days && <>
+
+      </>}
+      </LoadingRegion>
+      <div className="stats-tabs" role="tablist" aria-label="Viste statistiche" hidden={preview}>
+        {(Object.entries(tabs) as [StatsTab, string][]).map(([id, label], index) => <button key={id} type="button" role="tab" id={"stats-tab-" + id} aria-controls={"stats-panel-" + id} aria-selected={activeTab === id} tabIndex={activeTab === id ? 0 : -1}
+          onClick={() => setActiveTab(id)} onKeyDown={e => {
+            const keys = Object.keys(tabs) as StatsTab[];
+            const next = e.key === "ArrowRight" ? (index + 1) % keys.length : e.key === "ArrowLeft" ? (index + keys.length - 1) % keys.length : e.key === "Home" ? 0 : e.key === "End" ? keys.length - 1 : null;
+            if (next !== null) { e.preventDefault(); setActiveTab(keys[next]); document.getElementById("stats-tab-" + keys[next])?.focus(); }
+          }}>{label}</button>)}
+      </div>
+      <div role="tabpanel" id="stats-panel-trends" aria-labelledby="stats-tab-trends" hidden={!preview && activeTab !== "trends"} tabIndex={0} inert={!ready} className={!ready ? "ui-loading-content" : undefined}>
+        {!!data?.days && <>
           <section className="stats-panel"><h2>Andamento giornaliero</h2><Trend series={data.daily.map(d => ({ ...d, label: d.date }))} />
             <details className="stats-values" open={preview}><summary>Valori giornalieri e risultati</summary><Values caption="Valori giornalieri" headings={["Data", ...Object.values(metricNames), ...Object.values(outcomes)]} rows={data.daily.map(d => [d.date, d.demand, d.teacherHours, d.teachers, d.covered, d.uncovered, d.late, d.early, d.pending])} /></details>
           </section>
@@ -151,14 +187,28 @@ export function Stats() {
             })}</tr>)}</tbody></table></div>
           </section>
         </>}
-      </>}
-      </LoadingRegion>
-      <StatsAvailability campus={campus} preview={preview} onReady={setAvailabilityReady} />
-      <div inert={!ready} className={!ready ? "ui-loading-content" : undefined}>{!!data?.days && <>
+        {!!data?.days && <>
           <div className="stats-grid"><section className="stats-panel"><h2>Come abbiamo coperto</h2><Values caption="Coperture per tipo" headings={["Tipo", "Ore"]} rows={Object.entries(data.types).map(([t, n]) => [typeNames[t] || t, n])} /><p>{fmt(data.exceptional)} coperture eccezionali, già incluse nei tipi sopra.</p></section>
             <section className="stats-panel"><h2>Giorni con maggiore domanda</h2><Values caption="Dieci giorni con più ore da coprire" headings={["Data", metricNames.demand, outcomes.uncovered, "Entrata / uscita"]} rows={data.worst.map(d => [d.date, d.demand, d.uncovered, d.late + d.early])} /></section></div>
+          <section className="stats-panel"><h2>Tipi di assenza</h2>
+            {data.totals.teacherHours > 0 ? <div className="stats-composition">
+              <div className="stats-pie" aria-hidden="true"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={data.absenceTypes.filter(d => d.hours > 0)} dataKey="hours" nameKey="kind" isAnimationActive={false} stroke="var(--pan)">
+                {data.absenceTypes.filter(d => d.hours > 0).map(d => <Cell key={d.kind} fill={pieColors[data.absenceTypes.indexOf(d)]} />)}
+              </Pie></PieChart></ResponsiveContainer></div>
+              <Values caption="Percentuali sulle ore dei docenti assenti" headings={["Tipo di assenza", "Ore", "%"]} rows={data.absenceTypes.map((d, i) => [<span className="stats-kind"><span className="stats-swatch" aria-hidden="true" style={{ background: pieColors[i] }} />{absenceKindNames[d.kind] || d.kind}</span>, d.hours, d.percentage])} />
+            </div> : <p>Nessuna ora di assenza nella sede e nel periodo selezionati.</p>}
+          </section>
+        </>}
+      </div>
+      <div role="tabpanel" id="stats-panel-availability" aria-labelledby="stats-tab-availability" hidden={!preview && activeTab !== "availability"} tabIndex={0}>
+        <StatsAvailability campus={campus} preview={preview} onReady={setAvailabilityReady} />
+      </div>
+      <div role="tabpanel" id="stats-panel-people" aria-labelledby="stats-tab-people" hidden={!preview && activeTab !== "people"} tabIndex={0} inert={!ready} className={!ready ? "ui-loading-content" : undefined}>
+        {!!data?.days && <div className="stats-grid">
           <section className="stats-panel"><h2>Classi interessate</h2><Values caption="Domanda per classe" headings={["Classe", metricNames.demand]} rows={data.classes.map(c => [c.name, c.demand])} /></section>
-      </>}</div>
+          <section className="stats-panel"><h2>Assenze per docente</h2><Values caption="Ore dell’orario e giorni con assenza · ordine per ore decrescenti" headings={["Docente", "Ore di assenza", "Giorni con assenza"]} rows={data.teacherAbsences.map(t => [t.name, t.hours, t.days])} /></section>
+        </div>}
+      </div>
     </main>
   </div>;
 }

@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 from .domain import HOURS, SITES, absences, lesson, validate_assignment
 
 OUTCOMES = ('covered', 'uncovered', 'late', 'early', 'pending')
+ABSENCE_KINDS = ('last_minute', 'strike', 'trip', 'planned', 'unclassified')
 MANUAL = {'UNCOVERED': 'uncovered', 'ENTRA': 'late', 'ESCE': 'early'}
 
 
@@ -115,7 +116,7 @@ def validate(facts, ds, state):
     return facts
 
 
-def report(facts, campus='total', period='all', start=None, end=None, today=None):
+def report(facts, campus='total', period='all', start=None, end=None, today=None, *, state=None, teachers=None):
     today = today or datetime.now(ZoneInfo('Europe/Rome')).date()
     if campus not in ('total', *SITES) or period not in ('all', 'week', 'month', 'custom'):
         raise ValueError('Filtro statistiche non valido.')
@@ -128,6 +129,11 @@ def report(facts, campus='total', period='all', start=None, end=None, today=None
                  today.replace(day=1) if period == 'month' else date.fromisoformat(dates[0]) if dates else today)
         end = today
     dates = [d for d in dates if start.isoformat() <= d <= end.isoformat()]
+    state = state or {}
+    teachers = teachers or {}
+    absence_types = Counter()
+    teacher_hours = Counter()
+    teacher_dates = {}
     types = Counter()
     classes = Counter()
     unknown = dict(teacherHours=0, demand=0)
@@ -145,6 +151,15 @@ def report(facts, campus='total', period='all', start=None, end=None, today=None
         unknown['teacherHours'] += sum(s['site'] is None for s in all_slots)
         unknown['demand'] += sum(r['site'] is None for r in all_rows)
         slots = [s for s in all_slots if campus == 'total' or s['site'] == campus]
+        for slot in slots:
+            teacher = slot['teacher']
+            kinds = [state.get(group, {}).get(d, {}).get(teacher)
+                     for flag, group in (('manual', 'absenceKinds'), ('permit', 'permitKinds')) if slot.get(flag)]
+            # Match the operational UI priority while counting overlapping sources once.
+            kind = next((k for k in ABSENCE_KINDS if k in kinds), 'unclassified')
+            absence_types[kind] += 1
+            teacher_hours[teacher] += 1
+            teacher_dates.setdefault(teacher, set()).add(d)
         rows = [r for r in all_rows if campus == 'total' or r['site'] == campus]
         provenance.update(s['provenance'] for s in slots)
         issues += len(f['issues'])
@@ -179,6 +194,10 @@ def report(facts, campus='total', period='all', start=None, end=None, today=None
                 coverage=average(totals['covered'] * 100, totals['demand']), daily=daily, weekdays=weekdays,
                 hours=[dict(hour=h, **{k: average(hour_counts[h][k], len(dates)) for k in ('teachers', 'teacherHours', 'demand')}) for h in HOURS],
                 heatmap=heatmap, types=dict(types), exceptional=exceptional,
+                absenceTypes=[dict(kind=k, hours=absence_types[k], percentage=average(absence_types[k] * 100, totals['teacherHours']))
+                              for k in ABSENCE_KINDS],
+                teacherAbsences=sorted([dict(id=i, name=teachers.get(i, {}).get('name', i), hours=n, days=len(teacher_dates[i]))
+                                        for i, n in teacher_hours.items()], key=lambda r: (-r['hours'], r['name'].casefold(), r['id'])),
                 classes=[dict(name=c, demand=n) for c, n in classes.most_common()],
                 worst=sorted(daily, key=lambda d: (-d['demand'], d['date']))[:10],
                 unknown=unknown, provenance=dict(provenance), issues=issues)

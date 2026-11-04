@@ -96,3 +96,16 @@ test('attachment preparation blocks the parent, ignores superseded reads and rec
   await paste();c.readers[2].result='data:image/png;base64,NEW';c.readers[2].onload();assert.equal(value.data,'NEW');assert.equal(pending.at(-1),false);
   c.unmount();
 });
+
+test('metric info supports hover, focus, pinned click and Escape', async()=>{
+  const c=components();const props={text:'Ore dell’orario',label:'Informazioni: Ore',hover:true};
+  const nodes=c.render('RecordInfo',props),wrapper=nodes[0],button=nodes.find(n=>n.type==='button'),panel=nodes.find(n=>n.props.popover==='auto');
+  let open=false;
+  button.props.ref.current={getBoundingClientRect:()=>({left:390,top:560,bottom:584}),focus(){}};
+  panel.props.ref.current={style:{},showPopover(){open=true;},hidePopover(){open=false;}};
+  wrapper.props.onMouseEnter();assert.ok(open);assert.ok(parseInt(panel.props.ref.current.style.left)<200);
+  button.props.onClick({preventDefault(){}});wrapper.props.onMouseLeave();await new Promise(r=>setTimeout(r,170));assert.ok(open);
+  button.props.onClick({preventDefault(){}});assert.equal(open,false);
+  wrapper.props.onFocus();assert.ok(open);wrapper.props.onKeyDown({key:'Escape',preventDefault(){}});assert.equal(open,false);
+  wrapper.props.onMouseEnter();wrapper.props.onMouseLeave();await new Promise(r=>setTimeout(r,170));assert.equal(open,false);c.unmount();
+});

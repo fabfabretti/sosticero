@@ -8,10 +8,13 @@ export type StatReport = {
   hours: { hour: number; teachers: number | null; teacherHours: number | null; demand: number | null }[];
   heatmap: { weekday: number; hour: number; days: number; teachers: number | null; teacherHours: number | null; demand: number | null; observations: { date: string; teachers: number; teacherHours: number; demand: number }[] }[];
   types: Record<string, number>; exceptional: number;
+  absenceTypes: { kind: string; hours: number; percentage: number | null }[];
+  teacherAbsences: { id: string; name: string; hours: number; days: number }[];
   classes: { name: string; demand: number }[]; worst: (Counts & { date: string })[];
   unknown: { teacherHours: number; demand: number }; provenance: Record<string, number>; issues: number;
 };
 export const metricNames: Record<Metric, string> = { demand: "Ore da coprire", teacherHours: "Ore docenti assenti", teachers: "Docenti assenti" };
+export const absenceKindNames: Record<string, string> = { planned: "Programmata", last_minute: "Last minute", trip: "In gita", strike: "In sciopero", unclassified: "Non classificata" };
 export const outcomes = { covered: "Coperte", uncovered: "Senza supplente", late: "Entrata posticipata", early: "Uscita anticipata", pending: "In attesa" };
 export const weekdays = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"];
 export const campuses: Record<string, string> = { total: "Totale", centrale: "Centrale", succursale: "Succursale" };
@@ -38,6 +41,10 @@ export function reportCsv(data: StatReport): string {
     ...data.heatmap.map(d => [weekdays[d.weekday], d.hour, d.days, d.demand, d.teacherHours, d.teachers]),
     [], ["Tipo copertura", "Ore"], ...Object.entries(data.types).map(([t, n]) => [typeNames[t] || t, n]),
     [], ["Classe", metricNames.demand], ...data.classes.map(d => [d.name, d.demand]),
+    [], ["Tipo di assenza", "Ore docenti assenti", "% delle ore docenti assenti"],
+    ...data.absenceTypes.map(d => [absenceKindNames[d.kind] || d.kind, d.hours, d.percentage]),
+    [], ["Docente", "Ore docenti assenti", "Giorni con assenza"],
+    ...data.teacherAbsences.map(d => [d.name, d.hours, d.days]),
   ];
   // Quoting alone does not stop spreadsheet formula execution in imported text.
   return "\uFEFF" + rows.map(row => row.map(value => {

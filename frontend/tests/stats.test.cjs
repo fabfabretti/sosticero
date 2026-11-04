@@ -19,6 +19,7 @@ const fixture = { campus: 'centrale', period: 'all', start: '2026-10-12', end: '
   weekdays: Array.from({ length: 7 }, (_, weekday) => ({ weekday, days: weekday === 0 ? 1 : 0, ...counts })),
   hours: [{ hour: 2, teachers: 2, teacherHours: 2, demand: 1 }],
   heatmap: [{ weekday: 0, hour: 2, days: 1, teachers: 2, teacherHours: 2, demand: 1 }],
+  absenceTypes: [{kind: 'planned', hours: 2, percentage: 100}, {kind: 'unclassified', hours: 0, percentage: 0}], teacherAbsences: [{id: 'one', name: '=Nome', hours: 2, days: 1}],
   types: {}, exceptional: 0, classes: [{ name: '=1+1;"A', demand: 1 }], worst: [],
   unknown: { teacherHours: 0, demand: 0 }, provenance: { recorded: 2 }, issues: 0 };
 
@@ -48,8 +49,8 @@ function screen(storage) {
     },
   };
   const jsx = (type, props) => ({ type, props });
-  const { Stats } = load('src/Stats.tsx', { react, 'react/jsx-runtime': { jsx, jsxs: jsx }, './stats-report': reporting, './StatsAvailability': { StatsAvailability: 'stats-availability', absenceExplanation: 'Le ore dei docenti assenti includono anche attività senza una classe da sostituire.' }, './StatsCalendar': calendar, './HeatCell': { HeatCell: 'heat-cell' }, recharts: new Proxy({}, { get: (_, name) => name }) }, {
-    localStorage: storage,
+  const { Stats } = load('src/Stats.tsx', { react, 'react/jsx-runtime': { jsx, jsxs: jsx }, './stats-report': reporting, './StatsAvailability': { StatsAvailability: 'stats-availability', absenceExplanation: 'Le ore dei docenti assenti includono anche attività senza una classe da sostituire.' }, './StatsCalendar': calendar, './HeatCell': { HeatCell: 'heat-cell' }, './Attachments': { RecordInfo: 'record-info' }, recharts: new Proxy({}, { get: (_, name) => name }) }, {
+    localStorage: storage, document: { getElementById: () => ({focus() {}}) },
     fetch(url) { return new Promise(resolve => requests.push({ url, resolve: body => resolve({ ok: true, json: async () => body }) })); },
   });
   return {
@@ -195,7 +196,7 @@ test('summary omits incomplete coverage and heatmap keeps only demand and absent
 
 test('campus survives remounts and invalid or unavailable storage falls back to total', () => {
   let saved='succursale';
-  const storage={getItem:()=>saved,setItem:(key,value)=>{assert.equal(key,'stats-campus');saved=value;}};
+  const storage={getItem:key=>key==='stats-campus'?saved:null,setItem:(key,value)=>{if(key==='stats-campus')saved=value;}};
   let s=screen(storage); let nodes=s.render();
   assert.match(s.requests[0].url,/campus=succursale/);
   nodes.find(n=>n.type==='button' && n.props.children==='Centrale').props.onClick();s.render();
@@ -203,4 +204,41 @@ test('campus survives remounts and invalid or unavailable storage falls back to 
   saved='invalid';s=screen(storage);s.render();assert.match(s.requests[0].url,/campus=total/);
   s=screen({getItem(){throw Error('blocked');},setItem(){throw Error('blocked');}});
   s.render();assert.match(s.requests[0].url,/campus=total/);
+});
+
+test('tabs persist and keyboard navigation preserves the complete print preview', async () => {
+  const saved = new Map();
+  const storage = {getItem:k=>saved.get(k),setItem:(k,v)=>saved.set(k,v)};
+  const s=screen(storage); s.render(); s.requests[0].resolve(fixture); await settle();
+  let nodes=s.render();
+  const tab=label=>nodes.find(n=>n.props.role==='tab' && n.props.children===label);
+  assert.equal(tab('Andamento').props['aria-selected'],true);
+  tab('A disposizione').props.onClick();nodes=s.render();
+  assert.equal(saved.get('stats-tab'),'availability');
+  assert.equal(nodes.find(n=>n.props.id==='stats-panel-trends').props.hidden,true);
+  assert.equal(nodes.find(n=>n.props.id==='stats-panel-availability').props.hidden,false);
+  assert.ok(nodes.some(n=>n.type==='stats-availability'));
+  const fresh=screen(storage);fresh.render();
+  assert.equal(fresh.render().find(n=>n.props.id==='stats-tab-availability').props['aria-selected'],true);
+  tab('A disposizione').props.onKeyDown({key:'End',preventDefault(){}});nodes=s.render();
+  assert.equal(tab('Classi e docenti').props['aria-selected'],true);
+  tab('Classi e docenti').props.onKeyDown({key:'ArrowRight',preventDefault(){}});nodes=s.render();
+  assert.equal(tab('Andamento').props['aria-selected'],true);
+  tab('Andamento').props.onKeyDown({key:'ArrowLeft',preventDefault(){}});nodes=s.render();
+  nodes.find(n=>n.type==='button' && n.props.children==='Stampa report').props.onClick();nodes=s.render();
+  assert.ok(nodes.filter(n=>n.props.role==='tabpanel').every(n=>!n.props.hidden));
+  nodes.find(n=>n.type==='button' && n.props.children==='Torna alle statistiche').props.onClick();nodes=s.render();
+  assert.equal(tab('Classi e docenti').props['aria-selected'],true);
+  assert.equal(s.requests.length,1);
+});
+
+test('metric help, pie, teacher rows and CSV use absent teacher-hours', async()=>{
+  const s=screen();s.render();s.requests[0].resolve(fixture);await settle();const nodes=s.render();
+  const help=nodes.filter(n=>n.type==='record-info');assert.equal(help.length,3);assert.ok(help.every(n=>n.props.hover));
+  const pie=nodes.find(n=>n.type==='Pie');assert.equal(pie.props.dataKey,'hours');assert.equal(pie.props.data.length,1);
+  const teacher=nodes.find(n=>typeof n.type==='function' && n.type.name==='Values' && n.props.headings[0]==='Docente');
+  assert.equal(teacher.props.rows[0].join(','),'=Nome,2,1');
+  const csv=reporting.reportCsv(fixture);assert.ok(csv.includes('"Programmata";"2";"100"'));assert.ok(csv.includes('"\'=Nome";"2";"1"'));
+  const empty=screen();empty.render();empty.requests[0].resolve({...fixture,totals:{...counts,teacherHours:0},absenceTypes:[],teacherAbsences:[]});await settle();
+  assert.ok(!empty.render().some(n=>n.type==='Pie'));
 });

@@ -269,8 +269,13 @@ def create_app(path=None, seed=None):
     @app.get('/api/stats')
     def get_stats(campus: str = 'total', period: str = 'all', start: date | None = None, end: date | None = None):
         with store.connect() as db:
+            db.execute('BEGIN')
             facts = store.read(db, 'statistics', statistics.empty())
-        return statistics.report(facts, campus, period, start, end)
+            state = store.read(db, 'state', EMPTY)
+            history = read_history(db)
+            catalog = {i: t for v in history['versions'] for i, t in v['dataset']['teachers'].items()} if history else {}
+            teachers = teacher_names.teachers(catalog, name_overrides(db))
+        return statistics.report(facts, campus, period, start, end, state=state, teachers=teachers)
 
     @app.get('/api/paid-availability')
     def get_paid(day: date | None = None):

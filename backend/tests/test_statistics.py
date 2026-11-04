@@ -163,3 +163,63 @@ class StatisticsTest(unittest.TestCase):
         self.assertEqual(result['totals']['covered'], 0)
         self.assertEqual(statistics.report(facts, period='week', today=date(2026, 10, 13))['start'], DAY)
         self.assertEqual(statistics.report(facts, period='month', today=date(2026, 10, 13))['start'], '2026-10-01')
+
+class AbsenceBreakdownsTest(unittest.TestCase):
+    def test_scopes_overlap_classification_corrections_and_identity(self):
+        ds = normalize_dataset(fixture())
+        state = copy.deepcopy(EMPTY)
+        state['abs'] = {DAY: {'absent': [2], 'co': [2, 3]}}
+        state['permessi'] = {DAY: {'absent': [2]}}
+        state['absenceKinds'] = {DAY: {'absent': 'planned', 'co': 'trip'}}
+        state['permitKinds'] = {DAY: {'absent': 'last_minute'}}
+        facts = statistics.sync(ds, state, statistics.empty())
+        names = {'absent': {'name': 'Stesso nome'}, 'co': {'name': 'Stesso nome'}}
+        def report(**kwargs):
+            return statistics.report(facts, today=date(2026, 10, 13), state=state, teachers=names, **kwargs)
+        result = report()
+        self.assertEqual(result['totals']['teacherHours'], 3)
+        self.assertEqual(sum(r['hours'] for r in result['teacherAbsences']), 3)
+        self.assertEqual([r['id'] for r in result['teacherAbsences']], ['co', 'absent'])
+        self.assertEqual([r['days'] for r in result['teacherAbsences']], [1, 1])
+        kinds = {r['kind']: r for r in result['absenceTypes']}
+        self.assertEqual(kinds['last_minute']['hours'], 1)
+        self.assertEqual(kinds['trip']['hours'], 2)
+        self.assertAlmostEqual(sum(r['percentage'] for r in result['absenceTypes']), 100)
+        central = report(campus='centrale')
+        self.assertEqual(central['totals']['demand'], 1)
+        self.assertEqual(sum(r['hours'] for r in central['teacherAbsences']), central['totals']['teacherHours'])
+        self.assertEqual(sum(r['hours'] for r in report(campus='succursale')['absenceTypes']), 0)
+        # Corrections use current metadata without rewriting captured campus/hour context.
+        before = copy.deepcopy(facts)
+        state['permitKinds'][DAY]['absent'] = 'planned'
+        self.assertEqual(next(r for r in report()['absenceTypes'] if r['kind'] == 'planned')['hours'], 1)
+        self.assertEqual(facts, before)
+        legacy = statistics.report(facts, today=date(2026, 10, 13))
+        self.assertEqual(next(r for r in legacy['absenceTypes'] if r['kind'] == 'unclassified')['hours'], 3)
+        self.assertEqual({r['name'] for r in legacy['teacherAbsences']}, {'absent', 'co'})
+        empty = report(period='custom', start=date(2026, 10, 13), end=date(2026, 10, 13))
+        self.assertEqual(empty['teacherAbsences'], [])
+        self.assertTrue(all(r['percentage'] is None for r in empty['absenceTypes']))
+
+    def test_api_uses_names_and_categories_without_rewriting_facts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            client = TestClient(create_app(Path(tmp) / 'stats.sqlite'))
+            client.post('/api/timetable', json=fixture()).raise_for_status()
+            entry = dict(day=DAY, group='abs', id='absent', hours=[2], classification='planned')
+            client.post('/api/entries', json=entry).raise_for_status()
+            query = dict(period='custom', start=DAY, end=DAY)
+            report = client.get('/api/stats', params=query).json()
+            self.assertEqual(report['teacherAbsences'][0]['name'], normalize_dataset(fixture())['teachers']['absent']['name'])
+            self.assertEqual(next(r for r in report['absenceTypes'] if r['kind'] == 'planned')['percentage'], 100)
+            facts = client.get('/api/export').json()['statistics']
+            client.post('/api/entries', json=dict(entry, classification='last_minute')).raise_for_status()
+            updated = client.get('/api/stats', params=query).json()
+            self.assertEqual(next(r for r in updated['absenceTypes'] if r['kind'] == 'last_minute')['percentage'], 100)
+            self.assertEqual(client.get('/api/export').json()['statistics'], facts)
+            client.post('/api/orari/name', json=dict(teacher='absent', value=dict(name='Anna Rossi', originalName='assente'), previous=None)).raise_for_status()
+            self.assertEqual(client.get('/api/stats', params=query).json()['teacherAbsences'][0]['name'], 'Anna Rossi (assente)')
+            changed = fixture()
+            changed['docenti'] = [t for t in changed['docenti'] if t['id'] != 'absent']
+            changed['orario'] = [r for r in changed['orario'] if r['docente'] != 'absent']
+            import_version(client, changed, '2026-10-19').raise_for_status()
+            self.assertEqual(client.get('/api/stats', params=query).json()['teacherAbsences'][0]['hours'], 1)
