@@ -5,6 +5,11 @@ const { readFileSync } = require('node:fs');
 const { runInNewContext } = require('node:vm');
 const ts = require('typescript');
 
+// Keep daily fixtures on a school day, including when the suite runs on weekends.
+class SchoolDayDate extends Date {
+  constructor(...args) { super(...(args.length ? args : ['2026-11-02T12:00:00+01:00'])); }
+}
+
 
 // The shared norm()/grid helper main.tsx imports; loaded once for the require map.
 const timetables = (() => {
@@ -89,7 +94,7 @@ function app(localStorage = { getItem: () => null, setItem() {} }, confirm = () 
       }));
     };
   runInNewContext(code, {
-    exports: {}, URLSearchParams, Date, localStorage, setTimeout, clearTimeout,
+    exports: {}, URLSearchParams, Date: SchoolDayDate, localStorage, setTimeout, clearTimeout,
     setInterval: () => 1, clearInterval() {},
     window: { innerWidth: 1024, innerHeight: 768, confirm, location: { pathname: entryPath } },
     document,
@@ -207,7 +212,7 @@ const data = {
   state: { abs: {}, cf: {}, dis: {}, disSites: {}, asg: {} },
   rows: [row], issues: [],
 };
-const now = new Date();
+const now = new SchoolDayDate();
 const todayYmd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 async function loaded(over = {}, campus) {
   const a = app(undefined, undefined, campus);
