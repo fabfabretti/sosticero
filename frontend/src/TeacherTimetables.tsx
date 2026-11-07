@@ -1,6 +1,6 @@
 import { Loading, LoadingRegion, paintLoading } from './Loading';
 import { useQuietRefresh } from './useQuietRefresh';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { buildTeacherTimetables, norm, teacherSearchText, DAYS, HOURS } from './timetables';
 import { generateTimetablePdf, projectTimetableExport } from './timetablePdf';
 import { HourHelp } from './Tooltip';
@@ -37,6 +37,28 @@ export function activeOverride(records: Override[], teacher: string, day: string
   const all = [...revisions.values()];
   const reset = all.filter(r => r.reset && r.start <= day).map(r => r.start).sort().at(-1) || '';
   return all.filter(r => r.start >= reset && r.start <= day && (!r.end || r.end >= day)).sort((a, b) => b.start.localeCompare(a.start))[0];
+}
+
+export function TimetableCard({ render }: { render: () => ReactNode }) {
+  return render();
+}
+
+export function ProgressiveTimetables({ scope, ready, children }: { scope: string; ready: boolean; children: ReactNode[] }) {
+  const [rendered, setRendered] = useState({ scope: '', count: 6 });
+  const count = rendered.scope === scope ? rendered.count : 6;
+  useEffect(() => {
+    if (rendered.scope !== scope) {
+      setRendered({ scope, count: 6 });
+      return;
+    }
+    if (!ready || count >= children.length) return;
+    // Give paint and input a turn between batches, even when the browser stays busy.
+    const timer = setTimeout(() => setRendered({ scope, count: count + 6 }), 32);
+    return () => clearTimeout(timer);
+  }, [scope, rendered.scope, count, children.length, ready]);
+  // Local state keeps already mounted card elements unchanged between batches.
+  return <><div className="orari-grids">{children.slice(0, count)}</div>
+    {ready && count < children.length && <Loading label="Caricamento altri orari…" />}</>;
 }
 
 export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknown) => Promise<T> }) {
@@ -258,7 +280,7 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
     {nameStatus && <p className="ui-notice" role="status">{nameStatus}</p>}
     <LoadingRegion pending={loading || busy} label={busy ? "Elaborazione…" : undefined} blocked={!ready || busy || exporting} error={loadError} retry={() => void quietRefresh().catch(() => {})}>
     {data && !filtered.length && <p>Nessun docente trovato.</p>}
-    <div className="orari-grids">{filtered.map(g => {
+    <ProgressiveTimetables scope={`${viewDay}|${norm(query)}`} ready={ready && data?.day === viewDay}>{filtered.map(g => <TimetableCard key={g.id} render={() => {
       const staffing = data?.dataset.teachers[g.id];
       const managed = staffing?.managedPerson || staffing?.coveredBy || staffing?.replaces || staffing?.continuousAbsence;
       const editing = draft?.teacher === g.id;
@@ -359,7 +381,7 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
           </td>;
         })}</tr>)}</tbody></table>
       </div>;
-    })}</div>
+    }} />)}</ProgressiveTimetables>
     </LoadingRegion>
     {classEdit && editedHour && <dialog ref={activityDialog} className="orari-activity-editor" aria-labelledby="activity-editor-title" onCancel={closeActivityEditor}>
       <div className="orari-activity-header"><div><h3 id="activity-editor-title">Modifica {editedActivity}</h3><p className="sub">{name(classEdit.teacher)} · {DAY_LABELS[classEdit.slot.split('|')[0]]} {classEdit.slot.split('|')[1]}ª ora</p></div><button type="button" className="x" aria-label="Chiudi editor attività" onClick={closeActivityEditor}>×</button></div>

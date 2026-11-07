@@ -72,6 +72,20 @@ class ModelTest(unittest.TestCase):
         before = timetables.dataset(self.history, DAY)
         self.assertEqual(before, timetables.dataset(dict(self.history, _appointments=appointments.empty()), DAY))
 
+    def test_resolved_data_and_excluded_pot_stay_detached(self):
+        ds = copy.deepcopy(self.history['versions'][0]['dataset'])
+        ds['lessons']['absent|lun|1']['activities'] = ['POT', 'PE']
+        original, document_before = copy.deepcopy(ds), copy.deepcopy(self.doc)
+        result = appointments.resolve(ds, self.doc, DAY)
+        result['lessons']['sicoli|lun|2']['classes'].append('Changed')
+        result['lessons']['sicoli|lun|1']['activities'].append('Changed')
+        result['teachers']['sicoli']['name'] = 'Changed'
+        result['classes'].append('Changed')
+        self.assertEqual(result['excludedPOT']['sicoli|lun|1']['activities'], ['POT', 'PE'])
+        result['excludedPOT']['sicoli|lun|1']['activities'].append('Excluded only')
+        self.assertEqual(ds, original)
+        self.assertEqual(self.doc, document_before)
+
     def test_mixed_pot_keeps_other_activities(self):
         self.history['versions'][0]['dataset']['lessons']['absent|lun|1']['activities']=['POT','PE']
         active = timetables.dataset(dict(self.history, _appointments=self.doc), DAY)
@@ -411,6 +425,6 @@ class ApiTest(unittest.TestCase):
         self.assertNotIn('absent',str(visible))
         history=self.client.get('/api/permessi').json()['timetableVersions']
         active=next(v for v in history if v['effective']==DAY)['dataset']
-        self.assertIn('sicoli|lun|2',active['lessons'])
-        self.assertNotIn('absent|lun|2',active['lessons'])
+        self.assertIn(2, active['hours']['sicoli']['lun'])
+        self.assertNotIn(2, active['hours'].get('absent', {}).get('lun', []))
         self.assertEqual(daily['references'],[])

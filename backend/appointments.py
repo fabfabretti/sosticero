@@ -91,7 +91,8 @@ def validate(document, history):
 
 def resolve(ds, document, day):
     if document == empty(): return ds
-    result = deepcopy(ds)
+    # Lessons are copied while remapping below; copying them here repeats most work.
+    result = deepcopy({k: v for k, v in ds.items() if k != 'lessons'})
     teachers = result['teachers']
     teachers.update({i: dict(deepcopy(t), managedPerson=True) for i, t in document['people'].items()})
     mapping = document['sources']
@@ -155,11 +156,6 @@ def boundaries(history):
         days.add(r['start'])
         if r['end'] and r['end'] < '9999-12-31': days.add((date.fromisoformat(r['end']) + timedelta(days=1)).isoformat())
     return sorted(days)
-
-
-def timetable_versions(history):
-    from . import timetables
-    return [dict(effective=d, dataset=timetables.dataset(history, d or '0001-01-01')) for d in [None, *boundaries(history)]]
 
 
 def absence_dates(history, through):

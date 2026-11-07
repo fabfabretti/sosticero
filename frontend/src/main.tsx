@@ -23,7 +23,7 @@ import './permessi.css';
 import './orari.css';
 import './supplenze.css';
 import { SettingsGroup } from './SettingsGroup';
-import type { Row, Candidate, Data, AbsenceKind, Assignment } from "./types";
+import type { Row, Candidate, Data, AbsenceKind, Assignment, Teacher } from "./types";
 import { TimetableImport } from "./TimetableImport";
 import { HourTypes } from "./HourTypes";
 import { PublicationSchedule } from './PublicationSchedule';
@@ -135,6 +135,8 @@ function Stub({ label }: { label: string }) {
     </section>
   );
 }
+type PermitContext = { teachers: Record<string, Teacher>; hours: Record<string, Record<string, number[]>>; sites: Record<string, string[]> };
+
 function Permessi() {
   const [manual, setManual] = useState(false);
   const [manualHours, setManualHours] = useState("");
@@ -142,7 +144,7 @@ function Permessi() {
   const [creatorFilter, setCreatorFilter] = useState("");
   const [permitPage, setPermitPage] = useState(1);
   const [sort, setSort] = useState<{ field: "date" | "requested" | "days"; ascending: boolean }>({ field: "date", ascending: false });
-  const [data, setData] = useState<{ generation?: number; concurrency: Baseline; timetableVersions?: { effective: string | null; dataset: Data["dataset"] }[]; dataset: Data["dataset"]; permitAttachments?: AttachmentMap; permessi: Record<string, Record<string, number[]>>; permitRequests?: Record<string, Record<string, string>>; permitNotes?: Record<string, Record<string, string>>; manualPermitNotes?: Record<string, string>; permitKinds?: Record<string, Record<string, AbsenceKind>>; permitCreators?: Record<string, Record<string, Author>>; recoveries?: Record<string, Record<string, import("./types").PermitRecovery>>; balances?: Record<string, { remaining: number; expired: number; eligible: number }>; manualPermits?: Record<string, { id: string; hours: number; recovered: number; remaining: number; recoveries: { date: string; h: number; key: string }[] }> }>();
+  const [data, setData] = useState<{ generation?: number; concurrency: Baseline; timetableVersions?: { effective: string | null; dataset: PermitContext }[]; dataset: PermitContext; permitAttachments?: AttachmentMap; permessi: Record<string, Record<string, number[]>>; permitRequests?: Record<string, Record<string, string>>; permitNotes?: Record<string, Record<string, string>>; manualPermitNotes?: Record<string, string>; permitKinds?: Record<string, Record<string, AbsenceKind>>; permitCreators?: Record<string, Record<string, Author>>; recoveries?: Record<string, Record<string, import("./types").PermitRecovery>>; balances?: Record<string, { remaining: number; expired: number; eligible: number }>; manualPermits?: Record<string, { id: string; hours: number; recovered: number; remaining: number; recoveries: { date: string; h: number; key: string }[] }> }>();
   const [dayInput, setDayInput] = useState(italianDate(localDate(new Date())));
   const [requestedInput, setRequestedInput] = useState(italianDate(localDate(new Date())));
   const day = parseItalianDate(dayInput);
@@ -171,11 +173,10 @@ function Permessi() {
   useEffect(() => { void refresh().catch(e => setError(String(e))); }, []);
   useEffect(() => { editBaseline.current = data?.concurrency; }, [original, editingManual]);
   const permitDataset = (date: string) => data?.timetableVersions?.filter(v => !v.effective || v.effective <= date).at(-1)?.dataset || data?.dataset;
-  const teachingSites = (id: string, date: string) => ['centrale', 'succursale'].filter(site =>
-    Object.entries(permitDataset(date)?.lessons || {}).some(([key, lesson]) => key.split('|')[0] === id && lesson.site === site));
+  const teachingSites = (id: string, date: string) => permitDataset(date)?.sites[id] || [];
   const scheduled = (id: string, date: string, h: number) => {
     const weekday = ["dom", "lun", "mar", "mer", "gio", "ven", "sab"][new Date(date + "T12:00").getDay()];
-    return !!permitDataset(date)?.lessons[`${id}|${weekday}|${h}`];
+    return !!permitDataset(date)?.hours[id]?.[weekday]?.includes(h);
   };
   const dailyMaximum = (id: string, date: string) => Math.floor(hours.filter(h => scheduled(id, date, h)).length / 2);
   const maximum = dailyMaximum(teacher, day);

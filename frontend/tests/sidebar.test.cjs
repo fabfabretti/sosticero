@@ -549,7 +549,7 @@ test('credits footer shows only at the end of Settings', () => {
 });
 
 const permitData = {
-  dataset: { teachers: { t: { id: 't', name: 'Contartase', role: 'curricolare' } }, lessons: Object.fromEntries([1,2,3,4,5].map(h => ['t|lun|' + h, { classes: h === 3 || h === 4 ? [] : ['1A'] }])) },
+  dataset: { teachers: { t: { id: 't', name: 'Contartase', role: 'curricolare' } }, hours: { t: { lun: [1,2,3,4,5] } }, sites: {}, lessons: Object.fromEntries([1,2,3,4,5].map(h => ['t|lun|' + h, { classes: h === 3 || h === 4 ? [] : ['1A'] }])) },
   permessi: {},
 };
 async function permitsLoaded(records = {}, confirm) {
@@ -1115,7 +1115,7 @@ test('permit warning uses the timetable effective on the selected date', async (
   const a = app(); a.go('/permessi'); a.render();
   a.requests.shift().resolve({...permitData, timetableVersions:[
     {effective:null, dataset:permitData.dataset},
-    {effective:'2026-10-19', dataset:{...permitData.dataset, lessons:{}}},
+    {effective:'2026-10-19', dataset:{...permitData.dataset, hours:{}, sites:{}}},
   ]});
   await settle();
   permitDay(a).props.onChange({target:{value:'12/10/2026'}});

@@ -44,7 +44,7 @@ function component(file, confirm) {
   return { render(props) {
     cursor = 0;
     const nodes = [];
-    (function walk(n) { if (Array.isArray(n)) return n.forEach(walk); if (!n || typeof n !== 'object') return; nodes.push(n); walk(n.props?.children); })(exports.TeacherTimetables(props));
+    (function walk(n) { if (Array.isArray(n)) return n.forEach(walk); if (!n || typeof n !== 'object') return; if (n.type === exports.ProgressiveTimetables) { walk(n.props.children); return; } if (n.type === exports.TimetableCard) { walk(n.props.render()); return; } nodes.push(n); walk(n.props?.children); })(exports.TeacherTimetables(props));
     layouts.splice(0).forEach(fn => fn());
     return nodes;
   }, start() { effects.splice(0).forEach(fn => fn()); } };

@@ -8,14 +8,14 @@ from typing import Literal
 from uuid import uuid4
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel, Field, StrictInt, StrictBool, StrictStr
 from .domain import absences, normalize_dataset, rows, candidates, manual_candidates, consultation, validate_assignment, default_availability, auto_availability, HOURS, SITES, lesson, validate_permit, CDC_NAMES
 from .storage import Store, EMPTY
 from . import backup, attachments, concurrency, auth, display, publication, teacher_access
 from .hour_types import merge_types, validate_types
-from . import statistics, recovery, timetables, overrides, teacher_names, availability, receptions, paid, appointments, paid_finance
+from . import statistics, recovery, timetables, overrides, teacher_names, availability, receptions, paid, appointments, paid_finance, permit_context
 from zoneinfo import ZoneInfo
 from hashlib import sha256
 from copy import deepcopy
@@ -232,6 +232,9 @@ def create_app(path=None, seed=None):
         ds = timetables.dataset(history, day or datetime.now(ZoneInfo('Europe/Rome')).date().isoformat()) if history else store.read(db, 'dataset')
         if ds is None:
             raise ValueError('Carica prima un orario.')
+        return ds, load_state(db)
+
+    def load_state(db):
         state = store.read(db, 'state', EMPTY)
         state.setdefault('paidAvailability', {})
         state.setdefault('permessi', {})
@@ -248,7 +251,7 @@ def create_app(path=None, seed=None):
             state.setdefault(group, {})
         paid.migrate(state.get('paidAvailability', {}))
         attribution.migrate(state, *identities.authors())
-        return ds, state
+        return state
 
     def save_state(db, ds, state, days, revalidate=False):
         facts = store.read(db, 'statistics', statistics.empty())
@@ -611,9 +614,9 @@ def create_app(path=None, seed=None):
             labels = name_overrides(db)
             ds = dict(ds, receptions=receptions.on_day(store.read(db, 'receptions', receptions.empty()), viewed))
         teachers = {i: dict(t, cdcName=CDC_NAMES.get(t.get('classe_concorso', ''), t.get('classe_concorso', ''))) for i, t in teacher_names.teachers(ds['teachers'], labels).items()}
-        return dict(effective=effective, day=viewed, version=selected['id'] if history else '', dataset=dict(ds, teachers=teachers),
+        return JSONResponse(dict(effective=effective, day=viewed, version=selected['id'] if history else '', dataset=dict(ds, teachers=teachers),
                     basis=timetables.digest(history), imported=selected['dataset'] if history else ds,
-                    overrides=history.get('_overrides', overrides.empty())['records'] if history else [])
+                    overrides=history.get('_overrides', overrides.empty())['records'] if history else []))
 
     @app.get('/api/receptions')
     def get_receptions():
@@ -790,15 +793,24 @@ def create_app(path=None, seed=None):
     def get_permits():
         with store.connect() as db:
             db.execute('BEGIN')
-            ds, state = load(db)
-            versions = appointments.timetable_versions(read_history(db))
-            ds = presented(db, ds)
-            versions = [dict(v, dataset=presented(db, v['dataset'])) for v in versions]
+            history = read_history(db)
+            names = name_overrides(db)
+            if history:
+                versions = permit_context.versions(history, names)
+                today = datetime.now(ZoneInfo('Europe/Rome')).date().isoformat()
+                ds = next(v['dataset'] for v in reversed(versions) if not v['effective'] or v['effective'] <= today)
+            else:
+                source = store.read(db, 'dataset')
+                if source is None:
+                    raise ValueError('Carica prima un orario.')
+                ds = permit_context.project(source, names)
+                versions = []
+            state = load_state(db)
         summaries, balances = recovery.summary(state)
         manual = {p['teacher']: p for p in recovery.ledger(state).values() if p['date'] is None}
         accounts, _ = identities.authors()
         creators = {day: {teacher: attribution.resolve(author, accounts) for teacher, author in entries.items()} for day, entries in state['permitCreators'].items()}
-        return dict(concurrency=concurrency.snapshot(state), dataset=ds, timetableVersions=[dict(effective=v['effective'], dataset=v['dataset']) for v in versions], permitAttachments=state['permitAttachments'], permessi=state['permessi'], permitRequests=state['permitRequests'], permitNotes=state['permitNotes'], permitKinds=state['permitKinds'], permitCreators=creators, recoveries=summaries, balances=balances, manualPermits=manual, manualPermitNotes=state['manualPermitNotes'])
+        return JSONResponse(dict(concurrency=concurrency.snapshot(state), dataset=ds, timetableVersions=[dict(effective=v['effective'], dataset=v['dataset']) for v in versions], permitAttachments=state['permitAttachments'], permessi=state['permessi'], permitRequests=state['permitRequests'], permitNotes=state['permitNotes'], permitKinds=state['permitKinds'], permitCreators=creators, recoveries=summaries, balances=balances, manualPermits=manual, manualPermitNotes=state['manualPermitNotes']))
 
     @app.post('/api/manual-permits')
     def save_manual_permit(e: ManualPermit):

@@ -10,12 +10,8 @@ const evaluate = data => runInNewContext(ts.transpileModule(helpers + '\nteachin
 }).outputText, { data });
 
 test('permit sites use the entire effective week and exact teacher identity', () => {
-  const old = { lessons: {
-    'a|lun|1': { site: 'centrale' }, 'a|mar|1': { site: 'succursale' },
-    'a|mer|1': { site: null }, 'ab|lun|1': { site: 'succursale' },
-    'single|ven|1': { site: 'centrale' },
-  } };
-  const current = { lessons: { 'a|lun|1': { site: 'centrale' } } };
+  const old = { sites: { a: ['centrale', 'succursale'], ab: ['succursale'], single: ['centrale'] } };
+  const current = { sites: { a: ['centrale'] } };
   const sites = evaluate({ dataset: current, timetableVersions: [{ effective: null, dataset: old }, { effective: '2026-10-19', dataset: current }] });
   assert.equal(JSON.stringify(sites('a', '2026-10-12')), '["centrale","succursale"]');
   assert.equal(JSON.stringify(sites('a', '2026-10-19')), '["centrale"]');
