@@ -5,7 +5,7 @@ const dayNames = ['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì'];
 const colors = { lesson: '#e8f0fc', activity: '#fff2d6', reception: '#def3e6' };
 const campus = (site?: string | null) => site === 'centrale' ? 'C' : site === 'succursale' ? 'S' : '?';
 export function projectTimetableExport(dataset: Omit<Dataset, 'receptions'> & { receptions?: Reception[] }) {
-  return buildTeacherTimetables(dataset).map(t => ({ name: t.name,
+  return buildTeacherTimetables(dataset).map(t => ({ name: t.name + (dataset.teachers[t.id].coveredBy ? ' · Coperto da ' + dataset.teachers[dataset.teachers[t.id].coveredBy!]?.name : dataset.teachers[t.id].replaces ? ' · Supplente di ' + dataset.teachers[dataset.teachers[t.id].replaces!]?.name : dataset.teachers[t.id].continuousAbsence ? ' · Assenza prolungata' : ''),
     kinds: DAYS.map((day, di) => HOURS.map(hour => {
       const cell = t.cells[di][hour - 1];
       return { activity: cell ? cell.codes.length ? 'activity' as const : 'lesson' as const : null,
@@ -20,6 +20,7 @@ export function projectTimetableExport(dataset: Omit<Dataset, 'receptions'> & { 
       }
       for (const r of dataset.receptions || []) if (r.teacher === t.id && r.day === day && r.hour === hour)
         lines.push(['Ricevimento' + (c ? ' [sovrapposizione]' : ''), r.time, r.location, r.site ? campus(r.site) : ''].filter(Boolean).join(' · '));
+      if ((dataset as Dataset & { excludedPOT?: Record<string, unknown> }).excludedPOT?.[`${t.id}|${day}|${hour}`]) lines.push('POT non ereditato');
       return lines.filter(Boolean).join('\n');
     })),
   }));

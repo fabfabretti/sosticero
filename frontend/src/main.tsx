@@ -1,3 +1,7 @@
+import { PaidBudgetSettings } from './PaidBudgetSettings';
+import { TeacherPortal } from './TeacherPortal';
+import { Staffing } from './Staffing';
+import { Administration, AdministrationLayout, permissionLabel } from './Administration';
 import { authorLabel, type Author } from './attribution';
 import { Loading, LoadingRegion } from './Loading';
 import { PaidHours } from "./PaidHours";
@@ -75,10 +79,11 @@ const TABS = [
   { path: "/stats", label: "Statistiche" },
   { path: "/inbox", label: "Inbox" },
   { path: "/settings", label: "Impostazioni" },
+  { path: "/amministrazione/account", label: "Amministrazione" },
 ];
 // Unknown routes fall back to Supplenze (home).
 const screenFor = (pathname: string) =>
-  TABS.find((t) => t.path === pathname) || TABS[0];
+  TABS.find((t) => t.path === (pathname.startsWith("/amministrazione/") ? "/amministrazione/account" : pathname)) || TABS[0];
 function Glasses() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -107,7 +112,7 @@ function TopBar({ current, pending = 0 }: { current: string; pending?: number })
       </span>
       <BuildWarning />
       <nav className="tabs">
-        {TABS.map((t) => (
+        {TABS.filter(t => t.path === "/amministrazione/account" ? account?.admin : t.path === "/settings" ? account?.admin || !!account?.campuses.length : !!account?.campuses.length).map((t) => (
           <Link
             key={t.path}
             to={t.path}
@@ -118,7 +123,7 @@ function TopBar({ current, pending = 0 }: { current: string; pending?: number })
           </Link>
         ))}
       </nav>
-      {account && <div className="account-identity"><strong>{account.name}</strong><span>{account.campus === 'centrale' ? 'Centrale' : 'Succursale'}</span><button className="ui-button" onClick={() => window.dispatchEvent(new Event('session-logout'))}>Esci</button></div>}
+      {account && <div className="account-identity"><strong>{account.name}</strong><span>{permissionLabel(account)}</span><button className="ui-button" onClick={() => window.dispatchEvent(new Event('session-logout'))}>Esci</button></div>}
     </header>
   );
 }
@@ -177,7 +182,7 @@ function Permessi() {
   const overLimit = !!teacher && selected.length > maximum;
   const suggestions = query && !teacher
     ? Object.values((manual ? data?.dataset : permitDataset(day))?.teachers || {})
-        .filter(t => (!t.retired || t.id === original?.id) && norm(teacherSearchText(t)).includes(norm(query)))
+        .filter(t => ((!t.retired && !t.unavailable) || t.id === original?.id) && norm(teacherSearchText(t)).includes(norm(query)))
         .sort((a, b) => Number(!norm(a.name).startsWith(norm(query))) - Number(!norm(b.name).startsWith(norm(query))) || a.name.localeCompare(b.name))
         .slice(0, 6)
     : [];
@@ -327,9 +332,7 @@ function Permessi() {
   </div>;
 }
 
-function Settings() {
-  const account = useAccount();
-  const readOnly = account?.campus !== "centrale";
+function Configuration() {
   const [hourSummary, setHourSummary] = useState('Caricamento…');
   const [receptionSummary, setReceptionSummary] = useState('Ricevimenti: caricamento…');
   const [connectionSummary, setConnectionSummary] = useState('Caricamento…');
@@ -341,11 +344,10 @@ function Settings() {
   const archiveRunning = useRef(false);
   const [archiveError, setArchiveError] = useState('');
   const [archiveMessage, setArchiveMessage] = useState('');
-  const [theme, setTheme] = useState(() => document.documentElement.dataset.theme || (window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
-  const [data, setData] = useState<Data>(),
+  const [data, setData] = useState<{ teacherCount: number; classCount: number; warnings: string[] }>(),
     [error, setError] = useState("");
   const { refresh, ready: settingsReady, loadError: settingsError } = useQuietRefresh(
-    () => api<Data>("day/" + localDate(new Date())), setData, archiveBusy || backupBusy, 'settings-overview', true,
+    () => api<{ teacherCount: number; classCount: number; warnings: string[] }>("settings/overview"), setData, archiveBusy || backupBusy, 'settings-overview', true,
   );
   useEffect(() => { void refresh().catch(() => {}); }, []);
   const upload = async (file: File | undefined, target: string) => {
@@ -386,20 +388,20 @@ function Settings() {
     } finally { archiveRunning.current = false; setArchiveBusy(false); }
   };
   return <section className="ui-page settings">
-    <h1>Impostazioni</h1>
+    <h1>Configurazione</h1>
     <p className="settings-intro settings-muted">Configurazione, collegamenti e gestione dei dati.</p>
-    {readOnly && <p className="ui-notice" role="status">Configurazione condivisa: modifiche riservate alla sede Centrale.</p>}
     <LoadingRegion pending={archiveBusy || backupBusy} label={archiveBusy || backupBusy ? "Elaborazione dati…" : undefined} blocked={false} error={settingsError} retry={() => void refresh().catch(() => {})} />
-    <fieldset className="settings-permissions" disabled={readOnly || archiveBusy || backupBusy || !settingsReady}>
-    <SettingsGroup title="Orari e ricevimenti" description="Importa e verifica gli impegni settimanali." status={[data ? `${Object.keys(data.dataset.teachers).length} docenti · ${data.dataset.classes.length} classi` : error ? 'Orario non disponibile' : 'Caricamento…', receptionSummary].join(' · ')}>
+    <fieldset className="settings-permissions" disabled={archiveBusy || backupBusy || !settingsReady}>
+    <SettingsGroup title="Orari e ricevimenti" description="Importa e verifica gli impegni settimanali." status={[data ? `${data.teacherCount} docenti · ${data.classCount} classi` : error ? 'Orario non disponibile' : 'Caricamento…', receptionSummary].join(' · ')}>
       <TimetableImport api={api} onImported={() => { void refresh().catch(() => {}); setBackupRevision(value => value + 1); }} />
       {error && <p className="ui-notice ui-notice-error" role="alert">{error}</p>}
-      {!!data?.dataset.warnings.length && <details className="settings-disclosure"><summary>{data.dataset.warnings.length} anomalie da verificare</summary><pre className="settings-pre">{JSON.stringify(data.dataset.warnings, null, 2)}</pre></details>}
+      {!!data?.warnings?.length && <details className="settings-disclosure"><summary>{data.warnings.length} anomalie da verificare</summary><pre className="settings-pre">{JSON.stringify(data.warnings, null, 2)}</pre></details>}
       <ReceptionImport api={api} onSummary={setReceptionSummary} revision={backupRevision} onImported={() => setBackupRevision(value => value + 1)} />
     </SettingsGroup>
     <SettingsGroup title="Regole supplenze" description="Disponibilità e visibilità dei tipi di ora." status={hourSummary}>
-      <HourTypes api={api} onSummary={setHourSummary} revision={`${backupRevision}:${JSON.stringify(data?.dataset)}`} />
+      <HourTypes api={api} onSummary={setHourSummary} revision={`${backupRevision}:${JSON.stringify(data)}`} />
     </SettingsGroup>
+    <PaidBudgetSettings api={api} revision={backupRevision} />
     <SettingsGroup title="Collegamenti" description="Importazione delle assenze da Google Forms." status={connectionSummary}>
       <SheetsSettings api={api} onSummary={setConnectionSummary} revision={backupRevision} />
     </SettingsGroup>
@@ -419,6 +421,12 @@ function Settings() {
       <BackupSection onPendingChange={setBackupBusy} onSummary={setBackupSummary} revision={backupRevision} onRestored={() => { void refresh().catch(() => {}); setBackupRevision(value => value + 1); }} />
     </SettingsGroup>
     </fieldset>
+  </section>;
+}
+function Settings() {
+  const [theme, setTheme] = useState(() => document.documentElement.dataset.theme || (window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+  return <section className="ui-page settings">
+    <h1>Impostazioni</h1>
     <SettingsGroup title="Aspetto" description="Scegli il tema dell’interfaccia." status={theme === 'dark' ? 'Scuro' : 'Chiaro'}>
       <div className="ui-actions"><button className="ui-button" aria-pressed={theme === 'dark'} onClick={() => { const next = theme === 'dark' ? 'light' : 'dark'; document.documentElement.dataset.theme = next; setTheme(next); }}>Chiaro / scuro</button></div>
     </SettingsGroup>
@@ -427,13 +435,18 @@ function Settings() {
 }
 function Shell() {
   const { pathname } = useLocation();
-  const tab = screenFor(pathname);
-  const inboxStatus = useInboxStatus(api, true);
+  const account = useAccount();
+  const operational = !!account?.campuses.length;
+  const requested = screenFor(pathname);
+  const available = requested.path === '/amministrazione/account' ? account?.admin : requested.path === '/settings' ? account?.admin || operational : operational;
+  const tab = available ? requested : account?.admin ? TABS[TABS.length - 1] : TABS[0];
+  const inboxStatus = useInboxStatus(api, operational);
+  const hasAccess = operational || account?.admin;
   return (
     <div className="shell">
       <TopBar current={tab.path} pending={inboxStatus.pending} />
-      <InboxNotice count={inboxStatus.pending} />
-      {tab.path === "/" ? (
+      {operational && <InboxNotice count={inboxStatus.pending} />}
+      {!hasAccess ? <section className="ui-page"><h1>Nessun accesso assegnato</h1><p>Contatta un amministratore per ottenere i permessi.</p></section> : tab.path === "/amministrazione/account" ? pathname === "/amministrazione/docenti" ? <Staffing /> : pathname === "/amministrazione/configurazione" ? <AdministrationLayout configuration><Configuration /></AdministrationLayout> : <Administration /> : tab.path === "/" ? (
         <Supplenze />
       ) : tab.path === "/permessi" ? (
         <Permessi />
@@ -471,13 +484,13 @@ function App() {
   return (
     <HashRouter>
       {testing && <div className="testing-ribbon" role="status">TESTING</div>}
-      {window.location.pathname === '/display' ? <Display /> : <Auth><Shell /></Auth>}
+      {window.location.pathname === '/docenti' ? <TeacherPortal /> : window.location.pathname === '/display' ? <Display /> : <Auth><Shell /></Auth>}
     </HashRouter>
   );
 }
 function Supplenze() {
   const account = useAccount();
-  const canAssign = (site: string | null | undefined) => !!account && site === account.campus;
+  const canAssign = (site: string | null | undefined) => !!account && account.campuses.includes(site as "centrale" | "succursale");
   const [day, setDay] = useState(() => schoolDate(new Date())),
     [month, setMonth] = useState(
       () => new Date(Number(day.slice(0, 4)), Number(day.slice(5, 7)) - 1, 1),
@@ -493,7 +506,7 @@ function Supplenze() {
     [editingKind, setEditingKind] = useState<string>(),
     [absenceNote, setAbsenceNote] = useState(""),
     [entryNote, setEntryNote] = useState(""),
-    [site, setSite] = useState<string>(account?.campus || "centrale"),
+    [site, setSite] = useState<string>(account?.campuses[0] || "centrale"),
     [filter, setFilter] = useState(() => {
       try {
         const saved = localStorage.getItem("supplenze-campus");
@@ -588,6 +601,8 @@ function Supplenze() {
     setAbsenceNote("");
     setEntryNote("");
   }, [day]);
+  const [budgetWarning, setBudgetWarning] = useState("");
+  useEffect(() => { setBudgetWarning(""); }, [day]);
   const mutate = async (url: string, body: Parameters<typeof preconditions>[2]) => {
     if (conflict || busy || !ready || loadedDay !== day || attachmentPending) return false;
     invalidate();
@@ -599,7 +614,8 @@ function Supplenze() {
     setError("");
     try {
       const editing = url === "entries" && (body.id === editingKind || body.id === editingDis);
-      const saved = await api<{ concurrency: Baseline }>(url, { ...body, expected: preconditions(editing ? editBaseline.current : data?.concurrency, url, body) });
+      const saved = await api<{ concurrency: Baseline; warning?: string | null }>(url, { ...body, expected: preconditions(editing ? editBaseline.current : data?.concurrency, url, body) });
+      setBudgetWarning(saved.warning || "");
       if (editing) editBaseline.current = saved.concurrency;
       try { await refresh(); } catch { setError("Salvato. Impossibile aggiornare i dati: usa Riprova."); }
       return true;
@@ -617,7 +633,7 @@ function Supplenze() {
               const hours = latest.state[group][d]?.[id];
               const note = group === "abs" ? latest.state.absenceNotes?.[d]?.[id] : undefined;
               const kind = group === "abs" ? latest.state.absenceKinds?.[d]?.[id] : undefined;
-              const label = kind && { planned: "Programmata", last_minute: "Last minute", trip: "In gita", strike: "In sciopero" }[kind];
+              const label = kind && { planned: "Programmata", last_minute: "Last minute", trip: "In gita", strike: "In sciopero", assembly: "In assemblea" }[kind];
               const site = group === "dis" ? latest.state.disSites[d]?.[id] : undefined;
               const attachment = group === "abs" ? latest.state.absenceAttachments?.[d]?.[id] : latest.state.disAttachments?.[d]?.[id];
               setConflictSummary(hours ? [`Ore salvate: ${hours.join(", ") || "nessuna"}`, note && `Nota: ${note}`, label, site && `Sede: ${site}`, attachment && "Allegato presente"].filter(Boolean).join(" · ") : "Registrazione non più presente.");
@@ -687,7 +703,7 @@ function Supplenze() {
           ...Object.values(data.dataset.teachers)
             .filter(
               (t) =>
-                !t.retired &&
+                !t.retired && !t.unavailable &&
                 norm(teacherSearchText(t)).includes(norm(query)),
             )
             .map((t) => ({ id: t.id, label: t.name, group: kind })),
@@ -735,19 +751,20 @@ function Supplenze() {
     }
   };
   const absenceKind = (id: string): AbsenceKind => {
-    const kinds = [data?.state.absenceKinds?.[day]?.[id], data?.state.permitKinds?.[day]?.[id]];
-    return kinds.includes("last_minute") ? "last_minute" : kinds.includes("strike") ? "strike" : kinds.includes("trip") ? "trip" : kinds.includes("planned") ? "planned" : null;
+    const kinds = [data?.continuousAbsences?.[id]?.length ? "planned" : undefined, data?.state.absenceKinds?.[day]?.[id], data?.state.permitKinds?.[day]?.[id]];
+    return kinds.includes("last_minute") ? "last_minute" : kinds.includes("strike") ? "strike" : kinds.includes("assembly") ? "assembly" : kinds.includes("trip") ? "trip" : kinds.includes("planned") ? "planned" : null;
   };
-  const absentIds = Object.keys({ ...entries("abs"), ...data?.state.permessi?.[day] });
+  const absentIds = Object.keys(data?.effectiveAbsences || { ...entries("abs"), ...data?.state.permessi?.[day] });
   const renderEntries = (g: "abs" | "cf" | "dis", ids = Object.keys(entries(g))) =>
     ids.map((id) => {
       const hs = entries(g)[id] || [];
+      const continuous = g === "abs" ? data?.continuousAbsences?.[id] || [] : [];
       const permit = g === "abs" ? data?.state.permessi?.[day]?.[id] || [] : [];
       const requested = g === "abs" ? data?.state.permitRequests?.[day]?.[id] : "";
       const manualNote = g === "abs" ? data?.state.absenceNotes?.[day]?.[id] : "";
       const savedPermitNote = g === "abs" ? data?.state.permitNotes?.[day]?.[id] : "";
       const permitNote = requested ? `Permesso concesso il ${requested.split("-").reverse().join("/")}` : "Permesso";
-      const info = [permit.length ? permitNote : "", manualNote ? `Assenza: ${manualNote}` : "", savedPermitNote ? `Permesso: ${savedPermitNote}` : ""].filter(Boolean).join("\n\n");
+      const info = [continuous.length ? "Assenza prolungata · gestita in Amministrazione" : "", permit.length ? permitNote : "", manualNote ? `Assenza: ${manualNote}` : "", savedPermitNote ? `Permesso: ${savedPermitNote}` : ""].filter(Boolean).join("\n\n");
       return (
         <div className="entry-row" key={g + id}>
         <div className="rw">
@@ -772,7 +789,7 @@ function Supplenze() {
           )}
           <div className="hrs">
             {hours.map((h) => {
-              const locked = permit.includes(h);
+              const locked = permit.includes(h) || continuous.includes(h);
               const btn = (
                 <button
                   aria-label={`${name(id)}, ${h}ª ora`}
@@ -795,7 +812,7 @@ function Supplenze() {
                 </button>
               );
               return locked
-                ? <HourHelp key={h} text="Modifica dalla pagina permessi">{btn}</HourHelp>
+                ? <HourHelp key={h} text={continuous.includes(h) ? "Assenza prolungata: gestione riservata agli amministratori in Amministrazione" : "Modifica dalla pagina permessi"}>{btn}</HourHelp>
                 : <React.Fragment key={h}>{btn}</React.Fragment>;
             })}
           </div>
@@ -1048,7 +1065,7 @@ function Supplenze() {
           <div inert={!ready || loadedDay !== day} className={"sidebar-content" + (!ready || loadedDay !== day ? " ui-loading-content" : "")}>
           <button disabled={!ready || loadedDay !== day} ref={entryTrigger} className="ui-button entry-trigger" onClick={() => { ++candidateRequest.current; setLoadingCandidates(false); setOpen(undefined); clearEntry(); setEntryOpen(true); }}>+ Aggiungi</button>
           <div className="lists">
-            {([["planned", "Assenze programmate"], ["trip", "In gita"], ["strike", "In sciopero"], [null, "Assenze non classificate"], ["last_minute", "Assenze last minute"]] as const).map(([value, label]) => {
+            {([["planned", "Assenze programmate"], ["trip", "In gita"], ["strike", "In sciopero"], ["assembly", "In assemblea"], [null, "Assenze non classificate"], ["last_minute", "Assenze last minute"]] as const).map(([value, label]) => {
               const ids = absentIds.filter(id => absenceKind(id) === value);
               return ids.length > 0 && <section key={label}><h2>{label}</h2>{renderEntries("abs", ids)}</section>;
             })}
@@ -1061,6 +1078,7 @@ function Supplenze() {
         <main>
           <div inert={!ready || loadedDay !== day} className={!ready || loadedDay !== day ? "ui-loading-content" : undefined}>
           {!entryOpen && <>
+          {budgetWarning && <p className="ui-notice" role="status">{budgetWarning}</p>}
           {error && (
             <p className="ui-notice ui-notice-error" role="alert">
               {error}
@@ -1096,7 +1114,7 @@ function Supplenze() {
           </p>
           {data?.timetable && <p className="sub">Orario: {data.timetable.effective ? `dal ${italianDate(data.timetable.effective)}` : 'versione iniziale'}</p>}
             </div>
-            {account && <Publication day={day} campus={account.campus} disabled={busy || !ready || loadedDay !== day} />}
+            {account && <Publication day={day} campuses={account.campuses} disabled={busy || !ready || loadedDay !== day} />}
           </div>
           {data?.references?.map((r, n) => <p role="alert" key={`reference-${n}`}>{r.id}: {r.message}</p>)}
           {data?.issues.map((i) => (
@@ -1185,7 +1203,7 @@ function Supplenze() {
                             assignment={assigned[r.k]} permit={data?.recoveryRequests?.[r.k]} busy={busy} canAssign={canAssign(r.sede)}
                             onCommunicate={() => void mutate("assignments", { day, key: r.k, communicated: !assigned[r.k].communicated })}
                             onAccept={() => void mutate("assignments", { day, key: r.k, accepted: !assigned[r.k].accepted })} />}
-                          {assigned[r.k]?.t === "PAID" && <PaidActions key={`${day}|${r.k}|${assigned[r.k].v}`} day={day} row={r} assignment={assigned[r.k]} busy={busy} canAssign={canAssign(r.sede)} onNotify={() => void mutate("assignments", { day, key: r.k, notified: !assigned[r.k].notified })} />}
+                          {assigned[r.k]?.t === "PAID" && <PaidActions key={`${day}|${r.k}|${assigned[r.k].v}`} day={day} row={r} assignment={assigned[r.k]} busy={busy} canAssign={canAssign(r.sede)} onAccept={() => void mutate("assignments", { day, key: r.k, accepted: !assigned[r.k].accepted })} onNotify={() => void mutate("assignments", { day, key: r.k, notified: !(assigned[r.k].notified || assigned[r.k].communicated) })} />}
                           {entryExitBoundary(r.k, assigned) && <span className="opt communicated">
                             <button type="button" className={assigned[r.k].communicated ? "on" : ""}
                               aria-pressed={assigned[r.k].communicated === true} disabled={busy || !canAssign(r.sede)}
@@ -1364,7 +1382,8 @@ function Supplenze() {
             ++candidateRequest.current; setLoadingCandidates(false); setOpen(undefined);
             setBusy(true); setError("");
             try {
-              await api("assignments", { day, key: selectedRow.k, value, exceptional, category, note, expected: preconditions(candidateBaseline.current, "assignments", { day, key: selectedRow.k }) });
+              const saved = await api<{ warning?: string | null }>("assignments", { day, key: selectedRow.k, value, exceptional, category, note, expected: preconditions(candidateBaseline.current, "assignments", { day, key: selectedRow.k }) });
+              setBudgetWarning(saved.warning || "");
               ++candidateRequest.current; setLoadingCandidates(false); setOpen(undefined);
               try { await refresh(); } catch { setError("Assegnazione salvata. Impossibile aggiornare i dati: usa Riprova."); }
             } catch (e) {

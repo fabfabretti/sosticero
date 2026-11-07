@@ -1,40 +1,72 @@
-# Recurring Banca ore declarations
+# Recurring Banca ore declarations and account attribution
 
-A declaration is identified by `(weekday, teacher ID, hour)`. It recurs weekly;
-calendar dates and a teacher's work location are calculated by the report and
-are not declaration identity or authorship.
-
-The existing SQLite `state` document stores each declaration and its provenance
-in one record, under `paidAvailability[weekday][teacher ID][hour]`:
+A declaration is identified by `(weekday, teacher ID, hour)`, not by its author or campus.
+`paidAvailability[weekday][teacher ID][hour]` stores:
 
 ```json
-{"createdBy": "immutable account ID or null", "createdFrom": "centrale"}
+{"createdBy":"immutable-account-id","createdFrom":{"id":"immutable-account-id","username":"maria.rossi","name":"Maria Rossi"}}
 ```
 
-Weekdays are string keys `0`–`4`, hours are string keys `1`–`7`.
-`createdBy` identifies the account; `createdFrom` snapshots its campus when the
-entry was added. The C/S label comes from this snapshot, never the teacher's
-computed work site. Account renaming or campus changes do not rewrite provenance.
+`createdFrom` is now an account snapshot, not a campus. `createdBy` remains the
+immutable ID for compatibility. Permit creators and paid-assignment `assignedBy`
+use the same `{id,username,name}` snapshot shape; Inbox already uses it. Actual
+campus is separate, for example `paidContext.site`. The UI resolves the current full name and username by saved account ID. Stored
+snapshots are used only if that account is unavailable. Ordinary edits preserve existing authors;
+removing and readding a declaration records the current account.
 
-The server sets both fields from the authenticated account. Retaining an hour
-preserves its record. Removing it removes the record; adding it again creates a
-new record for the current account. There is no separate authorship map to drift
-out of sync. This is attribution of current declarations, not a historical audit
-log of removed declarations.
+Schema 9 exports preserve snapshots. Imports accept schemas 1–9 and legacy campus
+strings. Startup and restore normalize legacy attribution idempotently. Existing
+paid `createdBy` IDs take precedence over campus labels. Legacy null IDs remain
+unknown; the former Centrale placeholder does not prove authorship. Campus-only
+permit/assignment authors use the explicitly verified, persisted legacy mapping.
+Unresolved authors retain readable legacy/unknown labels. Historical names never
+change on later account renames or permission changes.
 
-Writes retain the existing teacher/day concurrency boundary and SQLite write
-transaction: a stale editor cannot overwrite another account's additions. The
-report projects records to hour arrays for existing UI consumers; these arrays
-are derived, not an additional stored source of truth.
+Imported foreign snapshots remain intact without requiring their accounts locally.
+Imports never create users. School archives/backups contain no passwords or sessions.
+The per-teacher/weekday concurrency boundary and derived hour-array report stay intact.
 
-Startup migrates legacy hour arrays to records. As explicitly requested, those
-entries receive `createdFrom=centrale` and `createdBy=null`: the real creator is
-unknown. The migration changes only legacy arrays, is idempotent, and runs after
-the pre-start backup. It never changes teachers, declared hours, timetables or
-assignments.
+## Budget e tariffe delle supplenze a pagamento
 
-Exports use schema 8 because the stored shape changed. Import accepts older
-schemas by migrating their hour arrays before validation. Schema 8 requires
-complete provenance records and rejects malformed hours or campus values. JSON
-exports and SQLite backups preserve provenance without requiring an account to
-exist on the installation where an archive is restored.
+In **Amministrazione → Configurazione → Supplenze a pagamento**, gli amministratori
+possono impostare per ogni sede un budget e le tariffe orarie per laureati e
+diplomati. Tutti gli importi sono facoltativi: vuoto significa non configurato,
+mentre zero è un valore esplicito. ITP usa automaticamente la tariffa diplomato;
+gli altri ruoli usano laureato. Le eccezioni si impostano nella classificazione
+economica del docente, senza cambiare il ruolo importato.
+
+Ogni salvataggio ricalcola tutte le assegnazioni a pagamento già registrate,
+anche future, con le tariffe e classificazioni correnti. Se una tariffa viene
+rimossa, le ore corrispondenti tornano da valorizzare. Ogni ora
+usa la tariffa della sede in cui si svolge la supplenza. Rimuovere o sostituire
+un’assegnazione elimina il suo contributo; un nuovo incarico usa la tariffa corrente.
+
+Banca ore mostra gli importi impegnati per tutte le ore registrate, comprese quelle
+future e quelle da verificare, indipendentemente dalla settimana della griglia.
+Non ci sono anni scolastici separati o azzeramenti automatici. Le ore senza tariffa
+compaiono come **Da valorizzare** e rendono il totale monetario parziale.
+Lo sforamento produce un avviso ma consente l’assegnazione: la percentuale può
+superare il 100% e viene mostrato l’importo eccedente. Con budget zero, la
+percentuale non è disponibile. Se una sola sede ha un budget, la percentuale
+complessiva riguarda solo quella sede; la spesa dell’altra resta visibile.
+Il registro dettagliato è l’unico elenco delle assegnazioni a pagamento.
+
+### Persistenza e API
+
+`paidFinance` è un documento con `sites.centrale` e `sites.succursale`, ciascuno
+contenente `budget`, `laureato` e `diplomato` (centesimi interi non negativi o
+`null`), e `overrides` (ID stabile docente → `laureato`/`diplomato`).
+`GET /api/paid-finance` e `POST /api/paid-finance` sono riservati agli admin.
+Il POST richiede `{config, expected}` con il token ottenuto dal GET; il client
+conserva anche la generazione per evitare salvataggi attraverso un ripristino.
+La risposta riporta `priced` (ore con costo o classificazione modificati) e `unpriced` (ore rimanenti).
+
+Ogni assegnazione PAID valorizzata conserva `paidPrice: {cents, classification}`.
+Il report `/api/paid-availability` include `finance` con i totali derivati per sede,
+le sedi con budget, il loro totale e il totale generale. I conteggi per docente
+restano disponibili per l’ordinamento equo dei candidati, senza riepilogo inline.
+Gli avvisi di budget sono restituiti nelle risposte di salvataggio assegnazione.
+Gli archivi schema 11 includono configurazione e costi; gli schemi precedenti
+restano importabili con configurazione assente e ore legacy non valorizzate.
+Importare un archivio conserva i costi presenti senza eseguire una valorizzazione
+implicita. Backup SQLite e ripristini conservano entrambi i documenti.

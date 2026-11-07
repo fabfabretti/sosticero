@@ -1,3 +1,6 @@
+import { PaidBudgetSummary } from './PaidBudgetSummary';
+import { euro, type FinanceSummary } from './paid-finance';
+import { authorLabel, type Author } from './attribution';
 import { Loading, LoadingRegion } from './Loading';
 import { useEffect, useRef, useState } from "react";
 import { todayInRome } from "./StatsCalendar";
@@ -8,17 +11,18 @@ import { norm, teacherSearchText } from "./timetables";
 import "./paid.css";
 import { generatePaidPdf } from "./paidPdf";
 
-type SlotTeacher = { id: string; name: string; sites: string[]; uncertain: boolean; why: string; addedBy?: string };
+type SlotTeacher = { id: string; name: string; sites: string[]; uncertain: boolean; why: string; addedBy?: Author };
 export type Report = {
+  finance?: FinanceSummary;
   dates: string[]; teachers: Record<string, Teacher>; declarations: Record<string, Record<string, number[]>>;
   cells: { weekday: number; hour: number; teachers: SlotTeacher[] }[];
   totals: Record<string, number>; concurrency: Baseline;
-  records: { date: string; key: string; teacher: string; name: string; hour: number; c: string; assignedBy: string; notified: boolean; paidContext: { site: string; room: string | null } }[];
+  records: { paidPrice?: { cents: number; classification: string }; date: string; key: string; teacher: string; name: string; hour: number; c: string; assignedBy: Author; notified: boolean; paidContext: { site: string; room: string | null } }[];
 };
 type Api = <T>(path: string, body?: unknown) => Promise<T>;
 const weekdays = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì"];
 const campus = (s: string) => s === "centrale" ? "Centrale" : "Succursale";
-const attribution = (site?: string) => site ? <span className={`paid-attribution campus-${site}`} title={`Inserito da ${campus(site)}`} aria-label={`Inserito da ${campus(site)}`}>{site === "centrale" ? "C" : "S"}</span> : null;
+const attribution = (author?: Author) => author ? <span className="author-name" title={`Inserito da ${authorLabel(author, true)}`}> {authorLabel(author)} · </span> : null;
 const dateLabel = (d: string) => d.split("-").reverse().join("/");
 
 export function PaidHours({ api }: { api: Api }) {
@@ -30,7 +34,7 @@ export function PaidHours({ api }: { api: Api }) {
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => { if (slot) { dialog.current?.showModal(); dialog.current?.querySelector("input")?.focus(); } }, [slot]);
   const suggestions = query ? Object.values(data?.teachers || {})
-    .filter(t => !t.retired && !data?.declarations[String(slot?.weekday)]?.[t.id]?.includes(slot?.hour || 0) && norm(teacherSearchText(t)).includes(norm(query)))
+    .filter(t => !t.retired && !t.unavailable && !data?.declarations[String(slot?.weekday)]?.[t.id]?.includes(slot?.hour || 0) && norm(teacherSearchText(t)).includes(norm(query)))
     .sort((a, b) => Number(!norm(a.name).startsWith(norm(query))) - Number(!norm(b.name).startsWith(norm(query))) || a.name.localeCompare(b.name))
     .slice(0, 6) : [];
   const load = async () => { if (!day) throw Error("Seleziona una data valida."); return api<Report>("paid-availability?" + new URLSearchParams({ day })); };
@@ -62,6 +66,7 @@ export function PaidHours({ api }: { api: Api }) {
     {error && <p role="alert" className="ui-notice ui-notice-error">{error}</p>}
     <LoadingRegion pending={loading || busy} label={busy ? "Salvataggio…" : undefined} blocked={!ready || busy} error={loadError} retry={() => void refresh().catch(() => {})}>
     {data && <>
+      {data.finance && <PaidBudgetSummary finance={data.finance} />}
       {editing && slot && <dialog ref={dialog} className="paid-dialog" aria-labelledby="paid-dialog-title" onCancel={e => { if (busy) e.preventDefault(); else setSlot(undefined); }} onClick={e => { if (e.target === e.currentTarget && !busy) { const r = e.currentTarget.getBoundingClientRect(); if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) setSlot(undefined); } }}>
         <div className="paid-dialog-heading"><h2 id="paid-dialog-title">Disponibilità · {weekdays[slot.weekday]}, {slot.hour}ª ora</h2><button className="ui-button" aria-label="Chiudi disponibilità" disabled={busy} onClick={() => setSlot(undefined)}>×</button></div>
         {error && <p role="alert" className="ui-notice ui-notice-error">{error}</p>}
@@ -104,8 +109,8 @@ export function PaidHours({ api }: { api: Api }) {
         </div>) || "—"}{!data.cells.find(c => c.weekday === w && c.hour === h)?.teachers.length && !editing && "—"}{editing && <button className="paid-edit" aria-label={`Modifica docenti · ${weekdays[w]}, ${h}ª ora`} disabled={busy} onClick={() => openSlot(w, h)}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m16 3 5 5-12 12-6 1 1-6Z"/><path d="m14 5 5 5"/></svg></button>}</td>)}</tr>)}</tbody></table></div>
       <p className="paid-method">Sedi calcolate dall’orario, con cambio sede consentito negli intervalli 2–3 e 4–5. Le dichiarazioni sono ricorrenti; assenze e supplenze giornaliere vengono verificate al momento dell’assegnazione.</p>
       <section><h2>Ore assegnate a pagamento</h2><p>Ogni supplenza registrata conta subito, anche se futura. Avviso e richiesta email si gestiscono dalla tabella Supplenze.</p>
-        <div className="paid-totals">{Object.entries(data.totals).sort((a, b) => (data.teachers[a[0]]?.name || a[0]).localeCompare(data.teachers[b[0]]?.name || b[0])).map(([id, count]) => <span key={id}>{data.teachers[id]?.name || id}: <strong>{count} ore</strong></span>)}</div>
-        <div className="paid-scroll" role="region" tabIndex={0} aria-label="Registro ore a pagamento"><table><thead><tr>{["Docente", "Data", "Ora", "Classe", "Sede", "Assegnata da", "Avvisato"].map(c => <th scope="col" key={c}>{c}</th>)}</tr></thead><tbody>{data.records.map(r => <tr key={r.date + r.key}><td>{r.name}</td><td>{dateLabel(r.date)}</td><td>{r.hour}ª</td><td>{r.c}</td><td>{campus(r.paidContext.site)}</td><td>{campus(r.assignedBy)}</td><td>{r.notified ? "Sì" : "No"}</td></tr>)}</tbody></table></div>
+
+        <div className="paid-scroll" role="region" tabIndex={0} aria-label="Registro ore a pagamento"><table><thead><tr>{["Docente", "Data", "Ora", "Classe", "Sede", "Assegnata da", "Avvisato", "Tariffa / costo"].map(c => <th scope="col" key={c}>{c}</th>)}</tr></thead><tbody>{data.records.map(r => <tr key={r.date + r.key}><td>{r.name}</td><td>{dateLabel(r.date)}</td><td>{r.hour}ª</td><td>{r.c}</td><td>{campus(r.paidContext.site)}</td><td><span title={authorLabel(r.assignedBy, true)}>{authorLabel(r.assignedBy)}</span></td><td>{r.notified ? "Sì" : "No"}</td><td>{r.paidPrice ? <>{euro(r.paidPrice.cents)}<small> · {r.paidPrice.classification}</small></> : "Da valorizzare"}</td></tr>)}</tbody></table></div>
         {!data.records.length && <p>Nessuna supplenza a pagamento registrata.</p>}
       </section>
     </>}

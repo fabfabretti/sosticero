@@ -667,6 +667,59 @@ button:disabled,select:disabled,[aria-disabled="true"] {cursor:not-allowed}
 
 a { color: var(--text); }
 
+
+.administration-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); flex: 1; min-height: 0; }
+.administration-sidebar { padding: 24px 16px; border-right: 1px solid var(--border-strong); }
+.administration-sidebar a { display: block; padding: 12px; color: var(--text); background: var(--surface-2); border-radius: 6px; font-weight: 600; text-decoration: none; }
+.administration-page { width: 100%; max-width: 1100px; min-width: 0; overflow: auto; }
+.administration-heading { display: flex; gap: 16px; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+.administration-accounts { list-style: none; padding: 0; margin: 16px 0; }
+.administration-accounts li { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 0; border-bottom: 1px solid var(--border-strong); }
+.administration-accounts li div { min-width: 0; overflow-wrap: anywhere; display: grid; gap: 4px; }
+.administration-accounts small { color: var(--text-muted); }
+.administration-form { max-width: 620px; }
+.administration-form > fieldset { display: grid; gap: 16px; border: 0; padding: 0; min-width: 0; }
+.administration-form fieldset fieldset { border: 1px solid var(--border-strong); border-radius: 6px; padding: 16px; }
+.administration-form .ui-field { display: grid; gap: 6px; }
+.administration-check { display: flex; align-items: center; gap: 10px; min-height: 44px; }
+.administration-check input { width: 18px; height: 18px; }
+.author-name { overflow-wrap: anywhere; font-size: 12px; color: var(--text-muted); }
+@media (max-width: 760px) {
+  .administration-layout { grid-template-columns: minmax(0, 1fr); }
+  .administration-sidebar { border-right: 0; border-bottom: 1px solid var(--border-strong); padding: 8px 16px; }
+  .administration-heading { align-items: flex-start; flex-wrap: wrap; }
+}
+
+.administration-sidebar nav { display: grid; gap: 8px; }
+.administration-sidebar a:not([aria-current="page"]) { background: transparent; font-weight: 400; }
+
+.staffing-workspace { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; gap: 20px; }
+.staffing-section { padding: 20px; min-width: 0; }
+.staffing-section h2 { margin-top: 0; }
+.staffing-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 16px; margin-bottom: 16px; }
+.staffing-fields input, .staffing-fields select { min-height: 44px; }
+.staffing-preview { margin-top: 20px; }
+.staffing-week { overflow-x: auto; margin-bottom: 20px; }
+.staffing-week table { border-collapse: collapse; width: 100%; }
+.staffing-week th, .staffing-week td { border: 1px solid var(--ui-border); padding: 10px; text-align: left; }
+.staffing-excluded { display: block; font-size: .85rem; color: var(--mute); }
+.orari-absent-original { background: var(--surface-2); }
+.orari-absent-original .orari-card-header h3 { color: var(--mute); }
+.orari-staffing-status { margin: 0 0 12px; font-size: .9rem; }
+
+.staffing-tabs { margin: 16px 0 24px; }
+.staffing-absence-list { list-style: none; padding: 0; display: grid; gap: 16px; }
+.staffing-absence { padding: 20px; border: 1px solid var(--line); border-radius: var(--ui-radius); background: var(--pan); }
+.staffing-absence-heading { display: flex; justify-content: space-between; gap: 16px; align-items: start; flex-wrap: wrap; }
+.staffing-absence h3 { margin: 0 0 8px; }
+.staffing-absence p { margin: 8px 0; }
+.staffing-absence details { margin-top: 16px; }
+.staffing-editor { max-width: 960px; }
+.staffing-picker { display: grid; gap: 8px; min-width: 0; }
+.staffing-picker label { font-size: 13px; font-weight: 500; }
+.staffing-picker .sug { position: static; margin-top: 8px; max-height: 240px; overflow-y: auto; }
+.staffing-picker .sug button { min-height: 44px; width: 100%; text-align: left; }
+
 /* Statistics destinations keep independent historical and weekly selections. */
 .stats-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin: 8px 0 18px; }
 .stats-tabs[hidden] { display: none; }
@@ -690,3 +743,70 @@ a { color: var(--text); }
 }
 .stats-kind { display: inline-flex; align-items: center; gap: 8px; }
 .stats-swatch { width: 10px; height: 10px; flex-shrink: 0; border-radius: 2px; print-color-adjust: exact; }
+
+/* Personal teacher access shares the application's surfaces and typography. */
+.teacher-access-table { overflow-x: auto; margin-top: 18px; }
+.teacher-access-table table { width: 100%; border-collapse: collapse; text-align: left; }
+.teacher-access-table caption { text-align: left; padding-bottom: 12px; color: var(--mute); }
+.teacher-access-table th, .teacher-access-table td { padding: 12px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.teacher-access-table th[scope=row] { min-width: 160px; }
+.teacher-access-table td input[type=email] { width: 100%; min-width: 220px; }
+.teacher-access-table small { display: block; font-weight: normal; margin-top: 5px; }
+.teacher-access-table label, .teacher-access-filter { display: flex; gap: 8px; align-items: center; min-height: 44px; }
+.teacher-access-table button { white-space: nowrap; }
+
+.teacher-pin { padding: 20px; margin: 18px 0; }
+.teacher-pin output { display: block; font: 600 28px monospace; letter-spacing: .15em; padding: 14px 0; }
+.teacher-portal { min-height: 100vh; color: var(--ink); background: var(--bg); }
+.teacher-portal-header { border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; padding: 18px max(20px, calc((100vw - 760px) / 2)); gap: 16px; }
+.teacher-portal-brand { color: var(--ink); text-decoration: none; font-size: 20px; font-weight: 650; }
+.teacher-portal-brand span { display: block; font-size: 13px; font-weight: normal; margin-top: 4px; }
+.teacher-portal-main { max-width: 760px; margin: 0 auto; padding: 32px 20px; }
+.teacher-portal-login { max-width: 440px; margin: 32px auto; padding: 28px; }
+.teacher-portal-login form { display: grid; gap: 18px; margin: 24px 0; }
+.teacher-portal-login input { width: 100%; min-height: 44px; }
+.teacher-portal-title { margin-bottom: 24px; }
+.teacher-portal-title h1 { margin-bottom: 8px; }
+.teacher-date-nav { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+.teacher-date-nav button { min-width: 44px; min-height: 44px; }
+.teacher-date-label { font-size: 19px; margin: 26px 0 16px; text-transform: capitalize; }
+.teacher-day { list-style: none; padding: 0; display: grid; gap: 12px; }
+.teacher-day li { display: grid; grid-template-columns: 60px 1fr; gap: 18px; padding: 20px; align-items: center; }
+.teacher-day h3, .teacher-day p { margin: 4px 0; }
+.teacher-period { font-size: 28px; font-weight: 600; border-right: 1px solid var(--line); }
+.teacher-period span { display: block; font-size: 13px; font-weight: normal; }
+.teacher-empty { padding: 24px; }
+@media (max-width: 520px) {
+  .teacher-portal-main { padding: 24px 16px; }
+  .teacher-portal-login { margin: 12px 0; padding: 20px; }
+  .teacher-day li { padding: 16px; gap: 12px; }
+  .teacher-access-table table, .teacher-access-table tbody, .teacher-access-table tr, .teacher-access-table td, .teacher-access-table th { display: block; }
+  .teacher-access-table thead { display: none; }
+  .teacher-access-table tr { border: 1px solid var(--line); border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+  .teacher-access-table th, .teacher-access-table td { border: 0; padding: 6px; }
+  .teacher-access-table input[type=email] { min-width: 0; }
+  .teacher-access-table td:nth-child(3)::before { content: 'Email di accesso'; display: block; margin-bottom: 6px; }
+}
+.teacher-date-nav .ui-field { width: auto; flex: 1 1 160px; max-width: 220px; }
+.testing-ribbon ~ .teacher-portal .teacher-portal-header { padding-right: 90px; }
+
+.teacher-access-toolbar { position: sticky; top: var(--bar-h, 56px); z-index: 10; display: grid; gap: 10px; padding: 16px; margin: 18px 0; border: 1px solid var(--line); border-radius: var(--control-radius); background: var(--pan); box-shadow: 0 3px 8px var(--shadow-soft); }
+.teacher-access-toolbar .ui-actions { align-items: center; }
+.teacher-access-toolbar small { color: var(--mute); line-height: 1.5; }
+.teacher-access-toolbar a.ui-button, .auth-alternative a.ui-button { text-decoration: none; }
+.teacher-access-filters { margin-top: 20px; }
+.teacher-access-filters .ui-field:last-child { flex: 0 1 200px; }
+.teacher-access-status { display: inline-block; font-size: 12px; white-space: nowrap; padding: 5px 8px; border: 1px solid var(--line); border-radius: var(--control-radius); }
+.teacher-access-status.is-active { border-color: var(--acc); color: var(--acc); }
+.teacher-pin-list { display: grid; gap: 10px; margin: 16px 0; max-height: 320px; overflow-y: auto; }
+.teacher-pin-list > div { display: grid; grid-template-columns: minmax(120px,1fr) minmax(160px,1fr) auto; align-items: center; gap: 12px; border-bottom: 1px solid var(--line); }
+.teacher-pin-list output { font-size: 20px; }
+.auth-alternative { display: grid; gap: 12px; margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line); }
+.auth-alternative p { margin: 0; color: var(--mute); font-size: 13px; }
+.auth-alternative .ui-button { width: 100%; min-height: 44px; }
+.teacher-pin-visibility { margin-top: -8px; }
+@media (max-width: 520px) {
+  .teacher-access-table td:first-child { float: right; }
+  .teacher-pin-list > div { grid-template-columns: 1fr; gap: 4px; padding: 10px 0; }
+  .teacher-access-toolbar { padding: 12px; }
+}

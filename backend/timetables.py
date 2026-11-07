@@ -2,10 +2,11 @@
 from copy import deepcopy
 from datetime import date, timedelta
 from hashlib import sha256
+from bisect import bisect_right
 import json
 
 from .domain import normalize_dataset, lesson, rows, validate_assignment, HOURS, SITES
-from . import statistics, overrides, receptions
+from . import statistics, overrides, receptions, appointments
 
 
 def digest(value):
@@ -35,25 +36,44 @@ def dataset(history, day):
             selected['teachers'][i] = dict(teacher, retired=True)
     selected['classes'] = sorted(classes)
     selected['receptions'] = receptions.on_day(history.get('_receptions', receptions.empty()), day)
-    return selected
+    return appointments.resolve(selected, history.get('_appointments', appointments.empty()), day)
 
 
 def dates(state, facts):
     return sorted(set(facts['days']).union(*(set(v) for k, v in state.items() if k not in ('manualPermits', 'manualPermitNotes', 'paidAvailability'))))
 
 
+def resolver(history):
+    """Reuse immutable effective timetables within one operation."""
+    boundaries = sorted(set(appointments.boundaries(history)) | {
+        v['effective'] for v in history.get('_receptions', receptions.empty())['versions']})
+    cached = {}
+    def resolve(day):
+        period = bisect_right(boundaries, day)
+        if period not in cached:
+            cached[period] = dataset(history, day)
+        return cached[period]
+    return resolve
+
+
 def sync(history, state, facts, days=None, reconstructed=False, revalidate=False):
     result = deepcopy(facts)
+    resolve = resolver(history)
     for day in days if days is not None else dates(state, facts):
-        result = statistics.sync(dataset(history, day), state, result, [day], reconstructed=reconstructed, revalidate=revalidate)
+        result = statistics.sync(resolve(day), state, result, [day], reconstructed=reconstructed, revalidate=revalidate)
     return result
 
 
-def issues(ds, state, day, policies=None):
+def issues(ds, state, day, policies=None, keys=None):
     result = []
-    for key, a in state['asg'].get(day, {}).items():
+    assignments = state['asg'].get(day, {})
+    if keys is not None:
+        assignments = {k: a for k, a in assignments.items() if k in keys}
+    if not assignments: return result
+    daily_rows = {r['k']: r for r in rows(ds, state, day)}
+    for key, a in assignments.items():
         try:
-            validate_assignment(ds, state, day, key, a['v'], policies, exceptional=bool(a.get('exceptional')), saved=True)
+            validate_assignment(ds, state, day, key, a['v'], policies, exceptional=bool(a.get('exceptional')), saved=True, daily_rows=daily_rows)
         except ValueError as exc:
             result.append(dict(key=key, message=str(exc)))
     return result
@@ -79,11 +99,11 @@ def conflict_context(history, day, key, assignment):
 
 
 def reference_issues(history, state, day):
-    active = version(history, day)['dataset']
+    active = dataset(history, day)
     messages = []
     for group in ('abs', 'permessi', 'dis', 'cf'):
         for identifier in state[group].get(day, {}):
-            if identifier not in (active['classes'] if group == 'cf' else active['teachers']):
+            if identifier not in (active['classes'] if group == 'cf' else active['teachers']) or group != 'cf' and active['teachers'].get(identifier, {}).get('retired'):
                 messages.append(dict(group=group, id=identifier, message='Classe o docente non presente nella versione di orario attiva. Registrazione conservata.'))
     return messages
 
@@ -103,6 +123,7 @@ def plan(history, ds, effective, state, facts, policies):
     proposed['versions'].append(new)
     proposed['versions'].sort(key=lambda v: v['effective'] or '')
     proposed['_overrides'], override_report = overrides.reconcile(proposed.get('_overrides', overrides.empty()), proposed)
+    appointments.validate(proposed.get('_appointments', appointments.empty()), proposed)
     later = next((v['effective'] for v in proposed['versions'] if v['effective'] and v['effective'] > effective), None)
     affected = [d for d in dates(state, facts) if d >= effective and (later is None or d < later)]
     old_ds = version(history, effective)['dataset']
@@ -170,7 +191,7 @@ def validate_dataset(ds):
     return ds
 
 
-def validate(history):
+def validate(history, staffing=None):
     try:
         if not isinstance(history, dict) or set(history) != {'schema', 'versions', 'corrections'} or type(history['schema']) is not int or history['schema'] != 1 or not isinstance(history['versions'], list) or not history['versions'] or not isinstance(history['corrections'], list):
             raise ValueError()
@@ -189,6 +210,8 @@ def validate(history):
             validate_dataset(v['dataset'])
         if effective != sorted(set(effective)):
             raise ValueError()
+        if staffing is not None:
+            history['_appointments'] = appointments.validate(staffing, history)
         corrected = set()
         versions_by_id = {v['id']: v for v in history['versions']}
         for correction in history['corrections']:

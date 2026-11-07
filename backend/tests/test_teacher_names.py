@@ -54,6 +54,7 @@ class TeacherNamesTest(unittest.TestCase):
             display = f"{value['name']} ({value['originalName']})" if value else 'rp'
             for endpoint in ['/api/orari', '/api/day/' + DAY, '/api/permessi']:
                 self.assertEqual(self.client.get(endpoint).json()['dataset']['teachers']['rp']['name'], display)
+            self.assertEqual(self.client.get('/api/staffing').json()['people']['rp']['name'], display)
             actual = self.client.get('/api/candidates', params=dict(day=DAY, key='absent|2|1A')).json()
             self.assertEqual([{k: v for k, v in c.items() if k != 'name'} for c in actual],
                              [{k: v for k, v in c.items() if k != 'name'} for c in original_candidates])
@@ -97,7 +98,7 @@ class TeacherNamesTest(unittest.TestCase):
     def test_archive_import_restart_and_backup(self):
         self.save(self.value).raise_for_status()
         archive = self.client.get('/api/export').json()
-        self.assertEqual(archive['schema'], 8)
+        self.assertEqual(archive['schema'], 11)
         self.save(None, self.value).raise_for_status()
         self.client.post('/api/import', json=archive).raise_for_status()
         legacy = dict(archive, schema=5)

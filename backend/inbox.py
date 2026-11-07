@@ -1,4 +1,5 @@
 """Google Form discovery and review; importing this module performs no I/O."""
+from . import attribution
 import asyncio
 from collections import Counter
 from contextlib import asynccontextmanager, nullcontext
@@ -13,7 +14,7 @@ from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, Query, Request
-from . import timetables, teacher_names, attachments
+from . import timetables, teacher_names, attachments, appointments
 from .domain import HOURS, absences
 
 HEADERS = ['Informazioni cronologiche', 'Quale caso vuoi comunicare?', 'Nome del docente',
@@ -194,11 +195,11 @@ class Inbox:
             await task
             self.wake = None
 
-    def item(self, db, identifier):
+    def item(self, db, identifier, accounts=None):
         row = db.execute('SELECT id,raw,status,processed,teacher,accepted_by FROM inbox WHERE id=?', (identifier,)).fetchone()
         if row is None:
             raise HTTPException(404, 'Comunicazione non trovata.')
-        return dict(id=row[0], raw=json.loads(row[1]), status=row[2], processed=row[3], teacher=row[4], acceptedBy=json.loads(row[5]) if row[5] else None)
+        return dict(id=row[0], raw=json.loads(row[1]), status=row[2], processed=row[3], teacher=row[4], acceptedBy=attribution.resolve(json.loads(row[5]), accounts) if row[5] else None)
 
     def preview(self, db, item, selected=None):
         result = dict(item, **parse(item['raw']))
@@ -215,12 +216,17 @@ class Inbox:
                           teachers=[dict(id=i, name=t['name']) for i, t in sorted(display.items(), key=lambda p: p[1]['name'])])
             if teacher not in teachers:
                 raise ValueError('Seleziona il docente: nome sconosciuto o ambiguo.')
-            history = self.store.read(db, 'timetables')
             overlaps = []
             for day in result['days']:
-                if teacher not in timetables.version(history, day)['dataset']['teachers']:
+                dated, _ = self.load(db, day)
+                person = dated['teachers'].get(teacher, {})
+                if person.get('coveredBy') and not (selected or item['teacher']):
+                    raise ValueError('Docente originale coperto: conferma esplicitamente la persona in anteprima.')
+                if dated['teachers'].get(teacher, {}).get('replaces') != teachers[teacher].get('replaces'):
+                    raise ValueError('Intervallo tra diverse supplenze: separa le registrazioni.')
+                if teacher not in dated['teachers'] or person.get('retired'):
                     raise ValueError('Docente non attivo in data ' + day + '.')
-                overlaps.append(dict(day=day, hours=sorted(set(absences(state, day).get(teacher, [])) & set(result['hours']))))
+                overlaps.append(dict(day=day, hours=sorted(set(absences(state, day, dated).get(teacher, [])) & set(result['hours']))))
             result['overlaps'] = overlaps
         except ValueError as exc:
             result['error'] = str(exc)
@@ -302,18 +308,19 @@ class Inbox:
                 db.execute('BEGIN')
                 query = "SELECT id FROM inbox WHERE " + ("status!='pending'" if history else "status='pending'") + ' ORDER BY rowid DESC'
                 ids = db.execute(query + ' LIMIT 26 OFFSET ?', ((page - 1) * 25,)).fetchall() if page is not None else db.execute(query).fetchall()
+                accounts = self.identities.authors()[0] if self.identities else {}
                 selected = ids[:25] if page is not None else ids
                 if history:
                     # Processed entries need display data, not fresh acceptance validation.
                     timetable_history = self.store.read(db, 'timetables')
-                    catalog = {i: t for v in timetable_history['versions'] for i, t in v['dataset']['teachers'].items()} if timetable_history else {}
+                    catalog = appointments.catalog(dict(timetable_history, _appointments=self.store.read(db, 'teacherAppointments', appointments.empty()))) if timetable_history else {}
                     names = teacher_names.teachers(catalog, self.store.read(db, 'teacherNameOverrides', teacher_names.empty()))
                     items = []
                     for row in selected:
-                        item = self.item(db, row[0])
+                        item = self.item(db, row[0], accounts)
                         items.append(dict(item, **parse(item['raw']), teacherName=names.get(item['teacher'], {}).get('name')))
                 else:
-                    items = [self.preview(db, self.item(db, r[0])) for r in selected]
+                    items = [self.preview(db, self.item(db, r[0], accounts)) for r in selected]
                 return dict(items=items, hasMore=len(ids) > 25) if page is not None else items
 
         @app.post('/api/inbox/{identifier}/preview')
@@ -322,7 +329,7 @@ class Inbox:
                 raise ValueError('Docente non valido.')
             with self.store.connect() as db:
                 db.execute('BEGIN')
-                return self.preview(db, self.item(db, identifier), data.get('teacher'))
+                return self.preview(db, self.item(db, identifier, self.identities.authors()[0] if self.identities else {}), data.get('teacher'))
 
         @app.post('/api/inbox/{identifier}/{action}')
         def process(identifier: str, action: str, data: dict, request: Request):
@@ -335,14 +342,14 @@ class Inbox:
                 item = self.item(db, identifier)
                 if item['status'] != 'pending':
                     if item['status'] == ('accepted' if action == 'accept' else 'ignored'):
-                        return dict(ok=True, status=item['status'], alreadyProcessed=True, acceptedBy=item.get('acceptedBy'))
+                        return dict(ok=True, status=item['status'], alreadyProcessed=True, acceptedBy=attribution.resolve(item.get('acceptedBy'), self.identities.authors()[0] if self.identities else {}))
                     raise HTTPException(409, 'Comunicazione già elaborata. Aggiorna Inbox.')
                 teacher = None
                 if action == 'accept':
                     result = self.preview(db, item, data.get('teacher'))
                     if result['error']:
                         raise ValueError(result['error'])
-                    if 'classification' in data and data['classification'] not in (None, 'planned', 'last_minute', 'trip', 'strike'):
+                    if 'classification' in data and data['classification'] not in (None, 'planned', 'last_minute', 'trip', 'strike', 'assembly'):
                         raise ValueError('Classificazione non valida.')
                     if 'note' in data and not isinstance(data['note'], str):
                         raise ValueError('Note non valide.')

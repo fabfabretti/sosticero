@@ -1,5 +1,5 @@
 import { Loading } from './Loading';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { todayInRome } from './StatsCalendar';
 
 type Impact = { generation?: number;
@@ -13,6 +13,9 @@ type Impact = { generation?: number;
 export function TimetableImport({ api, onImported }: { api: <T>(url: string, body?: unknown) => Promise<T>; onImported: () => void }) {
   const [effective, setEffective] = useState(todayInRome()), [file, setFile] = useState<{name: string; data: unknown}>(),
     [impact, setImpact] = useState<Impact>(), [error, setError] = useState(''), [busy, setBusy] = useState(false), [success, setSuccess] = useState('');
+  const [sourcePeople, setSourcePeople] = useState<Record<string, { name: string }>>({});
+  const [teacherSources, setTeacherSources] = useState<Record<string, string>>({});
+  useEffect(() => { void api<{ people: Record<string, { name: string }> }>('staffing').then(v => setSourcePeople(v.people)).catch(() => {}); }, [api]);
   const request = useRef(0);
   const invalidate = () => { request.current++; setImpact(undefined); setError(''); setSuccess(''); };
   const preview = async () => {
@@ -20,7 +23,7 @@ export function TimetableImport({ api, onImported }: { api: <T>(url: string, bod
     const n = ++request.current;
     setBusy(true); setError(''); setImpact(undefined); setSuccess('');
     try {
-      const next = await api<Impact>('timetable/preview?' + new URLSearchParams({effective}), file.data);
+      const next = await api<Impact>('timetable/preview?' + new URLSearchParams({effective}), { ...(file.data as object), teacherSources });
       if (n === request.current) setImpact(next);
     } catch (e) { if (n === request.current) setError(String(e)); }
     finally { if (n === request.current) setBusy(false); }
@@ -30,7 +33,7 @@ export function TimetableImport({ api, onImported }: { api: <T>(url: string, bod
     if (!window.confirm(`Importare ${file.name} con decorrenza ${effective}? Le registrazioni coinvolte saranno ricalcolate e le assegnazioni conservate, con eventuali conflitti da risolvere.`)) return;
     setBusy(true); setError('');
     try {
-      const result = await api<{backup: {filename: string}}>('timetable?' + new URLSearchParams({effective, token: impact.token, confirm: 'true'}), { ...(file.data as object), _generation: impact.generation });
+      const result = await api<{backup: {filename: string}}>('timetable?' + new URLSearchParams({effective, token: impact.token, confirm: 'true'}), { ...(file.data as object), teacherSources, _generation: impact.generation });
       setImpact(undefined); setFile(undefined); setSuccess('Orario importato. Backup precedente: ' + result.backup.filename); onImported();
     } catch (e) { setError(String(e)); setImpact(undefined); }
     finally { setBusy(false); }
@@ -41,14 +44,14 @@ export function TimetableImport({ api, onImported }: { api: <T>(url: string, bod
     <p>Seleziona il JSON completo di docenti e lezioni. Ogni versione vale dalla decorrenza fino alla successiva; gli ID dei docenti devono restare stabili.</p>
     <label>Decorrenza <input type="date" value={effective} disabled={busy} required onChange={e => { invalidate(); setEffective(e.target.value); }} /></label>
     <label>Orario JSON completo <input type="file" accept=".json,application/json" disabled={busy} onChange={async e => {
-      invalidate(); setFile(undefined); const n = request.current, selected = e.target.files?.[0];
+      invalidate(); setFile(undefined); setTeacherSources({}); const n = request.current, selected = e.target.files?.[0];
       if (!selected) return;
       setBusy(true);
       try { const data = JSON.parse(await selected.text()); if (n === request.current) setFile({name: selected.name, data}); }
       catch { if (n === request.current) setError('File JSON non valido.'); }
       finally { if (n === request.current) setBusy(false); }
     }} /></label>
-    {file && <p>{file.name}</p>}
+    {file && <><p>{file.name}</p><details><summary>Riconcilia ID docenti cambiati (facoltativo)</summary><p>Se un ID è cambiato, abbina la nuova sorgente alla persona originale della cattedra. Non trasferisce permessi o saldi.</p>{((file.data as { docenti?: { id: string; nome_originale?: string }[] }).docenti || []).map(t => <label key={t.id}>{t.nome_originale || t.id} · {t.id}<select value={teacherSources[t.id] || ''} onChange={e => { invalidate(); const next={ ...teacherSources }; if(e.target.value) next[t.id]=e.target.value; else delete next[t.id]; setTeacherSources(next); }}><option value="">Mantieni ID importato</option>{Object.entries(sourcePeople).map(([i,p]) => <option key={i} value={i}>{p.name}</option>)}</select></label>)}</details></>}
     <button className="ui-button ui-button-primary" disabled={busy || !file || !effective} onClick={preview}>{busy ? <Loading label="Elaborazione…" reserve="Mostra anteprima" /> : 'Mostra anteprima'}</button>
     {error && <p className="ui-notice ui-notice-error" role="alert">{error} Genera nuovamente l’anteprima prima di confermare.</p>}
     {success && <p className="ui-notice" role="status">{success}</p>}

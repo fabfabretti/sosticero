@@ -139,7 +139,7 @@ class PublicationApiTest(unittest.TestCase):
         with patch.object(self.app.state.publisher, 'start') as start:
             self.assertEqual(self.anonymous.post('/api/publication',json={'day':DAY},headers={'Origin':'http://localhost'}).status_code,401)
             for client,campus in [(self.central,'centrale'),(self.branch,'succursale')]:
-                response=client.post('/api/publication',json={'day':DAY})
+                response=client.post('/api/publication',json={'day':DAY,'campus':campus})
                 self.assertEqual(response.status_code,202,response.text)
                 self.assertEqual(start.call_args.args,(DAY,campus))
             count=start.call_count
@@ -152,7 +152,7 @@ class PublicationApiTest(unittest.TestCase):
 
     def test_missing_configuration_is_actionable(self):
         self.app.state.publisher.cloud.token=''
-        response=self.central.post('/api/publication',json={'day':DAY})
+        response=self.central.post('/api/publication',json={'day':DAY,'campus':'centrale'})
         self.assertEqual(response.status_code,503)
 
     def test_schedule_read_shared_and_written_only_by_centrale(self):

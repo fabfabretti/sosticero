@@ -53,12 +53,12 @@ export function RecoveryActions({ day, row, assignment, permit, busy, canAssign,
         onClick={() => { if (!busy && canAssign) onAccept(); }}>
         {assignment.accepted && <span aria-hidden="true">✓ </span>}Accettata
       </button>
-      <button type="button" aria-label={`Copia richiesta recupero permesso ${row.c}, ${row.h}ª ora`}
+      {assignment.t === "RP" && <button type="button" aria-label={`Copia richiesta recupero permesso ${row.c}, ${row.h}ª ora`}
         title={permit ? "Copia richiesta recupero permesso" : missing} disabled={!permit}
         aria-describedby={!permit ? `recovery-${row.k}` : undefined} onClick={() => void copy()}>
         <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="13" rx="2" fill="none" stroke="currentColor" strokeWidth="1.6"/><path d="M15 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h3" fill="none" stroke="currentColor" strokeWidth="1.6"/></svg>
-      </button>
+      </button>}
     </span>
-    <small id={`recovery-${row.k}`} role="status">{!permit ? missing : feedback}</small>
+    {assignment.t === "RP" && <small id={`recovery-${row.k}`} role="status">{!permit ? missing : feedback}</small>}
   </span>;
 }

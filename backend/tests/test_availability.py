@@ -102,7 +102,7 @@ class AvailabilityTest(unittest.TestCase):
         self.state['cf'] = {'2026-10-12': {'1A': [1]}}
         self.state['asg'] = {'2026-10-12': {'absent|2|1A': dict(v='blank', t='D', c='1A')}}
         self.assertEqual(result, self.report('centrale'))
-        self.assertTrue(all(not c['recovery'] for c in self.report(selected=date(2026, 10, 19))['cells']))
+        self.assertTrue(all(not c['recovery'] for c in self.report(selected=date(2026, 11, 16))['cells']))
         self.state['asg']['2026-10-12']['absent|2|1A'].update(t='RP', permitId='permit')
         self.assertEqual(self.cell(self.report())['recovery'], [])
 

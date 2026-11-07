@@ -1,3 +1,5 @@
+from backend.auth import Identities
+import secrets
 from backend.tests.timetable_helpers import import_version
 import os
 from pathlib import Path
@@ -33,6 +35,7 @@ class DatabaseIsolationTest(unittest.TestCase):
 
     def test_production_directory_remains_protected_when_database_name_changes(self):
         with tempfile.TemporaryDirectory() as directory:
+            Identities(Path(directory)/'auth.sqlite').create('admin','Admin',None,secrets.token_urlsafe(24),admin=True,protected=True)
             with patch.dict(os.environ, {'APP_ENV': 'production', 'BACKUP_ON_STARTUP': 'false'}):
                 create_app(Path(directory) / 'real.sqlite')
             with patch.dict(os.environ, {'APP_ENV': 'testing'}):
@@ -42,6 +45,7 @@ class DatabaseIsolationTest(unittest.TestCase):
 
     def test_production_timetable_import_requires_confirmation_and_preserves_records(self):
         with tempfile.TemporaryDirectory() as directory:
+            Identities(Path(directory)/'auth.sqlite').create('admin','Admin',None,secrets.token_urlsafe(24),admin=True,protected=True)
             with patch.dict(os.environ, {'APP_ENV': 'production', 'BACKUP_ON_STARTUP': 'false'}):
                 client = TestClient(create_app(Path(directory) / 'real.sqlite'))
             client.post('/api/timetable?confirm=true', json=fixture()).raise_for_status()

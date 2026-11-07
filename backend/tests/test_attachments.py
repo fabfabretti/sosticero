@@ -121,7 +121,7 @@ class AttachmentsTest(unittest.TestCase):
     def test_archives_backup_and_timetable(self):
         self.entry(attachment=image(), until='2026-10-13').raise_for_status()
         url = self.url(); archive = self.state()
-        self.assertEqual(archive['schema'], 8)
+        self.assertEqual(archive['schema'], 11)
         self.client.post('/api/import', json=archive).raise_for_status()
         self.assertEqual(archive, self.state())
         for change in ('missing', 'orphan', 'source', 'corrupt', 'old', 'unknown', 'invalid-id'):
@@ -136,7 +136,7 @@ class AttachmentsTest(unittest.TestCase):
             if change == 'source': bad['absenceAttachments'][DAY]['unknown'] = next(iter(bad['attachments']))
             if change == 'corrupt': bad['attachments'][next(iter(bad['attachments']))]['data'] = 'broken'
             if change == 'old': bad['schema'] = 2
-            if change == 'unknown': bad['schema'] = 9
+            if change == 'unknown': bad['schema'] = 12
             self.assertEqual(self.client.post('/api/import', json=bad).status_code, 422)
             self.assertEqual(archive, self.state())
         snapshot = backup.backup_database(str(self.path), str(Path(self.tmp.name) / 'snapshots'))
@@ -159,6 +159,6 @@ class AttachmentsTest(unittest.TestCase):
         self.permit(day='2026-10-05', id='rp', hours=[2], attachment=image()).raise_for_status()
         self.client.post('/api/assignments', json=dict(day=DAY, key='absent|1|1A', value='rp')).raise_for_status()
         before = self.state()
-        result = self.permit(day='2026-09-01', id='rp', hours=[2], original_day='2026-10-05', original_id='rp', attachment=image('JPEG'))
+        result = self.permit(day='2026-08-01', id='rp', hours=[2], original_day='2026-10-05', original_id='rp', attachment=image('JPEG'))
         self.assertEqual(result.status_code, 422)
         self.assertEqual(before, self.state())

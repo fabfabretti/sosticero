@@ -35,7 +35,7 @@ class PermitCreatorsTest(unittest.TestCase):
             moved = '2026-10-19'
             self.save(editor, day=moved, **original).raise_for_status()
             state = self.export()
-            self.assertEqual(state['permitCreators'][moved]['absent'], campus)
+            self.assertEqual(state['permitCreators'][moved]['absent']['username'], 'test-'+campus)
             self.assertNotIn('absent', state['permitCreators'].get(DAY, {}))
             self.save(editor, day=moved, hours=None).raise_for_status()
             self.assertNotIn('absent', self.export()['permitCreators'].get(moved, {}))
@@ -62,3 +62,13 @@ class PermitCreatorsTest(unittest.TestCase):
             bad['permitCreators'] = metadata
             self.assertEqual(self.central.post('/api/import', json=bad).status_code, 422)
             self.assertEqual(self.export(), state)
+
+    def test_display_resolves_renamed_account_without_rewriting_records_or_tokens(self):
+        self.save().raise_for_status()
+        before=self.export()
+        token=self.succ.get('/api/permessi').json()['concurrency']
+        self.central.app.state.identities.change('test-centrale','name','Fabiola Fabretti')
+        response=self.succ.get('/api/permessi').json()
+        self.assertEqual(response['permitCreators'][DAY]['absent']['name'],'Fabiola Fabretti')
+        self.assertEqual(response['concurrency'],token)
+        self.assertEqual(self.export()['permitCreators'],before['permitCreators'])

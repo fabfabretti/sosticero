@@ -84,3 +84,15 @@ test('PDF retains text operators rather than rasterized timetable content', () =
   for (const text of ['Anna', 'Bruno', 'Carla', 'LAB.T / S', 'POT', 'Ricevimento', '21/10/2026', '16/10/2026']) assert.ok(operators.includes(text), text);
   assert.doesNotMatch(operators, /disabilitata|solo in caso di necessità/i);
 });
+
+test('staffing projection keeps originals discoverable and explains excluded POT without adding a commitment', () => {
+  const ds={teachers:{g:{name:'Gambato',coveredBy:'s',continuousAbsence:true},s:{name:'Sicoli',replaces:'g'},i:{name:'Ianzano',continuousAbsence:true}},lessons:{'s|lun|2':{classes:['1A'],site:'centrale'},'i|lun|3':{classes:['2A'],site:'centrale'}},excludedPOT:{'s|lun|1':{activities:['POT']}}};
+  const rows=projectTimetableExport(ds);
+  assert.equal(rows.length,3);
+  const replacement=rows.find(r=>r.name.startsWith('Sicoli'));
+  assert.match(replacement.name,/Supplente di Gambato/);
+  assert.equal(replacement.cells[0][0],'POT non ereditato');
+  assert.equal(replacement.kinds[0][0].activity,null);
+  assert.ok(rows.some(r=>r.name==='Gambato · Coperto da Sicoli'));
+  assert.doesNotThrow(()=>generateTimetablePdf(rows,'2026-10-12',null));
+});

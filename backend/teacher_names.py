@@ -19,13 +19,14 @@ def validate(document, catalog):
 
 
 def catalog(history):
-    return {i for v in history['versions'] for i in v['dataset']['teachers']} if history else set()
+    from .appointments import catalog as people
+    return set(people(history)) if history else set()
 
 
 def teachers(source, document):
     result = {}
     for identifier, teacher in source.items():
-        names = document['teachers'].get(identifier)
+        names = None if teacher.get('managedPerson') else document['teachers'].get(identifier)
         result[identifier] = dict(teacher, importedName=teacher['name'], nameOverride=names,
                                   name=f"{names['name']} ({names['originalName']})") if names else dict(teacher)
     return result
@@ -44,4 +45,4 @@ def matches(source, document, value):
     presented = teachers(source, document)
     return [i for i, teacher in source.items() if wanted in {
         normalize(label) for label in [teacher['name'], presented[i]['name'],
-                                      *document['teachers'].get(i, {}).values()]}]
+                                      *(document['teachers'].get(i, {}).values() if not teacher.get('managedPerson') else [])]}]

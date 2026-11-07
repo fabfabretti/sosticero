@@ -5,6 +5,7 @@ const { readFileSync } = require('node:fs');
 const { runInNewContext } = require('node:vm');
 const ts = require('typescript');
 
+
 // The shared norm()/grid helper main.tsx imports; loaded once for the require map.
 const timetables = (() => {
   const exports = {};
@@ -30,9 +31,9 @@ const tooltip = (() => {
 })();
 
 // Run the actual App handlers with deferred HTTP responses and minimal hook storage.
-function app(localStorage = { getItem: () => null, setItem() {} }, confirm = () => false, campus = 'centrale', entryPath = '/') {
+function app(localStorage = { getItem: () => null, setItem() {} }, confirm = () => false, campus = 'centrale', entryPath = '/', permissions) {
   const effects = [], requests = [], comps = new Map(), timers = [];
-  const listeners = new Map();
+  const listeners = new Map(), inboxCalls = [];
   const document = { documentElement: { dataset: {} }, activeElement: null, visibilityState: 'visible',
     getElementById: () => ({ focus() {} }), querySelectorAll: () => [],
     addEventListener: (name, fn) => { if (!listeners.has(name)) listeners.set(name, new Set()); listeners.get(name).add(fn); },
@@ -94,11 +95,15 @@ function app(localStorage = { getItem: () => null, setItem() {} }, confirm = () 
     document,
     fetch: fetcher,
     require(id) {
+      if (id === './PaidBudgetSettings') return { PaidBudgetSettings: 'paid-budget-settings' };
+      if (id === './TeacherPortal') return { TeacherPortal: 'teacher-portal' };
+      if (id === './Staffing') return { Staffing: 'staffing-management' };
+      if (id === './Administration') return { Administration: 'administration', AdministrationLayout: ({children}) => children, permissionLabel: a => a.campuses.join(' · ') };
       if (id === './attribution') return { authorLabel: a => typeof a === 'string' ? a : a?.name || 'Autore non disponibile' };
       if (id === './Publication') return { Publication: 'publication-controls' };
       if (id === './Loading') return requireLoading;
       if (id === './BuildInfo') return { BuildWarning: () => null, builtAt: '2026-10-28T12:00:00.000Z' };
-      if (id === './Auth') return { Auth: ({children}) => children, useAccount: () => ({ id:'test', username:'test', name:'Test', campus }) };
+      if (id === './Auth') return { Auth: ({children}) => children, useAccount: () => ({ id:'test', username:'test', name:'Test', admin:campus==='centrale', campuses:[campus], ...permissions }) };
       if (id === './session') return { requestApi: async (url, body) => {
         const response = await fetcher('/api/'+url, body === undefined ? undefined : {method:'POST',body:JSON.stringify(body)});
         const data = await response.json(); if (!response.ok) throw new ApiErrorClass(response.status,data.detail); return data;
@@ -136,7 +141,7 @@ function app(localStorage = { getItem: () => null, setItem() {} }, confirm = () 
         return exports;
       }
       if (id === './Attachments') return { AttachmentField: 'attachment-field', RecordInfo: 'record-info' };
-      if (id === './Inbox') return { AbsenceInbox: 'absence-inbox', SheetsSettings: 'sheets-settings', InboxNotice: () => null, useInboxStatus: () => inboxStatus };
+      if (id === './Inbox') return { AbsenceInbox: 'absence-inbox', SheetsSettings: 'sheets-settings', InboxNotice: () => null, useInboxStatus: (_api, enabled) => { inboxCalls.push(enabled); return inboxStatus; } };
       if (id === './Stats') return { Stats: 'stats' };
       if (id === './TeacherTimetables') return { TeacherTimetables: 'teacher-timetables' };
       if (id === './Display') return { Display: 'public-display' };
@@ -175,7 +180,7 @@ function app(localStorage = { getItem: () => null, setItem() {} }, confirm = () 
     effects.splice(0).forEach(fn => fn());
     return nodes;
   }
-  return { render, requests, inboxStatus, document, timers, key: e => { for (const fn of listeners.get("keydown") || []) fn(e); }, go: p => {
+  return { render, requests, inboxStatus, inboxCalls, document, timers, key: e => { for (const fn of listeners.get("keydown") || []) fn(e); }, go: p => {
     const screen = path => ['/permessi', '/settings', '/stats', '/banca-ore', '/orari'].includes(path) ? path : '/';
     if (screen(p) !== screen(pathname)) for (const component of comps.keys()) {
       if (['Supplenze', 'Permessi', 'Settings', 'BackupSection'].includes(component?.name)) comps.delete(component);
@@ -190,6 +195,11 @@ test('direct display bypasses operational shell, Inbox and day loading without a
   assert.ok(nodes.some(n => n.type === 'public-display'));
   assert.ok(!nodes.some(n => n.type === 'nav' || n.type === 'teacher-timetables'));
   assert.equal(a.requests.length, 0);
+});
+test('direct teacher portal bypasses office authentication, Inbox and school-wide requests', () => {
+  const a = app(undefined, undefined, undefined, '/docenti');
+  assert.ok(a.render().some(n => n.type === 'teacher-portal'));
+  assert.equal(a.requests.length, 0); assert.equal(a.inboxCalls.length, 0);
 });
 const row = { k: 'r', id: 't', ids: ['t'], h: 1, c: '1A', aula: null, sede: 'centrale' };
 const data = {
@@ -408,8 +418,9 @@ test('entry and exit assignments display every supplied period time', async () =
   }
 });
 
-test('reminds about next-day class entry and exit changes', async () => {
+test('reminds about next-school-day class entry and exit changes', async () => {
   const tomorrow = new Date(now.getTime() + 864e5);
+  while (tomorrow.getDay() === 0 || tomorrow.getDay() === 6) tomorrow.setDate(tomorrow.getDate() + 1);
   const tomorrowYmd = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, "0")}-${String(tomorrow.getDate()).padStart(2, "0")}`;
   const a = await loaded({
     state: { abs: {}, cf: {}, dis: {}, disSites: {}, asg: {
@@ -468,7 +479,7 @@ test('co-absent teachers render as one merged label', async () => {
 const tabLinks = a => a.render().filter(n => n.type === 'a' && n.props?.href?.startsWith('#/'));
 const currentTab = a => tabLinks(a).find(l => l.props.className === 'on');
 
-test('shell shows brand, glasses icon and seven tabs, defaulting to Supplenze', async () => {
+test('shell shows brand, glasses icon and administrator navigation, defaulting to Supplenze', async () => {
   const a = await loaded();
   assert.ok(a.render().find(n => n.props?.className === 'bar'), 'top bar present');
   const svg = a.render().find(n => n.type === 'svg' && n.props?.viewBox === '0 0 24 24');
@@ -483,6 +494,7 @@ test('shell shows brand, glasses icon and seven tabs, defaulting to Supplenze', 
     ['#/stats', 'Statistiche'],
     ['#/inbox', 'Inbox'],
     ['#/settings', 'Impostazioni'],
+    ['#/amministrazione/account', 'Amministrazione'],
   ]);
   assert.equal(currentTab(a).props.href, '#/', 'home tab is current');
   assert.ok(a.render().some(n => n.props?.className === 'fill ph'), 'substitution screen renders');
@@ -967,30 +979,30 @@ test('TESTING ribbon stays until the backend confirms production', async () => {
 });
 
 test('Settings delegates timetable imports to the reviewed version import flow', () => {
-  const a = app(); a.go('/settings');
+  const a = app(); a.go('/amministrazione/configurazione');
   const importer = a.render().find(n => n.type === 'timetable-import');
   assert.equal(typeof importer.props.api, 'function');
   assert.equal(typeof importer.props.onImported, 'function');
   assert.equal(a.requests.filter(r => r.url.startsWith('/api/timetable')).length, 0);
 });
 
-test('Settings groups share independent native disclosures and theme changes preserve workflow identity', () => {
-  const a = app(); a.go('/settings');
+test('Administration configuration groups use independent native disclosures', () => {
+  const a = app(); a.go('/amministrazione/configurazione');
   const nodes = a.render();
-  assert.deepEqual(nodes.filter(node => node.props?.className === 'settings-group-title').map(node => node.props.children), ['Orari e ricevimenti', 'Regole supplenze', 'Collegamenti', 'Pubblicazione', 'Dati e backup', 'Aspetto']);
+  assert.deepEqual(nodes.filter(node => node.props?.className === 'settings-group-title').map(node => node.props.children), ['Orari e ricevimenti', 'Regole supplenze', 'Collegamenti', 'Pubblicazione', 'Dati e backup']);
   const groups = nodes.filter(node => node.props?.className?.split(' ').includes('settings-group'));
-  assert.equal(groups.length, 6);
+  assert.equal(groups.length, 5);
   assert.ok(groups.every(node => node.type === 'details' && !node.props.open && !node.props.name));
   assert.equal(a.requests.filter(request => request.options?.method === 'POST').length, 0);
   const importer = nodes.find(node => node.type === 'timetable-import');
-  nodes.find(node => node.type === 'button' && node.props.children === 'Chiaro / scuro').props.onClick();
+  a.render();
   assert.equal(a.render().find(node => node.type === 'timetable-import').type, importer.type);
   assert.equal(a.requests.filter(request => request.options?.method === 'POST').length, 0);
 });
 
 test('Settings backup restore requires a named confirmation and exposes failures without removing the backup', async () => {
   let accepted = false; const prompts = [];
-  const a = app(undefined, message => { prompts.push(message); return accepted; }); a.go('/settings'); a.render();
+  const a = app(undefined, message => { prompts.push(message); return accepted; }); a.go('/amministrazione/configurazione'); a.render();
   a.requests.find(request => request.url === '/api/backups').resolve([{filename:'before.sqlite', created_at:'2026-10-21T09:00:00', size:2048}]);
   await settle();
   let restore = a.render().find(node => node.type === 'button' && node.props.children === 'Ripristina');
@@ -1007,12 +1019,12 @@ test('Settings backup restore requires a named confirmation and exposes failures
   a.requests.filter(request => request.url === '/api/backups/restore').at(-1).resolve({ok:true}); await settle();
   a.requests.filter(request => request.url === '/api/backups').at(-1).resolve([{filename:'before.sqlite', created_at:'2026-10-21T09:00:00', size:2048}]); await settle();
   assert.ok(a.render().some(node => node.props?.role === 'status' && node.props.children === 'Backup ripristinato con successo.'));
-  assert.ok(a.requests.filter(request => request.url.startsWith('/api/day/')).length > 1, 'successful restore refreshes Settings data');
+  assert.ok(a.requests.filter(request => request.url === '/api/settings/overview').length > 1, 'successful restore refreshes Settings data');
 });
 
 test('Settings JSON restore names the file and cancel performs no import', async () => {
-  const prompts = []; const a = app(undefined, message => { prompts.push(message); return false; }); a.go('/settings'); a.render();
-  a.requests.find(request => request.url.startsWith('/api/day/')).resolve(data); await settle();
+  const prompts = []; const a = app(undefined, message => { prompts.push(message); return false; }); a.go('/amministrazione/configurazione'); a.render();
+  a.requests.find(request => request.url === '/api/settings/overview').resolve(data); await settle();
   a.render().find(node => node.props?.type === 'file' && node.props.accept === '.json,application/json').props.onChange({target:{files:[{name:'archive.json',text:async()=>'{"schema":7}'}]}});
   await settle();
   a.requests.find(request => request.url === '/api/import/preview').resolve({overrides:[]}); await settle();
@@ -1388,6 +1400,43 @@ test('a successful write followed by a failed reload offers retry without repeat
   assert.ok(a.requests.every(r=>r.url.startsWith('/api/day/')),'retry reads rather than repeating the write');
 });
 
+
+test('admin-only and no-role shells do not mount operational pages or enable Inbox polling', () => {
+  const admin = app(undefined, undefined, 'centrale', '/', {admin:true, campuses:[]});
+  const nodes = admin.render();
+  assert.ok(nodes.some(n => n.type === 'administration'));
+  assert.deepEqual(tabLinks(admin).map(n => n.props.href), ['#/settings', '#/amministrazione/account']);
+  assert.ok(admin.inboxCalls.every(enabled => enabled === false));
+  assert.ok(!admin.requests.some(r => /day\/|inbox/.test(r.url)));
+  const none = app(undefined, undefined, 'centrale', '/', {admin:false, campuses:[]});
+  assert.ok(none.render().some(n => n.type === 'h1' && n.props.children === 'Nessun accesso assegnato'));
+  assert.ok(none.inboxCalls.every(enabled => enabled === false));
+  assert.equal(none.requests.length, 0);
+});
+test('nonadministrator direct administration URL renders only a permitted operational page', () => {
+  const user=app(undefined, undefined, 'succursale', '/amministrazione/account');
+  assert.ok(!user.render().some(n => n.type === 'administration'));
+  assert.ok(user.requests.some(r => r.url.startsWith('/api/day/')));
+});
+
+test('personal Settings contains only appearance and makes no configuration requests', () => {
+  for (const account of [{admin:true,campuses:[]}, {admin:false,campuses:['succursale']}]) {
+    const a = app(undefined, undefined, 'succursale', '/settings', account);
+    a.go('/settings');
+    const nodes = a.render();
+    assert.deepEqual(nodes.filter(n => n.props?.className === 'settings-group-title').map(n => n.props.children), ['Aspetto']);
+    assert.equal(a.requests.length, 0);
+    nodes.find(n => n.type === 'button' && n.props.children === 'Chiaro / scuro').props.onClick();
+    assert.equal(a.document.documentElement.dataset.theme, 'dark');
+  }
+});
+test('configuration direct URL is restricted to administrators', () => {
+  const a = app(undefined, undefined, 'succursale', '/amministrazione/configurazione');
+  a.go('/amministrazione/configurazione');
+  assert.ok(!a.render().some(n => n.type === 'h1' && n.props.children === 'Configurazione'));
+  assert.ok(!a.requests.some(r => r.url === '/api/settings/overview'));
+});
+
 test('permit pagination follows global ordering and filtering', async () => {
   const records = Object.fromEntries(Array.from({length: 51}, (_, i) => [`2026-${String(1 + Math.floor(i / 28)).padStart(2, '0')}-${String(1 + i % 28).padStart(2, '0')}`, {t:[1]}]));
   const a = await permitsLoaded(records);
@@ -1409,4 +1458,43 @@ test('permit pagination follows global ordering and filtering', async () => {
   assert.ok(content(a.render()).includes('Pagina 1 di 1 · 0 permessi'));
   a.render().find(n => n.props?.['aria-label'] === 'Filtra per inserito da').props.onChange({target:{value:''}});
   assert.equal(rows().length, 25);
+});
+
+ test('admin-only staffing route mounts management without operational access', () => {
+ const admin = app(undefined, undefined, 'centrale', '/amministrazione/docenti', {admin:true,campuses:[]});
+ admin.go('/amministrazione/docenti'); const nodes=admin.render(); assert.ok(nodes.some(n=>n.type==='staffing-management'));
+ assert.ok(!admin.requests.some(r=>/day\/|inbox/.test(r.url)));
+ });
+
+test('assembly choice saves teacher classification and groups mixed sources once', async () => {
+  const a = await loaded(entryData); openEntry(a);
+  clickText(a, 'In assemblea');
+  search(a).props.onChange({ target: { value: 'anna' } }); submitEntry(a);
+  assert.equal(JSON.parse(a.requests[0].options.body).classification, 'assembly');
+  assert.equal(JSON.parse(a.requests[0].options.body).group, 'abs');
+  const state = { ...data.state, abs: { [todayYmd]: { a: [2], b: [1], c: [3] } },
+    permessi: { [todayYmd]: { a: [3], b: [2], c: [4] } },
+    absenceKinds: { [todayYmd]: { a: 'assembly', b: 'planned', c: 'assembly' } },
+    permitKinds: { [todayYmd]: { a: 'planned', b: 'assembly', c: 'last_minute' } } };
+  await resolveEntry(a, { ...entryData, state });
+  assert.equal(groupFor(a, 'Anna'), 'In assemblea');
+  assert.equal(groupFor(a, 'Barbara'), 'In assemblea');
+  assert.equal(groupFor(a, 'Carla'), 'Assenze last minute');
+  assert.equal(a.render().filter(n => n.props?.className === 'n' && n.props.children === 'Anna').length, 1);
+  clickText(a, 'In assemblea');
+  assert.equal(pressed(a, 'In assemblea'), false);
+});
+
+
+test('paid assignment from drawer saves immediately and retains advisory budget warning after refresh', async () => {
+  const a = await loaded();
+  slot(a).props.onClick(); a.requests.shift().resolve([]); await settle();
+  drawer(a).props.onAssign('teacher', false, 'PAID');
+  assert.equal(drawer(a), undefined);
+  const request = a.requests.shift();
+  assert.equal(JSON.parse(request.options.body).category, 'PAID');
+  request.resolve({ ok: true, warning: 'Budget Centrale superato di € 65,00. Assegnazione salvata.' }); await settle();
+  a.requests.shift().resolve(data); await settle();
+  assert.ok(a.render().some(n => n.props?.role === 'status' && /Budget Centrale superato/.test(n.props.children)));
+  assert.ok(!drawer(a));
 });

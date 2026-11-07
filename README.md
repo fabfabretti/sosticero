@@ -497,87 +497,70 @@ Importazioni globali e ripristini coordinano le modifiche contemporanee con
 un lock e una generazione esterna al database scolastico (vedi sotto).
 Le schermate precedenti richiedono una nuova verifica prima del salvataggio.
 
-### Account, accesso e permessi per sede
+### Account, accesso e permessi
 
-L'app richiede un account locale. Non esistono password predefinite o account
-amministratore web. Ogni account ha nome utente univoco, nome visualizzato,
-sede (`centrale` o `succursale`) e stato abilitato. Il nome e la sede appaiono
-in alto a destra, con **Esci**. Le password vengono conservate soltanto come
-hash Argon2id; i cookie di sessione sono HttpOnly e SameSite, revocabili e con
-scadenza assoluta di 12 ore. Il login limita temporaneamente i tentativi errati.
+Ogni account ha un ID immutabile, nome utente univoco, nome completo, password,
+stato attivo e permessi indipendenti: **Amministratore** e **Sostituzione docenti**
+per Centrale, Succursale, entrambe o nessuna sede. In alto a destra appare il nome
+completo con i permessi e **Esci**. Le password sono hash Argon2id; le sessioni
+HttpOnly/SameSite scadono dopo 12 ore e il login limita i tentativi errati.
 
-| Operazione | Centrale | Succursale |
+| Operazione | Amministratore | Operatore con almeno una sede |
 | --- | --- | --- |
-| Consultare tutte le pagine, entrambe le sedi e tutti i docenti/candidati | Sì | Sì |
-| Assegnare, cambiare, svuotare, spostare una supplenza o segnare Comunicato | Solo righe Centrale | Solo righe Succursale |
-| Assenze, classi fuori, disponibilità, permessi e saldi manuali | Modifica condivisa | Modifica condivisa |
-| Accettare/ignorare comunicazioni Inbox | Sì | Sì |
-| Modificare nomi e orari manuali dalla pagina Orari | Entrambe le sedi | Entrambe le sedi |
-| Esportazioni PDF da Supplenze e Orari | Sì | Sì |
-| Regole condivise, connessione Google e importazioni da Settings | Modifica | Sola lettura |
-| Archivio JSON, creazione/ripristino backup da Settings | Sì | Solo elenco/stato |
-| Tema e filtro Centrale/Succursale/Entrambe | Locale al browser | Locale al browser |
+| Gestire account e password | Sì | Solo se anche amministratore |
+| Regole, Google, importazioni, archivi JSON, backup/ripristini e programmazione pubblicazione | Sì | Sola lettura di stato/configurazione |
+| Consultare dati operativi di entrambe le sedi | Solo se anche operatore | Sì |
+| Assenze, permessi, disponibilità, Inbox e modifiche manuali Orari | Solo se anche operatore | Modifica condivisa |
+| Assegnazioni, Comunicato, Accettata, Avvisato e pubblicazione manuale | Solo con la sede autorizzata | Solo sedi autorizzate |
+| PDF operativi | Solo se anche operatore | Sì |
 
-La sede della **riga da coprire** determina il permesso di assegnazione: un
-account Centrale può usare un docente di Succursale se le regole di disponibilità
-e spostamento lo consentono. Righe e candidati dell'altra sede restano visibili;
-i comandi non autorizzati mostrano il cursore di divieto e una spiegazione
-accessibile anche da tastiera/touch. Il server verifica i permessi anche sulle
-richieste dirette. Gli spostamenti che coinvolgono due sedi richiedono la
-rimozione da parte della sede originale e l'assegnazione da parte della sede
-di destinazione. Una sede non risolta non concede permessi aggiuntivi.
+La sede della riga, verificata dal server, determina il permesso di assegnazione.
+Uno spostamento fra sedi richiede entrambi i permessi; restano tutti i controlli
+su disponibilità globale, concorrenza e viaggi. I filtri non concedono permessi.
+Una sede sconosciuta resta bloccata. Tema e filtri rimangono locali al browser.
 
-Tema e filtro sono preferenze in `localStorage`: non si sincronizzano fra
-browser, non dipendono dall'account e non cambiano i permessi. Succursale può
-aprire Settings e cambiare il proprio tema, ma non pubblicare configurazione
-condivisa. Le chiavi private Google non sono mai restituite al browser.
+#### Gestire gli account dal browser
 
-#### Creare e gestire gli account localmente
+Accedere come amministratore e aprire **Amministrazione → Amministrazione account**.
+La barra sinistra contiene questa sottopagina; il nome utente identifica il login,
+il nome completo identifica la persona nell’interfaccia. **Nuovo account** crea
+un utente; **Modifica** cambia nomi, permessi, stato o password. Lasciare vuota la
+nuova password per mantenerla. Il salvataggio revoca le sessioni dell’account.
+Un conflitto conserva la bozza e richiede di ricaricare esplicitamente i valori.
 
-Gli account risiedono in `data/auth.sqlite`, separato dal database scolastico
-`data/supplenze.sqlite`. `AUTH_DATABASE_PATH` può selezionare un altro percorso
-esplicito. La gestione richiede accesso locale al terminale, non un ruolo web.
-Dopo aver installato le dipendenze Python, dalla cartella del progetto:
+L’amministratore protetto non può essere disabilitato, eliminato o privato del ruolo,
+anche dopo una rinomina. Altri utenti possono ricevere e perdere il ruolo admin.
+Gli account si disabilitano, senza cancellare la loro identità storica.
+Un account solo admin vede Amministrazione e Impostazioni, senza dati operativi o
+polling Inbox. Un account senza ruoli vede un messaggio e può uscire.
 
-```sh
-.venv/bin/python -m backend.auth --database data/auth.sqlite init
-.venv/bin/python -m backend.auth --database data/auth.sqlite create centrale --name Centrale --campus centrale
-.venv/bin/python -m backend.auth --database data/auth.sqlite create succursale --name Succursale --campus succursale
-.venv/bin/python -m backend.auth --database data/auth.sqlite list
-```
+#### Bootstrap e recupero locale
 
-Su Windows, dal terminale nella cartella dell'eseguibile, usare il suo nome
-seguito da `--accounts`, ad esempio:
-
-```powershell
-.\Sosticero_2026-10-22.exe --accounts create centrale --name Centrale --campus centrale
-.\Sosticero_2026-10-22.exe --accounts create succursale --name Succursale --campus succursale
-.\Sosticero_2026-10-22.exe --accounts reset centrale
-```
-
-Le password (10–256 caratteri) vengono richieste senza eco nel terminale,
-mai passate negli argomenti. Sul container già aggiornato, l'equivalente è:
+Le identità restano in `data/auth.sqlite`, separate dai dati scolastici. Inizializzare
+il primo amministratore prima dell’avvio in produzione; nessuna password è predefinita:
 
 ```sh
-podman compose exec app python -m backend.auth --database /data/auth.sqlite create centrale --name Centrale --campus centrale
-podman compose exec app python -m backend.auth --database /data/auth.sqlite reset centrale
+.venv/bin/python -m backend.auth --database /percorso/auth.sqlite bootstrap admin --name Amministratore
+.venv/bin/python -m backend.auth --database /percorso/auth.sqlite create maria.rossi --name "Maria Rossi" --campus centrale
+.venv/bin/python -m backend.auth --database /percorso/auth.sqlite permissions maria.rossi --admin --campuses centrale succursale
+.venv/bin/python -m backend.auth --database /percorso/auth.sqlite username maria.rossi m.rossi
+.venv/bin/python -m backend.auth --database /percorso/auth.sqlite rename m.rossi "Maria Rossi"
+.venv/bin/python -m backend.auth --database /percorso/auth.sqlite reset admin
+.venv/bin/python -m backend.auth --database /percorso/auth.sqlite disable m.rossi
+.venv/bin/python -m backend.auth --database /percorso/auth.sqlite list
 ```
 
-Ulteriori comandi locali:
+Le password (10–256 caratteri) sono richieste senza eco, mai come argomenti. Per il
+container usare `python -m backend.auth --database /data/auth.sqlite` con gli stessi
+sottocomandi; l’eseguibile desktop usa `--accounts`. `permissions` sostituisce l’insieme
+completo dei permessi. I comandi locali applicano la stessa protezione dell’admin.
+Per prove usare `--testing` e una directory temporanea: la modalità test rifiuta dati
+operativi. Per il passaggio dell’installazione atlante vedere `docs/server-deployment.md`.
 
-```sh
-.venv/bin/python -m backend.auth --database data/auth.sqlite reset centrale
-.venv/bin/python -m backend.auth --database data/auth.sqlite rename centrale "Maria"
-.venv/bin/python -m backend.auth --database data/auth.sqlite campus centrale succursale
-.venv/bin/python -m backend.auth --database data/auth.sqlite disable succursale
-.venv/bin/python -m backend.auth --database data/auth.sqlite enable succursale
-```
-
-Il cambio password/sede, la disabilitazione e la modifica dell'account revocano
-le sue sessioni; riabilitare non riattiva vecchi cookie. Usare `--testing` e un
-percorso in una directory temporanea per verificare i comandi: la modalità test
-rifiuta la directory marcata come operativa. Un archivio scolastico ripristinato
-senza account richiede un nuovo bootstrap locale e non abilita accesso anonimo.
+Le attribuzioni salvano ID, nome completo e nome utente al momento dell’azione.
+L’interfaccia recupera nome completo e nome utente attuali tramite l’ID. Il nome salvato resta come ripiego se l’account non è disponibile; rinominare un account non riscrive i record. Le vecchie etichette Centrale/Succursale
+sono associate agli account storici verificati, senza attribuirle retroattivamente a
+una persona. I creatori sconosciuti restano indicati come non disponibili.
 
 #### HTTP locale, sessioni e ripristini
 
@@ -592,7 +575,7 @@ la schermata visualizzata. Una richiesta rifiutata non viene ripetuta da sola.
 Se scade la sessione durante una modifica, il login blocca temporaneamente
 l'interazione mantenendo gli input in memoria. Lo stesso account può riprendere
 con verifica dei permessi e della concorrenza. Esci o il passaggio a un account
-diverso eliminano gli input dell'account precedente.
+diverso eliminano gli input dell'account precedente. La perdita di permessi rimuove le schermate non più accessibili anche quando l’ID account resta uguale.
 
 Orari e configurazione condivisa verificano gli aggiornamenti ogni 15 secondi
 senza azzerare scorrimento, focus, pannelli, file selezionati o modifiche aperte.

@@ -100,7 +100,7 @@ def validate(state):
         permits = ledger(state)
         for day, assignments in state['asg'].items():
             for a in assignments.values():
-                if 'accepted' in a and (type(a['accepted']) is not bool or a.get('t') != 'RP'):
+                if 'accepted' in a and (type(a['accepted']) is not bool or a.get('t') not in ('RP', 'PAID')):
                     raise ValueError()
                 if a.get('t') != 'RP':
                     if 'permitId' in a:

@@ -193,6 +193,8 @@ class AbsenceBreakdownsTest(unittest.TestCase):
         before = copy.deepcopy(facts)
         state['permitKinds'][DAY]['absent'] = 'planned'
         self.assertEqual(next(r for r in report()['absenceTypes'] if r['kind'] == 'planned')['hours'], 1)
+        state['absenceKinds'][DAY]['co'] = 'assembly'
+        self.assertEqual(next(r for r in report()['absenceTypes'] if r['kind'] == 'assembly')['hours'], 2)
         self.assertEqual(facts, before)
         legacy = statistics.report(facts, today=date(2026, 10, 13))
         self.assertEqual(next(r for r in legacy['absenceTypes'] if r['kind'] == 'unclassified')['hours'], 3)

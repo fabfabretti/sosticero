@@ -13,7 +13,7 @@ class AuthenticatedClient(RawClient):
         app.state.test_passwords = _credentials.setdefault(str(identities.path), {})
         if campus not in app.state.test_passwords:
             password = secrets.token_urlsafe(24)
-            try: identities.create('test-'+campus,'Test '+campus,campus,password)
+            try: identities.create('test-'+campus,'Test '+campus,campus,password,admin=campus=='centrale')
             except ValueError: identities.change('test-'+campus,'password',password)
             app.state.test_passwords[campus] = password
         self.headers['Origin'] = 'http://localhost'

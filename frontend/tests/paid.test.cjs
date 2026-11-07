@@ -17,21 +17,21 @@ function load(file, imports, globals = {}) {
 }
 const row = { h: 3, c: '1A', aula: '12', sede: 'centrale' };
 
-test('paid request and Avvisato are independent, permission guarded and give clipboard feedback', async () => {
+test('paid request and Comunicato are independent, permission guarded and give clipboard feedback', async () => {
   let feedback = '', notified = 0; const copied = [];
   const mod = load('src/PaidActions.tsx', { react: { useState: () => [feedback, value => { feedback = value; }] }, 'react/jsx-runtime': { jsx, jsxs: jsx } }, { navigator: { clipboard: { writeText: async value => copied.push(value) } } });
   const props = { day: '2026-10-28', row, assignment: { v: 'rp', t: 'PAID' }, busy: false, canAssign: false, onNotify: () => notified++ };
   const nodes = () => flatten(mod.PaidActions(props));
   let buttons = nodes().filter(n => n.type === 'button');
   assert.equal(buttons[0].props.disabled, true); buttons[0].props.onClick(); assert.equal(notified, 0);
-  buttons[1].props.onClick(); await new Promise(resolve => setImmediate(resolve));
+  buttons[2].props.onClick(); await new Promise(resolve => setImmediate(resolve));
   assert.equal(notified, 0); assert.equal(feedback, 'Copiato');
   assert.match(copied[0], /28\/10\/2026, 3ª ora, classe 1A, aula 12, sede centrale/);
   assert.match(copied[0], /supplenza a pagamento/); assert.match(copied[0], /Le è possibile/);
   props.canAssign = true; buttons = nodes().filter(n => n.type === 'button'); buttons[0].props.onClick(); assert.equal(notified, 1);
   assert.match(mod.paidMessage(props.day, { ...row, aula: null }), /aula da verificare/);
   const fail = load('src/PaidActions.tsx', { react: { useState: () => [feedback, value => { feedback = value; }] }, 'react/jsx-runtime': { jsx, jsxs: jsx } }, { navigator: {} });
-  flatten(fail.PaidActions(props)).filter(n => n.type === 'button')[1].props.onClick();
+  flatten(fail.PaidActions(props)).filter(n => n.type === 'button')[2].props.onClick();
   await new Promise(resolve => setImmediate(resolve)); assert.match(feedback, /Copia non riuscita/);
 });
 
@@ -41,6 +41,7 @@ test('Banca ore edits recurring slots and keeps notification controls out of its
   const mod = load('src/PaidHours.tsx', {
     react: { useState(initial) { const i=cursor++; if (!(i in slots)) slots[i]=initial; return [slots[i],value=>{ slots[i]=value; }]; }, useEffect() {}, useRef() { return {current:null}; } },
     'react/jsx-runtime':{jsx,jsxs:jsx}, './StatsCalendar':{todayInRome:()=> '2026-10-28'},
+    './attribution':load('src/attribution.ts', {}),
     './timetables':load('src/timetables.ts', {}),
     './useQuietRefresh':{useQuietRefresh(load,apply) { if (!slots[1]) slots[1]=report; return {ready:true, loading:false, loadError:"", refresh:async()=>{apply(report); return report;}}; }},
   });
@@ -88,4 +89,24 @@ test('paid grid preserves the last weekday header and scopes overflow to the tab
   assert.match(css,/\.paid-page thead th:last-child\s*\{\s*display: table-cell/);
   assert.match(css,/\.paid-page\s*\{[^}]*width: 100%;[^}]*min-width: 0/);
   assert.ok(!css.includes('min-width: 650px'));
+});
+
+
+test('paid communication is one status and acceptance is a separate toggle', () => {
+  const mod = load('src/PaidActions.tsx', { react: { useState: () => ['', () => {}] }, 'react/jsx-runtime': { jsx, jsxs: jsx } });
+  let notified = 0, accepted = 0;
+  const props = { day: '2026-11-06', row, assignment: { v: 'rp', t: 'PAID', notified: true, accepted: true }, busy: false, canAssign: true, onNotify: () => notified++, onAccept: () => accepted++ };
+  const buttons = () => flatten(mod.PaidActions(props)).filter(n => n.type === 'button');
+  assert.equal(buttons().length, 3);
+  assert.match(buttons()[0].props['aria-label'], /^Comunicato /);
+  assert.match(buttons()[1].props['aria-label'], /^Accettata /);
+  assert.equal(buttons()[0].props['aria-pressed'], true);
+  assert.equal(buttons()[1].props['aria-pressed'], true);
+  buttons()[0].props.onClick(); buttons()[1].props.onClick();
+  assert.equal(notified, 1); assert.equal(accepted, 1);
+  props.assignment = { v: 'rp', t: 'PAID', communicated: true };
+  assert.equal(buttons()[0].props['aria-pressed'], true);
+  props.canAssign = false;
+  for (const b of buttons().slice(0, 2)) { assert.equal(b.props.disabled, true); b.props.onClick(); }
+  assert.equal(notified, 1); assert.equal(accepted, 1);
 });

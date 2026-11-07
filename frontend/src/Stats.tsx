@@ -18,7 +18,7 @@ const metricHelp: Record<Metric, string> = {
   teachers: "Ogni docente assente conta una volta al giorno, anche se attivo in entrambe le sedi. Il totale nel periodo è espresso in giorni-docente, non in persone distinte.",
 };
 const averageHelp = " Media sui soli giorni con assenze registrate; giorni vuoti e futuri esclusi. Stesse date per tutte le sedi.";
-const pieColors = ["var(--danger)", "var(--warn)", "var(--info)", "var(--accent)", "var(--mute)"];
+const pieColors = ["var(--danger)", "var(--warn)", "var(--c)", "var(--info)", "var(--accent)", "var(--mute)"];
 const metrics: Metric[] = ["demand", "teacherHours", "teachers"];
 const heatMetrics: Metric[] = ["demand", "teachers"];
 const strokes = ["var(--accent)", "var(--info)", "var(--warn)"];
@@ -154,7 +154,7 @@ export function Stats() {
           {!!data.provenance.reconstructed && <p className="stats-method">{fmt(data.provenance.reconstructed)} ore di assenza ricostruite dall’orario disponibile al momento della migrazione: il contesto storico non è verificabile.</p>}
           {(data.unknown.teacherHours > 0 || data.unknown.demand > 0 || data.issues > 0) && <p className="stats-method">Tutte le sedi: {fmt(data.unknown.teacherHours)} ore di assenza e {fmt(data.unknown.demand)} ore da coprire senza sede (incluse solo nel Totale). {fmt(data.issues)} assegnazioni da verificare, escluse dalle coperture valide.</p>}
           {metrics.map(k => <p className="stats-method" key={k}>{metricNames[k]}: {metricHelp[k]}</p>)}
-          <p className="stats-method">Tipi di assenza: percentuali sulle ore dei docenti assenti. Se assenza e permesso si sovrappongono, priorità a Last minute, In sciopero, In gita, Programmata. Senza classificazione registrata: Non classificata.</p>
+          <p className="stats-method">Tipi di assenza: percentuali sulle ore dei docenti assenti. Se assenza e permesso si sovrappongono, priorità a Last minute, In sciopero, In assemblea, In gita, Programmata. Senza classificazione registrata: Non classificata.</p>
           <p className="stats-method">Senza supplente = nessun supplente trovato, dichiarato esplicitamente. In attesa = nessun esito registrato. Entrata e uscita sono conteggiate separatamente.</p>
         </details>
 

@@ -11,7 +11,7 @@ function mount(api, confirm = () => true) {
   const exports = {};
   runInNewContext(ts.transpileModule(readFileSync('src/TimetableImport.tsx','utf8'), {compilerOptions: {module:ts.ModuleKind.CommonJS, jsx:ts.JsxEmit.ReactJSX}}).outputText, {
     exports, URLSearchParams, window: {confirm}, require(id) {
-      if (id === 'react') return {useState:state, useRef: initial => {const [v] = state({current:initial}); return v;}};
+      if (id === 'react') return {useEffect:()=>{}, useState:state, useRef: initial => {const [v] = state({current:initial}); return v;}};
       if (id === './StatsCalendar') return {todayInRome: () => '2026-10-15'};
       return {jsx, jsxs:jsx};
     },

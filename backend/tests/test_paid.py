@@ -17,6 +17,25 @@ class PaidTest(RecoveryTest):
     def choice(self, category, h=1, teacher='rp'):
         return self.client.post('/api/assignments', json=dict(day=DAY, key=f'absent|{h}|1A', value=teacher, category=category))
 
+    def test_communication_and_acceptance_roundtrip(self):
+        self.declare().raise_for_status()
+        self.choice('PAID').raise_for_status()
+        for value in (True, False, True):
+            for field in ('communicated', 'accepted'):
+                self.client.post('/api/assignments', json=dict(day=DAY, key='absent|1|1A', **{field: value})).raise_for_status()
+            self.choice('PAID').raise_for_status()
+            archive = self.client.get('/api/export').json()
+            self.client.post('/api/import', json=archive).raise_for_status()
+            assignment = self.client.get('/api/export').json()['asg'][DAY]['absent|1|1A']
+            for field in ('communicated', 'accepted'):
+                self.assertIs(assignment[field], value)
+                self.assertIs(assignment['notified'], value)
+                broken = copy.deepcopy(archive)
+                broken['asg'][DAY]['absent|1|1A'][field] = 'yes'
+                self.assertEqual(self.client.post('/api/import', json=broken).status_code, 422)
+                other = AuthenticatedClient(self.client.app, campus='succursale')
+                self.assertEqual(other.post('/api/assignments', json=dict(day=DAY, key='absent|1|1A', **{field: False})).status_code, 403)
+
     def test_declarations_and_concurrency(self):
         self.declare().raise_for_status()
         self.assertEqual(self.declare(hours=[1], expected={'paidAvailability|0|rp': 'absent'}).status_code, 409)
@@ -36,7 +55,7 @@ class PaidTest(RecoveryTest):
         self.choice('PAID').raise_for_status()
         archive = self.client.get('/api/export').json()
         a = archive['asg'][DAY]['absent|1|1A']
-        self.assertTrue(a['notified']); self.assertEqual(a['assignedBy'], 'centrale')
+        self.assertTrue(a['notified']); self.assertEqual(a['assignedBy']['username'], 'test-centrale')
         self.client.post('/api/import', json=archive).raise_for_status()
         self.choice('RP').raise_for_status()
         self.assertEqual(self.register()['recoveries']['2026-10-05']['rp']['remaining'], 0)
@@ -79,7 +98,7 @@ class PaidTest(RecoveryTest):
         with store.connect() as db:
             migrated = store.read(db, 'state')
         self.assertEqual({k:v for k,v in migrated.items() if k != 'paidAvailability'}, {k:v for k,v in state.items() if k != 'paidAvailability'})
-        self.assertEqual(migrated['paidAvailability']['0']['rp'], {'1':{'createdBy':None,'createdFrom':'centrale'}, '4':{'createdBy':None,'createdFrom':'centrale'}})
+        self.assertEqual(migrated['paidAvailability']['0']['rp'], {str(h): {'createdBy':None, 'createdFrom':{'id':None,'username':'','name':'Autore non disponibile'}} for h in (1,4)})
         create_app(self.path)
         with store.connect() as db:
             self.assertEqual(store.read(db, 'state'), migrated)
@@ -92,12 +111,12 @@ class PaidTest(RecoveryTest):
         other.post('/api/paid-availability', json=dict(weekday=0, id='rp', hours=[1, 4], createdFrom='centrale', expected={ref:report['concurrency']['records'][ref]})).raise_for_status()
         archive = self.client.get('/api/export').json()
         records = archive['paidAvailability']['0']['rp']
-        self.assertEqual(records['1']['createdFrom'], 'centrale')
-        self.assertEqual(records['4']['createdFrom'], 'succursale')
+        self.assertEqual(records['1']['createdFrom']['username'], 'test-centrale')
+        self.assertEqual(records['4']['createdFrom']['username'], 'test-succursale')
         self.assertNotEqual(records['1']['createdBy'], records['4']['createdBy'])
         self.client.post('/api/import', json=archive).raise_for_status()
         report = self.client.get('/api/paid-availability', params={'day': DAY}).json()
-        self.assertEqual(next(c for c in report['cells'] if c['weekday']==0 and c['hour']==4)['teachers'][0]['addedBy'], 'succursale')
+        self.assertEqual(next(c for c in report['cells'] if c['weekday']==0 and c['hour']==4)['teachers'][0]['addedBy']['username'], 'test-succursale')
         self.declare(hours=[4]).raise_for_status()
         self.assertEqual(self.client.get('/api/export').json()['paidAvailability']['0']['rp'], {'4':records['4']})
         refreshed = self.client.get('/api/paid-availability', params={'day': DAY}).json()
@@ -109,7 +128,7 @@ class PaidTest(RecoveryTest):
         self.assertEqual(self.client.post('/api/import', json=broken).status_code, 422)
         legacy = copy.deepcopy(archive); legacy['schema']=7; legacy['paidAvailability']={'0':{'rp':[1,4]}}
         self.client.post('/api/import', json=legacy).raise_for_status()
-        self.assertEqual(self.client.get('/api/export').json()['paidAvailability']['0']['rp'], {'1':{'createdBy':None,'createdFrom':'centrale'}, '4':{'createdBy':None,'createdFrom':'centrale'}})
+        self.assertEqual(self.client.get('/api/export').json()['paidAvailability']['0']['rp'], {str(h): {'createdBy':None, 'createdFrom':{'id':None,'username':'','name':'Autore non disponibile'}} for h in (1,4)})
 
     def test_paid_cannot_bypass_absence_or_occupied_hour(self):
         self.declare(hours=[1, 2]).raise_for_status()
@@ -195,3 +214,18 @@ class PaidTest(RecoveryTest):
             results = list(pool.map(assign, ['absent|1|1A', 'bottom|1|3A']))
         self.assertEqual(sorted(results), [200, 422])
         self.assertEqual(self.client.get('/api/paid-availability').json()['totals'], {'rp': 1})
+
+    def test_paid_authors_display_current_name_without_changing_saved_authorship(self):
+        self.declare().raise_for_status()
+        self.choice('PAID').raise_for_status()
+        before=self.client.get('/api/export').json()
+        other=AuthenticatedClient(self.client.app,campus='succursale')
+        self.client.app.state.identities.change('test-centrale','name','Fabiola Fabretti')
+        report=other.get('/api/paid-availability',params={'day':DAY}).json()
+        authors=[t['addedBy'] for cell in report['cells'] for t in cell['teachers']]
+        self.assertTrue(authors)
+        self.assertTrue(all(a['name']=='Fabiola Fabretti' for a in authors))
+        self.assertEqual(report['records'][0]['assignedBy']['name'],'Fabiola Fabretti')
+        after=self.client.get('/api/export').json()
+        self.assertEqual(before['paidAvailability'],after['paidAvailability'])
+        self.assertEqual(before['asg'],after['asg'])

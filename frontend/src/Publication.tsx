@@ -4,7 +4,8 @@ import { Loading } from './Loading';
 import { nextMidnight, romeDay } from './display';
 
 type Status = { configured: boolean; busy: boolean; uncertain: boolean; error: string | null; updated?: string; day?: string; campus: string; url: string };
-export function Publication({ day, campus, disabled }: { day: string; campus: string; disabled: boolean }) {
+export function Publication({ day, campuses, disabled }: { day: string; campuses: ('centrale' | 'succursale')[]; disabled: boolean }) {
+  const [campus, setCampus] = useState(campuses[0]);
   const [today, setToday] = useState(romeDay), [status, setStatus] = useState<Status>();
   const [error, setError] = useState(''), [sending, setSending] = useState(false);
   const [revision, setRevision] = useState(0);
@@ -19,7 +20,7 @@ export function Publication({ day, campus, disabled }: { day: string; campus: st
     let stopped = false, timer: ReturnType<typeof setTimeout>;
     const refresh = async () => {
       try {
-        const data = await requestApi<Status>('publication');
+        const data = await requestApi<Status>('publication?campus=' + campus);
         if (!stopped) { setStatus(data); setError(''); }
       } catch (e) { if (!stopped) setError(e instanceof Error ? e.message : String(e)); }
       if (!stopped) timer = setTimeout(refresh, 5000);
@@ -31,7 +32,7 @@ export function Publication({ day, campus, disabled }: { day: string; campus: st
   const publish = async () => {
     if (sending) return;
     setSending(true); setError('');
-    try { await requestApi('publication', { day }); setRevision(v => v + 1); }
+    try { await requestApi('publication', { day, campus }); setRevision(v => v + 1); }
     catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { setSending(false); }
   };
@@ -39,7 +40,7 @@ export function Publication({ day, campus, disabled }: { day: string; campus: st
     <button type="button" className="ui-button ui-button-primary" disabled={disabled || sending || !status?.configured || status.busy || status.uncertain} onClick={() => void publish()}>
       {sending || status?.busy ? <Loading label="Pubblicazione…" reserve="Pubblica" /> : 'Pubblica'}
     </button>
-    <div className="publication-meta"><span>{campus === 'centrale' ? 'Centrale' : 'Succursale'}</span>
+    <div className="publication-meta">{campuses.length > 1 && <label>Sede da pubblicare<select value={campus} disabled={sending || status?.busy} onChange={e => { setCampus(e.target.value as typeof campus); setStatus(undefined); }}><option value="centrale">Centrale</option><option value="succursale">Succursale</option></select></label>}<span>{campus === 'centrale' ? 'Centrale' : 'Succursale'}</span>
     {status?.configured && <a href={status.url} target="_blank" rel="noopener noreferrer">Apri display pubblico</a>}</div>
     {status?.updated && <span>Ultima pubblicazione: {new Date(status.updated).toLocaleString('it-IT', { timeZone: 'Europe/Rome' })}</span>}
     {status && !status.configured && <span role="status">Pubblicazione non configurata sul server.</span>}

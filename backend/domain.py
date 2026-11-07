@@ -121,10 +121,14 @@ def class_out(state, day, cls, hour, exclude=''):
         for k, a in state['asg'].get(day, {}).items())
 
 
-def absences(state, day):
+def absences(state, day, ds=None):
     manual = state['abs'].get(day, {})
     permits = state.get('permessi', {}).get(day, {})
-    return {i: sorted(set(manual.get(i, []) + permits.get(i, []))) for i in manual.keys() | permits.keys()}
+    from .appointments import derived
+    continuous = derived(ds, day) if ds else {}
+    return {i: sorted(set(manual.get(i, []) + permits.get(i, []) + continuous.get(i, [])))
+            for i in manual.keys() | permits.keys() | continuous.keys()
+            if not ds or not ds['teachers'].get(i, {}).get('coveredBy')}
 
 
 def validate_permit(ds, teacher, hours):
@@ -138,11 +142,12 @@ def class_commitment(l):
 
 def rows(ds, state, day):
     groups = {}
-    for i, hours in absences(state, day).items():
+    absent = absences(state, day, ds)
+    for i, hours in absent.items():
         for h in hours:
             l = lesson(ds, i, day, h)
             for c in l['classes'] if l else []:
-                if class_commitment(l) and any(other != i and not t.get('retired') and h not in absences(state, day).get(other, []) and c in (lesson(ds, other, day, h) or {}).get('classes', []) for other, t in ds['teachers'].items()):
+                if class_commitment(l) and any(other != i and not (t.get('retired') or t.get('unavailable')) and h not in absent.get(other, []) and c in (lesson(ds, other, day, h) or {}).get('classes', []) for other, t in ds['teachers'].items()):
                     continue
                 k = f'{i}|{h}|{c}'
                 if not class_out(state, day, c, h, k):
@@ -192,7 +197,7 @@ def candidate_order(candidate):
 
 def eligibility(ds, state, day, row, teacher, policies=None):
     i, h = teacher['id'], row['h']
-    if i in row['ids'] or teacher.get('retired'):
+    if i in row['ids'] or (teacher.get('retired') or teacher.get('unavailable')):
         return None
     l = lesson(ds, i, day, h)
     same_room = not l or not l.get('room') or not row.get('aula') or l['room'] == row['aula']
@@ -236,7 +241,7 @@ def eligibility(ds, state, day, row, teacher, policies=None):
         return None
     loc = state['disSites'].get(day, {}).get(i) if manual else None
     loc = loc or ('centrale' if ty == 'UTC' else 'succursale' if ty == 'UTS' else l['site'] if l else None)
-    why = 'Assente' if h in absences(state, day).get(i, []) else ''
+    why = 'Assente' if h in absences(state, day, ds).get(i, []) else ''
     if not why and any(k != row['k'] and int(k.split('|')[1]) == h and a['v'] == i for k, a in state['asg'].get(day, {}).items()):
         why = 'Già assegnato in questa ora'
     label = ' / '.join(p['label'] for p in policy) or LABELS.get(ty, ty)
@@ -255,7 +260,7 @@ def eligibility(ds, state, day, row, teacher, policies=None):
 def rp_context(ds, state, day, row, teacher, details=False):
     h, site = row['h'], row['sede']
     commitments, teaching = {}, {}
-    absent = absences(state, day).get(teacher, [])
+    absent = absences(state, day, ds).get(teacher, [])
     for period in HOURS:
         l = lesson(ds, teacher, day, period)
         if not l or period in absent:
@@ -301,13 +306,13 @@ def rp_context(ds, state, day, row, teacher, details=False):
 def rp_candidate(ds, state, day, row, teacher, permits):
     from .receptions import at
     i, h = teacher['id'], row['h']
-    if i in row['ids'] or teacher.get('retired') or lesson(ds, i, day, h) or at(ds, i, day, h) or h in state['dis'].get(day, {}).get(i, []):
+    if i in row['ids'] or (teacher.get('retired') or teacher.get('unavailable')) or lesson(ds, i, day, h) or at(ds, i, day, h) or h in state['dis'].get(day, {}).get(i, []):
         return None
     available = recovery.eligible(permits, i, day)
     if not available:
         return None
     convenient, why, explanation = rp_context(ds, state, day, row, i)
-    if h in absences(state, day).get(i, []):
+    if h in absences(state, day, ds).get(i, []):
         why = 'Assente'
     elif any(k != row['k'] and int(k.split('|')[1]) == h and a['v'] == i for k, a in state['asg'].get(day, {}).items()):
         why = 'Già assegnato in questa ora'
@@ -403,30 +408,33 @@ def manual_candidates(ds, state, day, row):
             warnings.append('Ora occupata: ' + (', '.join(l['classes']) or 'attività in orario'))
         if at(ds, i, day, row['h']):
             warnings.append('Ricevimento in questa ora')
-        if row['h'] in absences(state, day).get(i, []):
+        if row['h'] in absences(state, day, ds).get(i, []):
             warnings.append('Assente in questa ora')
         if any(k != row['k'] and int(k.split('|')[1]) == row['h'] and a['v'] == i for k, a in state['asg'].get(day, {}).items()):
             warnings.append('Già assegnato a una supplenza in questa ora')
-        if teacher.get('retired'):
+        if (teacher.get('retired') or teacher.get('unavailable')):
             warnings.append('Docente non attivo')
+        if teacher.get('unavailable'): continue
         result.append(dict(id=i, name=teacher['name'], ty='MANUAL', loc=None, why='', tag=' · '.join(warnings), today=0, total=0))
     return result
 
 
-def validate_assignment(ds, state, day, key, value, policies=None, exceptional=False, saved=False, category=None):
+def validate_assignment(ds, state, day, key, value, policies=None, exceptional=False, saved=False, category=None, daily_rows=None):
     from .receptions import at
     old = state['asg'].get(day, {}).get(key)
     manual = category == 'MANUAL' or saved and old and old.get('t') == 'MANUAL' and old['v'] == value
     if manual:
-        row = next((r for r in rows(ds, state, day) if r['k'] == key), None)
+        row = daily_rows.get(key) if daily_rows is not None else next((r for r in rows(ds, state, day) if r['k'] == key), None)
         if not row or value not in ds['teachers']:
             raise ValueError('Docente o supplenza non più presente.')
         if not exceptional:
             raise ValueError('Assegnazione manuale: conferma esplicita necessaria.')
+        if ds['teachers'][value].get('unavailable'):
+            raise ValueError('Docente non attivo: assenza prolungata o cattedra coperta.')
         return dict(v=value, t='MANUAL', c=row['c'], exceptional=True, **({'note': old['note']} if saved and old and old.get('note') else {}))
-    if value in ds['teachers'] and int(key.split('|')[1]) in absences(state, day).get(value, []):
+    if value in ds['teachers'] and int(key.split('|')[1]) in absences(state, day, ds).get(value, []):
         raise ValueError('Assente')
-    row = next((r for r in rows(ds, state, day) if r['k'] == key), None)
+    row = daily_rows.get(key) if daily_rows is not None else next((r for r in rows(ds, state, day) if r['k'] == key), None)
     if not row:
         raise ValueError('Supplenza non più presente nell’orario o nelle assenze.')
     old = state['asg'].get(day, {}).get(key)
@@ -438,12 +446,12 @@ def validate_assignment(ds, state, day, key, value, policies=None, exceptional=F
         return dict(old)
     if saved and old and old.get('t') == 'RP' and old['v'] == value:
         recovery.validate(state)
-        if value not in ds['teachers'] or ds['teachers'][value].get('retired') or lesson(ds, value, day, row['h']) or at(ds, value, day, row['h']) or row['h'] in state['dis'].get(day, {}).get(value, []):
+        if value not in ds['teachers'] or (ds['teachers'][value].get('retired') or ds['teachers'][value].get('unavailable')) or lesson(ds, value, day, row['h']) or at(ds, value, day, row['h']) or row['h'] in state['dis'].get(day, {}).get(value, []):
             raise ValueError('Recupero da verificare: docente non attivo o impegnato nell’orario.')
         _, why, _ = rp_context(ds, state, day, row, value)
         if why:
             raise ValueError(why)
-        if row['h'] in absences(state, day).get(value, []):
+        if row['h'] in absences(state, day, ds).get(value, []):
             raise ValueError('Assente')
         if any(k != key and int(k.split('|')[1]) == row['h'] and a['v'] == value for k, a in state['asg'].get(day, {}).items()):
             raise ValueError('Già assegnato in questa ora')
@@ -476,12 +484,12 @@ def auto_availability(ds, state, day):
     """Ore/cause in cui un docente è libero perché tutte le sue classi dell'ora sono fuori."""
     result = {}
     for i, t in ds['teachers'].items():
-        if t.get('retired'):
+        if (t.get('retired') or t.get('unavailable')):
             continue
         hours = {}
         for h in HOURS:
             l = lesson(ds, i, day, h)
-            if not l or not l['classes'] or h in absences(state, day).get(i, []):
+            if not l or not l['classes'] or h in absences(state, day, ds).get(i, []):
                 continue
             reasons = []
             for c in l['classes']:

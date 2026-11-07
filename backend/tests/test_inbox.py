@@ -373,3 +373,17 @@ class InboxTest(unittest.TestCase):
         with patch('sqlite3.connect', side_effect=AssertionError('import opened DB')):
             import backend.inbox
             importlib.reload(backend.inbox)
+
+    def test_assembly_metadata_applies_to_range_and_is_idempotent(self):
+        self.matrix = [HEADERS, response(1)]
+        item = self.discover()[0]
+        data = dict(classification='assembly', note='Bring documents', attachment=image())
+        self.action(item, **data).raise_for_status()
+        state = self.state()
+        for day in item['days']:
+            self.assertEqual(state['absenceKinds'][day]['absent'], 'assembly')
+            self.assertEqual(state['absenceNotes'][day]['absent'], 'Bring documents\nimported from sheet')
+            identifier = state['absenceAttachments'][day]['absent']
+            self.client.get('/api/attachments/' + identifier).raise_for_status()
+        self.action(item, **data).raise_for_status()
+        self.assertEqual(self.state(), state)

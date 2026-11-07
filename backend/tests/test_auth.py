@@ -23,7 +23,7 @@ class AuthenticationTest(unittest.TestCase):
         self.app = create_app(Path(self.tmp.name)/'school.sqlite')
         self.identities = self.app.state.identities
         self.password = secrets.token_urlsafe(24)
-        self.identities.create('centrale','Maria','centrale',self.password)
+        self.identities.create('centrale','Maria','centrale',self.password,admin=True)
         self.identities.create('succursale','Luca','succursale',self.password)
         self.central = self.client('centrale')
         self.succ = self.client('succursale')
@@ -71,7 +71,7 @@ class AuthenticationTest(unittest.TestCase):
     def test_session_identity_cookie_csrf_and_origin(self):
         data=self.central.get('/api/auth/session').json()
         self.assertEqual(data['account']['name'],'Maria')
-        self.assertEqual(data['account']['campus'],'centrale')
+        self.assertEqual(data['account']['campuses'],['centrale'])
         self.assertNotIn('password',str(data))
         cookie=self.central.cookies.get(COOKIE)
         self.assertTrue(cookie)
@@ -149,6 +149,21 @@ class AuthenticationTest(unittest.TestCase):
         move=dict(day=DAY,key='absent|2|1A',replace_key='support|2|2A',value='dis',expected={ref:state[ref],ref2:state[ref2]})
         self.assertEqual(self.post(self.central,'assignments',move).status_code,403)
         self.assertEqual(self.post(self.succ,'assignments',move).status_code,403)
+
+    def test_both_campus_account_can_move_conflict_without_bypassing_availability(self):
+        self.identities.create('both','Both campuses',None,self.password,campuses=['centrale','succursale'])
+        both=self.client('both')
+        self.entry(self.central,'absent').raise_for_status()
+        self.entry(self.succ,'support').raise_for_status()
+        records=both.get('/api/day/'+DAY).json()['concurrency']['records']
+        source='support|2|2A';target='absent|2|1A'
+        ref=f'asg|{DAY}|{source}'
+        self.post(both,'assignments',dict(day=DAY,key=source,value='dis',expected={ref:records[ref]})).raise_for_status()
+        records=both.get('/api/day/'+DAY).json()['concurrency']['records']
+        result=self.post(both,'assignments',dict(day=DAY,key=target,replace_key=source,value='dis',expected={f'asg|{DAY}|{k}':records[f'asg|{DAY}|{k}'] for k in (source,target)}))
+        result.raise_for_status()
+        saved=both.get('/api/day/'+DAY).json()['state']['asg'][DAY]
+        self.assertNotIn(source,saved);self.assertEqual(saved[target]['v'],'dis')
 
     def test_two_campuses_cannot_book_one_teacher_simultaneously(self):
         self.entry(self.central,'absent').raise_for_status()
@@ -242,14 +257,16 @@ class AuthenticationTest(unittest.TestCase):
         self.identities.change('centrale','name','New Name')
         repeat=self.post(self.succ,'inbox/acceptor-test/accept',dict(acceptedBy={'name':'forged'}))
         self.assertTrue(repeat.json()['alreadyProcessed'])
-        self.assertEqual(repeat.json()['acceptedBy']['name'],'Maria')
+        self.assertEqual(repeat.json()['acceptedBy']['name'],'New Name')
+        with self.app.state.inbox.store.connect() as db:
+            self.assertEqual(json.loads(db.execute('SELECT accepted_by FROM inbox WHERE id=?',('acceptor-test',)).fetchone()[0])['name'],'Maria')
         history=self.succ.get('/api/inbox?history=true').json()
         self.assertEqual(history[0]['acceptedBy']['username'],'centrale')
         self.central=self.client('centrale')
         saved=self.post(self.central,'backups',{}).json()['filename']
         self.post(self.central,'backups/restore',dict(filename=saved,confirm=True)).raise_for_status()
         self.central=self.client('centrale')
-        self.assertEqual(self.central.get('/api/inbox?history=true').json()[0]['acceptedBy']['name'],'Maria')
+        self.assertEqual(self.central.get('/api/inbox?history=true').json()[0]['acceptedBy']['name'],'New Name')
         with self.app.state.inbox.store.connect() as db:
             db.execute('UPDATE inbox SET accepted_by=NULL WHERE id=?',('acceptor-test',))
         self.assertIsNone(self.central.get('/api/inbox?history=true').json()[0]['acceptedBy'])

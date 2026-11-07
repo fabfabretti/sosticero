@@ -1,6 +1,7 @@
 """Recurring paid availability and assignment-derived accounting."""
 from collections import Counter
 from datetime import date, timedelta
+from . import attribution
 
 
 def validate_hours(hours):
@@ -36,7 +37,7 @@ def validate(declarations, teachers):
             for hour, record in records.items():
                 if hour not in tuple(map(str, range(1, 8))) or not isinstance(record, dict) or set(record) != {'createdBy', 'createdFrom'}:
                     raise ValueError('Disponibilità a pagamento non valida.')
-                if record['createdFrom'] not in ('centrale', 'succursale') or record['createdBy'] is not None and (not isinstance(record['createdBy'], str) or not 1 <= len(record['createdBy']) <= 64):
+                if not attribution.valid(record['createdFrom']) or record['createdBy'] is not None and (not isinstance(record['createdBy'], str) or not 1 <= len(record['createdBy']) <= 64):
                     raise ValueError('Autore disponibilità non valido.')
 
 
@@ -50,7 +51,7 @@ def edit(state, weekday, teacher, selected, account):
     entries = state['paidAvailability'].setdefault(str(weekday), {})
     previous = entries.get(teacher, {})
     if selected:
-        entries[teacher] = {str(h): previous.get(str(h), dict(createdBy=account['id'], createdFrom=account['campus'])) for h in selected}
+        entries[teacher] = {str(h): previous.get(str(h), dict(createdBy=account['id'], createdFrom=attribution.snapshot(account))) for h in selected}
     else:
         entries.pop(teacher, None)
 
@@ -59,12 +60,12 @@ def slot(ds, state, day, hour, teacher, key='', declared=True):
     from .domain import lesson, absences, rp_context, SITES
     from .receptions import at
     t = ds['teachers'].get(teacher)
-    if not t or t.get('retired'):
+    if not t or (t.get('retired') or t.get('unavailable')):
         return dict(sites=[], uncertain=False, why='Docente non attivo')
     if declared and hour not in hours(state, date.fromisoformat(day).weekday(), teacher):
         return dict(sites=[], uncertain=False, why='Disponibilità a pagamento non dichiarata')
     why = ('Impegnato nell’orario' if lesson(ds, teacher, day, hour) or at(ds, teacher, day, hour) else
-           'Assente' if hour in absences(state, day).get(teacher, []) else
+           'Assente' if hour in absences(state, day, ds).get(teacher, []) else
            'A disposizione' if hour in state.get('dis', {}).get(day, {}).get(teacher, []) else
            'Già assegnato in questa ora' if any(k != key and int(k.split('|')[1]) == hour and a['v'] == teacher for k, a in state['asg'].get(day, {}).items()) else '')
     if why:
@@ -80,7 +81,7 @@ def slot(ds, state, day, hour, teacher, key='', declared=True):
 
 def candidate(ds, state, day, row, teacher):
     i = teacher['id']
-    if teacher.get('retired') or i in row['ids'] or row['h'] not in hours(state, date.fromisoformat(day).weekday(), i):
+    if (teacher.get('retired') or teacher.get('unavailable')) or i in row['ids'] or row['h'] not in hours(state, date.fromisoformat(day).weekday(), i):
         return None
     info = slot(ds, state, day, row['h'], i, row['k'])
     why = info['why'] or ('Cambio sede senza intervallo' if row['sede'] and row['sede'] not in info['sites'] else '')
@@ -102,7 +103,7 @@ def metadata(state, teachers):
                     raise ValueError('Metadati pagamento senza assegnazione a pagamento.')
                 continue
             ctx = a.get('paidContext')
-            if a['v'] not in teachers or 'permitId' in a or 'accepted' in a or 'communicated' in a or type(a.get('notified')) is not bool or a.get('assignedBy') not in ('centrale', 'succursale') or not isinstance(ctx, dict):
+            if a['v'] not in teachers or 'permitId' in a or any(field in a and type(a[field]) is not bool for field in ('accepted', 'communicated')) or type(a.get('notified')) is not bool or not attribution.valid(a.get('assignedBy')) or not isinstance(ctx, dict):
                 raise ValueError('Metadati assegnazione a pagamento non validi.')
             if set(ctx) != {'site', 'room', 'class'} or ctx['site'] not in ('centrale', 'succursale') or ctx['class'] != a['c'] or ctx['room'] is not None and not isinstance(ctx['room'], str):
                 raise ValueError('Contesto pagamento non valido.')
@@ -123,5 +124,7 @@ def report(history, state, selected):
             cells.append(dict(date=day, weekday=w, hour=h, teachers=sorted(entries, key=lambda t: (t['name'].casefold(), t['id']))))
     records = [dict(date=d, key=k, teacher=a['v'], name=teachers.get(a['v'], {}).get('name', a['v']), hour=int(k.split('|')[1]), **a)
                for d, entries in state['asg'].items() for k, a in entries.items() if a['t'] == 'PAID']
+    for record in records:
+        record['notified'] = record.get('notified', False) or record.get('communicated', False)
     return dict(dates=dates, cells=cells, teachers=teachers, declarations={w: {i: hours(state, w, i) for i in entries} for w, entries in state.get('paidAvailability', {}).items()},
                 records=sorted(records, key=lambda r: (r['date'], r['hour'], r['key']), reverse=True), totals=totals(state))

@@ -4,10 +4,10 @@ from copy import deepcopy
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from .domain import HOURS, SITES, absences, lesson, validate_assignment
+from .domain import HOURS, SITES, absences, lesson, rows, validate_assignment
 
 OUTCOMES = ('covered', 'uncovered', 'late', 'early', 'pending')
-ABSENCE_KINDS = ('last_minute', 'strike', 'trip', 'planned', 'unclassified')
+ABSENCE_KINDS = ('last_minute', 'strike', 'assembly', 'trip', 'planned', 'unclassified')
 MANUAL = {'UNCOVERED': 'uncovered', 'ENTRA': 'late', 'ESCE': 'early'}
 
 
@@ -24,7 +24,7 @@ def sync(ds, state, facts, days=None, reconstructed=False, revalidate=False):
         current_ds = ds(day) if callable(ds) else ds
         old = result['days'].get(day, {})
         slots = {}
-        for teacher, hours in absences(state, day).items():
+        for teacher, hours in absences(state, day, current_ds).items():
             for h in hours:
                 key = f'{teacher}|{h}'
                 context = old.get('absences', {}).get(key)
@@ -46,6 +46,7 @@ def sync(ds, state, facts, days=None, reconstructed=False, revalidate=False):
         assignments = state['asg'].get(day, {})
         used = set()
         issues = []
+        daily_rows = None
         for key, row in demands.items():
             row['ids'].sort()
             canonical = row['ids'][0]
@@ -61,12 +62,14 @@ def sync(ds, state, facts, days=None, reconstructed=False, revalidate=False):
                     row['eligible'] = previous['eligible']
                 else:
                     try:
-                        validate_assignment(current_ds, state, day, row['key'], a['v'], exceptional=True, saved=True)
+                        if daily_rows is None:
+                            daily_rows = {r['k']: r for r in rows(current_ds, state, day)}
+                        validate_assignment(current_ds, state, day, row['key'], a['v'], exceptional=True, saved=True, daily_rows=daily_rows)
                     except ValueError:
                         row['eligible'] = False
                 row['valid'] = row['eligible']
                 if a['v'] not in (*MANUAL, 'DIR'):
-                    absent = row['h'] in absences(state, day).get(a['v'], [])
+                    absent = row['h'] in absences(state, day, current_ds).get(a['v'], [])
                     booked = any(k != row['key'] and int(k.split('|')[1]) == row['h'] and v['v'] == a['v'] for k, v in assignments.items())
                     if absent or booked:
                         row['valid'] = False
@@ -87,8 +90,8 @@ def validate(facts, ds, state):
     try:
         if not isinstance(facts, dict) or set(facts) != {'schema', 'days'} or type(facts['schema']) is not int or facts['schema'] != 1 or not isinstance(facts['days'], dict):
             raise ValueError()
-        expected = {(d, f'{i}|{h}') for d in set(state['abs']) | set(state.get('permessi', {}))
-                    for i, hours in absences(state, d).items() for h in hours}
+        expected = {(d, f'{i}|{h}') for d in set(state['abs']) | set(state.get('permessi', {})) | set(facts['days'])
+                    for i, hours in absences(state, d, ds(d) if callable(ds) else ds).items() for h in hours}
         actual = set()
         for d, day in facts['days'].items():
             current_ds = ds(d) if callable(ds) else ds

@@ -1,3 +1,4 @@
+from . import attribution
 import os
 import re
 import sqlite3
@@ -10,11 +11,11 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from fastapi.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel, Field, StrictInt, StrictBool, StrictStr
-from .domain import normalize_dataset, rows, candidates, manual_candidates, consultation, validate_assignment, default_availability, auto_availability, HOURS, SITES, lesson, validate_permit, CDC_NAMES
+from .domain import absences, normalize_dataset, rows, candidates, manual_candidates, consultation, validate_assignment, default_availability, auto_availability, HOURS, SITES, lesson, validate_permit, CDC_NAMES
 from .storage import Store, EMPTY
-from . import backup, attachments, concurrency, auth, display, publication
+from . import backup, attachments, concurrency, auth, display, publication, teacher_access
 from .hour_types import merge_types, validate_types
-from . import statistics, recovery, timetables, overrides, teacher_names, availability, receptions, paid
+from . import statistics, recovery, timetables, overrides, teacher_names, availability, receptions, paid, appointments, paid_finance
 from zoneinfo import ZoneInfo
 from hashlib import sha256
 from copy import deepcopy
@@ -33,7 +34,7 @@ class ConditionalWrite(BaseModel):
 class Edit(ConditionalWrite):
     attachment: Attachment | None = None
     note: StrictStr | None = None
-    classification: Literal['planned', 'last_minute', 'trip', 'strike'] | None = None
+    classification: Literal['planned', 'last_minute', 'trip', 'strike', 'assembly'] | None = None
     day: date
     until: date | None = None
     group: str
@@ -47,7 +48,7 @@ class Edit(ConditionalWrite):
 class Permit(ConditionalWrite):
     attachment: Attachment | None = None
     note: StrictStr | None = None
-    classification: Literal['planned', 'last_minute', 'trip', 'strike'] | None = None
+    classification: Literal['planned', 'last_minute', 'trip', 'strike', 'assembly'] | None = None
     requested_on: date | None = None
     day: date
     id: str
@@ -119,6 +120,7 @@ def create_app(path=None, seed=None):
     backup_on_startup = os.environ.get('BACKUP_ON_STARTUP', 'true').lower() == 'true'
     
     identities = auth.Identities(os.environ.get('AUTH_DATABASE_PATH') or database.parent / 'auth.sqlite', testing=testing)
+    if not testing: identities.require_admin()
     app.state.identities = identities
     auth.install(app, identities)
     store = Store(str(database))
@@ -132,6 +134,7 @@ def create_app(path=None, seed=None):
         if value is not None:
             value['_overrides'] = store.read(db, 'timetableOverrides', overrides.empty())
             value['_receptions'] = store.read(db, 'receptions', receptions.empty())
+            value['_appointments'] = store.read(db, 'teacherAppointments', appointments.empty())
         return value
 
     def name_overrides(db):
@@ -148,7 +151,8 @@ def create_app(path=None, seed=None):
         with store.connect() as db:
             db.execute('BEGIN IMMEDIATE')
             state = store.read(db, 'state', EMPTY)
-            if paid.migrate(state.get('paidAvailability', {})):
+            paid_changed = paid.migrate(state.get('paidAvailability', {}))
+            if attribution.migrate(state, *identities.authors()) or paid_changed:
                 store.write(db, 'state', state)
             ds = store.read(db, 'dataset')
             if ds and read_history(db) is None:
@@ -242,6 +246,8 @@ def create_app(path=None, seed=None):
         state.setdefault('manualPermits', {})
         for group in attachments.GROUPS:
             state.setdefault(group, {})
+        paid.migrate(state.get('paidAvailability', {}))
+        attribution.migrate(state, *identities.authors())
         return ds, state
 
     def save_state(db, ds, state, days, revalidate=False):
@@ -273,31 +279,66 @@ def create_app(path=None, seed=None):
             facts = store.read(db, 'statistics', statistics.empty())
             state = store.read(db, 'state', EMPTY)
             history = read_history(db)
-            catalog = {i: t for v in history['versions'] for i, t in v['dataset']['teachers'].items()} if history else {}
-            teachers = teacher_names.teachers(catalog, name_overrides(db))
+            teachers = teacher_names.teachers(appointments.catalog(history), name_overrides(db)) if history else {}
+            if history:
+                today = datetime.now(ZoneInfo('Europe/Rome')).date().isoformat()
+                days = appointments.absence_dates(history, today)
+                facts = timetables.sync(history, state, facts, days)
         return statistics.report(facts, campus, period, start, end, state=state, teachers=teachers)
 
     @app.get('/api/paid-availability')
     def get_paid(day: date | None = None):
         selected = day or datetime.now(ZoneInfo('Europe/Rome')).date()
         with store.connect() as db:
+            db.execute('BEGIN')
             ds, state = load(db, selected.isoformat())
             result = paid.report(read_history(db), state, selected)
+            result['finance'] = paid_finance.summary(state, store.read(db, 'paidFinance', paid_finance.empty()))
+            accounts, _ = identities.authors()
             result['teachers'] = teacher_names.teachers(result['teachers'], name_overrides(db))
             for cell in result['cells']:
                 for teacher in cell['teachers']:
                     teacher['name'] = result['teachers'][teacher['id']]['name']
+                    teacher['addedBy'] = attribution.resolve(teacher.get('addedBy'), accounts)
                 cell['teachers'].sort(key=lambda t: (t['name'].casefold(), t['id']))
             for record in result['records']:
                 record['name'] = result['teachers'].get(record['teacher'], {}).get('name', record['teacher'])
+                record['assignedBy'] = attribution.resolve(record.get('assignedBy'), accounts)
             return dict(result, concurrency=concurrency.snapshot(state))
+
+    @app.get('/api/paid-finance')
+    def get_paid_finance():
+        with store.connect() as db:
+            db.execute('BEGIN')
+            history = read_history(db)
+            config = store.read(db, 'paidFinance', paid_finance.empty())
+            teachers = teacher_names.teachers(appointments.catalog(history), name_overrides(db)) if history else {}
+            return dict(config=config, teachers=teachers, expected={'paidFinance': concurrency.digest(config)})
+
+    @app.post('/api/paid-finance')
+    def edit_paid_finance(data: dict):
+        if set(data) != {'config', 'expected'}:
+            raise ValueError('Configurazione economica non valida.')
+        with store.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            history = read_history(db)
+            config = paid_finance.validate(data['config'], appointments.catalog(history) if history else {})
+            current = store.read(db, 'paidFinance', paid_finance.empty())
+            concurrency.check(data['expected'], {'records': {'paidFinance': concurrency.digest(current)}}, ['paidFinance'])
+            state = store.read(db, 'state', EMPTY)
+            priced = paid_finance.recalculate(history, state, config)
+            store.write(db, 'paidFinance', config)
+            if priced:
+                ds, _ = load(db)
+                save_state(db, ds, state, list(state['asg']))
+            return dict(ok=True, priced=priced, unpriced=paid_finance.summary(state, config)['all']['unpriced'])
 
     @app.post('/api/paid-availability')
     def edit_paid(e: PaidAvailability, request: Request):
         with store.connect() as db:
             db.execute('BEGIN IMMEDIATE')
             ds, state = load(db)
-            if e.weekday not in range(5) or e.id not in ds['teachers'] or (e.hours and ds['teachers'][e.id].get('retired')):
+            if e.weekday not in range(5) or e.id not in ds['teachers'] or (e.hours and (ds['teachers'][e.id].get('retired') or ds['teachers'][e.id].get('unavailable'))):
                 raise ValueError('Docente o giorno non valido.')
             weekday = str(e.weekday)
             concurrency.check(e.expected, concurrency.snapshot(state), [concurrency.key('paidAvailability', weekday, e.id)])
@@ -333,7 +374,7 @@ def create_app(path=None, seed=None):
         for item in problems:
             item['context'] = timetables.conflict_context(history, d, item['key'], state['asg'][d][item['key']]) or timetables.context(history, state, d, item['key'], facts)
         selected = timetables.version(history, d)
-        return dict(concurrency=concurrency.snapshot(state, ds, d), dataset=display, state=state, rows=rs, issues=problems, references=timetables.reference_issues(history, state, d),
+        return dict(continuousAbsences=appointments.derived(ds, d), effectiveAbsences=absences(state, d, ds), concurrency=concurrency.snapshot(state, ds, d), dataset=display, state=state, rows=rs, issues=problems, references=timetables.reference_issues(history, state, d),
                     recoveryRequests=recovery.request_details(state, d),
                     timetable=dict(id=selected['id'], effective=selected['effective']), autoDis={d: auto_availability(ds, state, d)})
 
@@ -374,8 +415,9 @@ def create_app(path=None, seed=None):
     app.state.publisher = publisher
 
     @app.get('/api/publication')
-    def publication_status(request: Request):
-        return publisher.status(request.state.account['campus'])
+    def publication_status(request: Request, campus: Literal['centrale','succursale']):
+        if campus not in request.state.account['campuses']: raise HTTPException(403, 'Sede non autorizzata.')
+        return publisher.status(campus)
 
     @app.get('/api/publication/schedule')
     def get_publication_schedule():
@@ -393,14 +435,163 @@ def create_app(path=None, seed=None):
 
     @app.post('/api/publication', status_code=202)
     def publish_display(request: Request, data: dict):
-        campus = request.state.account['campus']
-        if set(data) - {'day', 'campus'} or data.get('campus', campus) != campus:
+        campus = data.get('campus')
+        if set(data) - {'day', 'campus'} or campus not in request.state.account['campuses']:
             raise HTTPException(403, 'Puoi pubblicare soltanto la tua sede.')
         day = data.get('day')
         if day != datetime.now(ZoneInfo('Europe/Rome')).date().isoformat():
             raise HTTPException(422, 'Puoi pubblicare soltanto le supplenze di oggi.')
         publisher.start(day, campus)
         return {'started': True, 'campus': campus}
+
+    teacher_identities = teacher_access.TeacherAccess(identities)
+
+    def portal_people():
+        with store.connect() as db:
+            history = read_history(db)
+            return teacher_names.teachers(appointments.catalog(history), name_overrides(db)) if history else {}
+
+    @app.get('/api/teacher-access')
+    def list_teacher_access():
+        return dict(people=portal_people(), accounts=teacher_identities.list(), classCodes=CDC_NAMES)
+
+    @app.post('/api/teacher-access')
+    def save_teacher_access(data: dict):
+        if set(data) != {'rows'}: raise ValueError('Campi accesso docenti non validi.')
+        return dict(accounts=teacher_identities.save(data['rows'], portal_people()))
+
+    @app.post('/api/teacher-access/activation')
+    def activate_teacher_access(data: dict):
+        if set(data) != {'rows', 'enabled'}: raise ValueError('Campi attivazione non validi.')
+        return teacher_identities.activate(data['rows'], data['enabled'], portal_people())
+
+    @app.post('/api/teacher-access/pin')
+    def issue_teacher_pin(data: dict):
+        if set(data) != {'person', 'revision'} or not isinstance(data['person'], str) or data['person'] not in portal_people():
+            raise ValueError('Docente non valido.')
+        return teacher_identities.issue(data['person'], data['revision'])
+
+    @app.post('/api/teacher/auth/login')
+    def teacher_login(request: Request, data: dict):
+        from fastapi.responses import JSONResponse
+        token = teacher_identities.login(data.get('email'), data.get('pin'), request.client.host if request.client else 'local',
+                                         request.cookies.get(teacher_access.COOKIE))
+        user = teacher_identities.session(token)
+        if user['person'] not in portal_people():
+            teacher_identities.revoke(token)
+            raise HTTPException(401, 'Credenziali non valide.')
+        response = JSONResponse(dict(account={k: user[k] for k in ('id', 'person', 'email')}, csrf=user['csrf']))
+        response.set_cookie(teacher_access.COOKIE, token, max_age=43200, httponly=True,
+                            secure=request.state.secure_cookie, samesite='lax', path=teacher_access.COOKIE_PATH)
+        return response
+
+    @app.get('/api/teacher/auth/session')
+    def teacher_session(request: Request):
+        user = request.state.teacher
+        if user['person'] not in portal_people(): raise HTTPException(401, 'Accesso non disponibile. Contatta l’amministratore.')
+        return dict(account={k: user[k] for k in ('id', 'person', 'email')}, csrf=user['csrf'])
+
+    @app.post('/api/teacher/auth/logout')
+    def teacher_logout(request: Request):
+        from fastapi.responses import JSONResponse
+        teacher_identities.revoke(request.cookies.get(teacher_access.COOKIE))
+        response = JSONResponse({'ok': True})
+        response.delete_cookie(teacher_access.COOKIE, path=teacher_access.COOKIE_PATH)
+        return response
+
+    @app.get('/api/teacher/timetable')
+    def teacher_timetable(request: Request, day: date | None = None):
+        if set(request.query_params) - {'day'}: raise HTTPException(422, 'Selettore non consentito.')
+        viewed = day or datetime.now(ZoneInfo('Europe/Rome')).date()
+        person = request.state.teacher['person']
+        with store.connect() as db:
+            db.execute('BEGIN')
+            history = read_history(db)
+            if not history:
+                return dict(day=viewed.isoformat(), status='no_timetable', teacher=None, periods=[])
+            if person not in appointments.catalog(history):
+                raise HTTPException(401, 'Accesso non disponibile. Contatta l’amministratore.')
+            ds = presented(db, timetables.dataset(history, viewed.isoformat()))
+            teacher = ds['teachers'].get(person)
+            if not teacher: raise HTTPException(401, 'Accesso non disponibile. Contatta l’amministratore.')
+            weekday = ('lun', 'mar', 'mer', 'gio', 'ven', 'sab', 'dom')[viewed.weekday()]
+            periods = []
+            for hour in HOURS:
+                cell = ds['lessons'].get(f'{person}|{weekday}|{hour}')
+                if cell:
+                    periods.append(dict(hour=hour, classes=cell.get('classes', []), room=cell.get('room'),
+                                        site=cell.get('site'), activities=cell.get('activities') or ([cell['special']] if cell.get('special') else [])))
+            return dict(day=viewed.isoformat(), status='ready', teacher=dict(name=teacher['name']), periods=periods)
+
+    @app.get('/api/staffing')
+    def get_staffing(day: date | None = None):
+        viewed = (day or datetime.now(ZoneInfo('Europe/Rome')).date()).isoformat()
+        with store.connect() as db:
+            db.execute('BEGIN')
+            history = read_history(db)
+            if not history:
+                return dict(document=appointments.empty(), revision=timetables.digest(appointments.empty()), people={}, sources={}, classCodes=CDC_NAMES, dataset=None)
+            resolved = timetables.dataset(history, viewed)
+            return dict(document=history['_appointments'], revision=timetables.digest(history['_appointments']), people=teacher_names.teachers(resolved['teachers'], name_overrides(db)), classCodes=CDC_NAMES,
+                        sources={i: t for v in history['versions'] for i, t in v['dataset']['teachers'].items()},
+                        dataset=resolved)
+
+    def staffing_plan(db, data):
+        if set(data) - {'document', 'day', 'token', 'revision'}:
+            raise ValueError('Richiesta di gestione docenti non valida.')
+        viewed = appointments.iso(data.get('day'))
+        history = read_history(db)
+        if not history: raise ValueError('Carica prima un orario.')
+        if data.get('revision') != timetables.digest(history['_appointments']):
+            raise HTTPException(409, 'Gestione docenti modificata: ricarica prima di generare una nuova anteprima.')
+        state = store.read(db, 'state', EMPTY)
+        facts = store.read(db, 'statistics', statistics.empty())
+        result = appointments.preview(history, state, facts, data.get('document'), viewed)
+        documents = db.execute("SELECT key,value FROM documents WHERE key NOT IN ('googleSheetsStatus','googleSheets') ORDER BY key").fetchall()
+        result['token'] = timetables.digest([documents, data['document'], viewed])
+        return history, state, facts, result
+
+    @app.post('/api/staffing/preview')
+    def preview_staffing(data: dict):
+        with store.connect() as db:
+            db.execute('BEGIN')
+            *_, result = staffing_plan(db, data)
+            return result
+
+    @app.post('/api/staffing/apply')
+    def apply_staffing(data: dict):
+        with store.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            history, state, facts, result = staffing_plan(db, data)
+            if data.get('token') != result['token']:
+                raise HTTPException(409, 'Anteprima scaduta: ricarica e verifica i dati.')
+            if not result['ready']:
+                raise ValueError('Risolvere le registrazioni incompatibili prima di salvare.')
+            backup.backup_database(str(database), str(backup_dir))
+            previous = dict(history)
+            history['_appointments'] = result['document']
+            before_dataset, after_dataset = timetables.resolver(previous), timetables.resolver(history)
+            # Drop only changed slot context; unrelated captured facts retain provenance.
+            days = []
+            for d in timetables.dates(state, facts):
+                before, after = before_dataset(d), after_dataset(d)
+                if before == after:
+                    continue
+                days.append(d)
+                affected = appointments.affected_assignments(before, after, state, d)
+                demand = facts['days'].get(d, {}).get('demand', {})
+                for key, row in list(demand.items()):
+                    if row['key'] in affected:
+                        demand.pop(key)
+                for key, slot in list(facts['days'].get(d, {}).get('absences', {}).items()):
+                    i, h = slot['teacher'], slot['h']
+                    if lesson(before, i, d, h) != lesson(after, i, d, h):
+                        facts['days'][d]['absences'].pop(key)
+            updated = timetables.sync(history, state, facts, days)
+            store.write(db, 'teacherAppointments', result['document'])
+            store.write(db, 'statistics', updated)
+            identities.generation(advance=True)
+        return dict(ok=True)
 
     @app.get('/api/orari')
     def get_orari(day: date | None = None):
@@ -452,7 +643,7 @@ def create_app(path=None, seed=None):
         # Background Sheets polling must not expire a reviewed reception import.
         documents = db.execute('''SELECT key, value FROM documents
             WHERE key IN ('dataset', 'timetables', 'timetableOverrides', 'receptions',
-                          'teacherNameOverrides', 'hourTypes', 'state', 'statistics')
+                          'teacherNameOverrides', 'teacherAppointments', 'hourTypes', 'state', 'statistics')
             ORDER BY key''').fetchall()
         token = timetables.digest([documents, {k: v for k, v in data.items() if k not in ('token', 'confirm')}])
         teachers = {i: t['name'] for i, t in presented(db, ds)['teachers'].items() if not t.get('retired')}
@@ -492,7 +683,10 @@ def create_app(path=None, seed=None):
         identifier, value = data['teacher'], data['value']
         with store.connect() as db:
             db.execute('BEGIN IMMEDIATE')
-            catalog = teacher_names.catalog(read_history(db))
+            history = read_history(db)
+            if identifier in history['_appointments']['people']:
+                raise ValueError('Identità personale gestita in Amministrazione.')
+            catalog = teacher_names.catalog(history)
             if identifier not in catalog:
                 raise ValueError('Docente non valido.')
             document = name_overrides(db)
@@ -594,12 +788,14 @@ def create_app(path=None, seed=None):
         with store.connect() as db:
             db.execute('BEGIN')
             ds, state = load(db)
-            versions = read_history(db)['versions']
+            versions = appointments.timetable_versions(read_history(db))
             ds = presented(db, ds)
             versions = [dict(v, dataset=presented(db, v['dataset'])) for v in versions]
         summaries, balances = recovery.summary(state)
         manual = {p['teacher']: p for p in recovery.ledger(state).values() if p['date'] is None}
-        return dict(concurrency=concurrency.snapshot(state), dataset=ds, timetableVersions=[dict(effective=v['effective'], dataset=v['dataset']) for v in versions], permitAttachments=state['permitAttachments'], permessi=state['permessi'], permitRequests=state['permitRequests'], permitNotes=state['permitNotes'], permitKinds=state['permitKinds'], permitCreators=state['permitCreators'], recoveries=summaries, balances=balances, manualPermits=manual, manualPermitNotes=state['manualPermitNotes'])
+        accounts, _ = identities.authors()
+        creators = {day: {teacher: attribution.resolve(author, accounts) for teacher, author in entries.items()} for day, entries in state['permitCreators'].items()}
+        return dict(concurrency=concurrency.snapshot(state), dataset=ds, timetableVersions=[dict(effective=v['effective'], dataset=v['dataset']) for v in versions], permitAttachments=state['permitAttachments'], permessi=state['permessi'], permitRequests=state['permitRequests'], permitNotes=state['permitNotes'], permitKinds=state['permitKinds'], permitCreators=creators, recoveries=summaries, balances=balances, manualPermits=manual, manualPermitNotes=state['manualPermitNotes'])
 
     @app.post('/api/manual-permits')
     def save_manual_permit(e: ManualPermit):
@@ -646,7 +842,7 @@ def create_app(path=None, seed=None):
             if source and source[1] not in permits.get(source[0], {}):
                 raise ValueError('Permesso originale non più presente.')
             old_day, old_teacher = source or (d, e.id)
-            creator = state['permitCreators'].get(old_day, {}).get(old_teacher) if source else request.state.account['campus']
+            creator = state['permitCreators'].get(old_day, {}).get(old_teacher) if source else attribution.snapshot(request.state.account)
             classification = e.classification if 'classification' in e.model_fields_set else state['permitKinds'].get(old_day, {}).get(old_teacher)
             note = (e.note or '').strip() if 'note' in e.model_fields_set else state['permitNotes'].get(old_day, {}).get(old_teacher)
             attachment = state['permitAttachments'].get(old_day, {}).get(old_teacher)
@@ -665,6 +861,8 @@ def create_app(path=None, seed=None):
                 state['permitAttachments'].get(d, {}).pop(e.id, None)
             else:
                 validate_permit(ds, e.id, e.hours)
+                if ds['teachers'][e.id].get('unavailable') and not source:
+                    raise ValueError('Docente non attivo nella data selezionata.')
                 if ds['teachers'][e.id].get('retired') and (not source or source[1] != e.id):
                     raise ValueError('Docente non più in servizio.')
                 if e.id in permits.get(d, {}) and source != (d, e.id):
@@ -703,15 +901,28 @@ def create_app(path=None, seed=None):
     def timetable_plan(db, data, effective):
         ds = normalize_dataset(data)
         history = read_history(db)
+        if history and 'teacherSources' in data:
+            mappings = data['teacherSources']
+            if not isinstance(mappings, dict) or any(i not in ds['teachers'] or not isinstance(person, str) or person not in appointments.catalog(history) for i, person in mappings.items()):
+                raise ValueError('Abbinamenti delle sorgenti non validi.')
+            if any(i in appointments.catalog(history) and person != history['_appointments']['sources'].get(i, i) for i, person in mappings.items()):
+                raise ValueError('Un ID già noto non può cambiare persona durante l’importazione: correggi l’abbinamento in Amministrazione con verifica della cronologia.')
+            history = deepcopy(history)
+            history['_appointments']['sources'].update(mappings)
         state = store.read(db, 'state', EMPTY)
         for group in EMPTY:
             state.setdefault(group, {})
         facts = store.read(db, 'statistics', statistics.empty())
         rules = merge_types(ds, store.read(db, 'hourTypes', {}))
         proposed, reconciled, impact = timetables.plan(history, ds, effective, state, facts, rules)
+        staffing = proposed.get('_appointments', appointments.empty())
+        if staffing != appointments.empty():
+            review = appointments.preview(proposed, state, facts, staffing, effective)
+            if review['issues']:
+                raise ValueError('Riconciliare prima le sorgenti in Amministrazione: ' + review['issues'][0]['message'])
         documents = db.execute("SELECT key,value FROM documents WHERE key NOT IN ('googleSheetsStatus','googleSheets') ORDER BY key").fetchall()
         images = [(i, media, sha256(content).hexdigest()) for i, media, content in db.execute('SELECT id, media_type, content FROM attachments ORDER BY id')]
-        impact['token'] = timetables.digest([documents, images, ds, effective])
+        impact['token'] = timetables.digest([documents, images, ds, effective, proposed.get('_appointments', appointments.empty())])
         impact['teachers'] = {i: t['name'] for i, t in presented(db, ds)['teachers'].items()}
         if history:
             impact['previousTeachers'] = {i: t['name'] for i, t in presented(db, timetables.version(history, effective)['dataset'])['teachers'].items()}
@@ -743,6 +954,8 @@ def create_app(path=None, seed=None):
                 raise ValueError('Backup prima dell’importazione fallito. Nessun dato modificato: ' + str(exc)) from exc
             identities.generation(advance=True)
             write_history(db, proposed)
+            if '_appointments' in proposed:
+                store.write(db, 'teacherAppointments', proposed['_appointments'])
             store.write(db, 'statistics', facts)
             # Legacy dataset is a preserved baseline, never the latest scheduled version.
             if not history:
@@ -775,11 +988,13 @@ def create_app(path=None, seed=None):
             attachment_group = {'abs': 'absenceAttachments', 'dis': 'disAttachments'}.get(e.group)
             for d in days:
                 ds, _ = load(db, d)
-                active = timetables.version(read_history(db), d)['dataset']
+                active = timetables.dataset(read_history(db), d)
                 if e.id not in (ds['classes'] if e.group == 'cf' else ds['teachers']):
                     raise ValueError('Docente o classe sconosciuto.')
                 if e.hours is not None and e.id not in state[e.group].get(d, {}) and e.id not in (active['classes'] if e.group == 'cf' else active['teachers']):
                     raise ValueError('Docente o classe non attivo nella data selezionata.')
+                if e.group != 'cf' and e.hours and (ds['teachers'][e.id].get('unavailable') or ds['teachers'][e.id].get('retired')):
+                    raise ValueError('Docente non attivo: gestisci assenze prolungate e supplenze in Amministrazione.')
                 if attachment_group and (e.hours is None or 'attachment' in e.model_fields_set):
                     state[attachment_group].get(d, {}).pop(e.id, None)
                     if e.hours is not None and attachment:
@@ -844,7 +1059,7 @@ def create_app(path=None, seed=None):
                     context = timetables.conflict_context(history, e.day.isoformat(), key, old) or timetables.context(history, state, e.day.isoformat(), key, facts)
                 if not context and not old:
                     raise ValueError('Supplenza non più presente nell’orario o nelle assenze.')
-                if not context or context.get('site') != request.state.account['campus']:
+                if not context or context.get('site') not in request.state.account['campuses']:
                     raise HTTPException(403, 'Assegnazione riservata alla sede della riga; verifica anche la sede delle assegnazioni da risolvere.')
             references = [concurrency.key('asg', e.day.isoformat(), e.key)]
             if e.replace_key:
@@ -856,20 +1071,23 @@ def create_app(path=None, seed=None):
                 if e.notified is None or e.value is not None or e.replace_key or e.category is not None or e.accepted is not None or e.communicated is not None or e.exceptional or not old or old.get('t') != 'PAID':
                     raise ValueError('Avvisato disponibile solo per assegnazioni a pagamento registrate.')
                 old['notified'] = e.notified
+                old['communicated'] = e.notified
                 save_state(db, ds, state, [e.day.isoformat()])
                 return {'ok': True, 'concurrency': concurrency.snapshot(state, ds, e.day.isoformat())}
             if 'accepted' in e.model_fields_set:
                 old = assignments.get(e.key)
-                if e.category is not None or e.accepted is None or e.value is not None or e.replace_key or e.communicated is not None or e.exceptional or not old or old.get('t') != 'RP':
-                    raise ValueError('Accettata disponibile solo per recuperi permesso già registrati, senza altre modifiche.')
+                if e.category is not None or e.accepted is None or e.value is not None or e.replace_key or e.communicated is not None or e.exceptional or not old or old.get('t') not in ('RP', 'PAID'):
+                    raise ValueError('Accettata disponibile solo per recuperi permesso e ore a pagamento già registrati, senza altre modifiche.')
                 old['accepted'] = e.accepted
                 save_state(db, ds, state, [e.day.isoformat()])
                 return {'ok': True, 'concurrency': concurrency.snapshot(state, ds, e.day.isoformat())}
             if e.communicated is not None:
                 old = assignments.get(e.key)
-                if e.category is not None or e.value is not None or e.replace_key or e.exceptional or not old or (old['v'] not in ('ENTRA', 'ESCE') and old.get('t') != 'RP'):
-                    raise ValueError('Comunicato disponibile solo per entrate, uscite e recuperi permesso già registrati.')
+                if e.category is not None or e.value is not None or e.replace_key or e.exceptional or not old or (old['v'] not in ('ENTRA', 'ESCE') and old.get('t') not in ('RP', 'PAID')):
+                    raise ValueError('Comunicato disponibile solo per entrate, uscite, recuperi permesso e ore a pagamento già registrati.')
                 old['communicated'] = e.communicated
+                if old.get('t') == 'PAID':
+                    old['notified'] = e.communicated
                 save_state(db, ds, state, [e.day.isoformat()])
                 return {'ok': True, 'concurrency': concurrency.snapshot(state, ds, e.day.isoformat())}
             if e.replace_key:
@@ -888,11 +1106,22 @@ def create_app(path=None, seed=None):
                     assignments[e.key]['note'] = e.note.strip()
                 if assignments[e.key]['t'] == 'PAID' and not unchanged:
                     row = current_rows[e.key]
-                    assignments[e.key].update(assignedBy=request.state.account['campus'], notified=False,
+                    assignments[e.key].update(assignedBy=attribution.snapshot(request.state.account), notified=False,
                                               paidContext=dict(site=row['sede'], room=row['aula'], **{'class': row['c']}))
+                    paid_finance.price(assignments[e.key], ds['teachers'], store.read(db, 'paidFinance', paid_finance.empty()))
             recovery.validate(state)
             save_state(db, ds, state, [e.day.isoformat()], revalidate=True)
-        return {'ok': True, 'concurrency': concurrency.snapshot(state, ds, e.day.isoformat())}
+            saved = assignments.get(e.key, {})
+            budget_warning = paid_finance.warning(state, store.read(db, 'paidFinance', paid_finance.empty()), saved.get('paidContext', {}).get('site')) if saved.get('t') == 'PAID' else None
+        return {'ok': True, 'concurrency': concurrency.snapshot(state, ds, e.day.isoformat()), 'warning': budget_warning}
+
+    @app.get('/api/settings/overview')
+    def settings_overview():
+        with store.connect() as db:
+            db.execute('BEGIN')
+            history = read_history(db)
+            ds = timetables.dataset(history, datetime.now(ZoneInfo('Europe/Rome')).date().isoformat()) if history else store.read(db, 'dataset')
+            return dict(teacherCount=len(ds['teachers']) if ds else 0, classCount=len(ds['classes']) if ds else 0, warnings=ds.get('warnings', []) if ds else [])
 
     @app.get('/api/export')
     def export():
@@ -904,30 +1133,33 @@ def create_app(path=None, seed=None):
             history = read_history(db)
             images = attachments.export(db, state)
             labels = name_overrides(db)
-        return dict(schema=8, receptions=history['_receptions'], teacherNameOverrides=labels, timetables={k: v for k, v in history.items() if not k.startswith('_')}, timetableOverrides=history['_overrides'], attachments=images, datasetId='v1:'+','.join(sorted(ds['teachers'])), hourTypes=rules, statistics=facts, **state)
+            finance = store.read(db, 'paidFinance', paid_finance.empty())
+        return dict(schema=11, paidFinance=finance, teacherAppointments=history['_appointments'], receptions=history['_receptions'], teacherNameOverrides=labels, timetables={k: v for k, v in history.items() if not k.startswith('_')}, timetableOverrides=history['_overrides'], attachments=images, datasetId='v1:'+','.join(sorted(ds['teachers'])), hourTypes=rules, statistics=facts, **state)
 
     @app.post('/api/import')
     def import_state(data: dict, preview: bool = False):
         with store.connect() as db:
             db.execute('BEGIN IMMEDIATE')
-            history = timetables.validate(data.get('timetables')) if data.get('schema') in (4, 5, 6, 7, 8) else read_history(db)
+            history = timetables.validate(data.get('timetables'), data.get('teacherAppointments') if data.get('schema') in (10, 11) else None) if data.get('schema') in (4, 5, 6, 7, 8, 9, 10, 11) else read_history(db)
+            history['_appointments'] = appointments.validate(data.get('teacherAppointments', appointments.empty()) if data.get('schema') in (10, 11) else appointments.empty(), history)
             retained = store.read(db, 'timetableOverrides', overrides.empty())
-            document = overrides.validate(data.get('timetableOverrides'), history) if data.get('schema') in (5, 6, 7, 8) else retained
+            document = overrides.validate(data.get('timetableOverrides'), history) if data.get('schema') in (5, 6, 7, 8, 9, 10, 11) else retained
             document, restore_review = overrides.reconcile(document, history)
             history['_overrides'] = document
-            reception_document = receptions.validate(data.get('receptions', receptions.empty()) if data.get('schema') in (7, 8) else receptions.empty(), teacher_names.catalog(history))
+            reception_document = receptions.validate(data.get('receptions', receptions.empty()) if data.get('schema') in (7, 8, 9, 10, 11) else receptions.empty(), teacher_names.catalog(history))
             history['_receptions'] = reception_document
-            labels = teacher_names.validate(data.get('teacherNameOverrides') if data.get('schema') in (6, 7, 8) else name_overrides(db), teacher_names.catalog(history))
-            if data.get('schema') not in (4, 5, 6, 7, 8):
+            labels = teacher_names.validate(data.get('teacherNameOverrides') if data.get('schema') in (6, 7, 8, 9, 10, 11) else name_overrides(db), teacher_names.catalog(history))
+            if data.get('schema') not in (4, 5, 6, 7, 8, 9, 10, 11):
                 ds, _ = load(db)
-            if data.get('schema') in (4, 5, 6, 7, 8):
+            if data.get('schema') in (4, 5, 6, 7, 8, 9, 10, 11):
                 ds = timetables.dataset(history, datetime.now(ZoneInfo('Europe/Rome')).date().isoformat())
             identifier = data.get('datasetId')
-            compatible = identifier == 'v1:'+','.join(sorted(ds['teachers'])) if data.get('schema') in (4, 5, 6, 7, 8) else isinstance(identifier, str) and identifier.startswith('v1:') and set(identifier[3:].split(',')) <= set(ds['teachers'])
-            if type(data.get('schema')) is not int or data['schema'] not in (1, 2, 3, 4, 5, 6, 7, 8) or not compatible:
+            compatible = identifier == 'v1:'+','.join(sorted(ds['teachers'])) if data.get('schema') in (4, 5, 6, 7, 8, 9, 10, 11) else isinstance(identifier, str) and identifier.startswith('v1:') and set(identifier[3:].split(',')) <= set(ds['teachers'])
+            if type(data.get('schema')) is not int or data['schema'] not in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11) or not compatible:
                 raise ValueError('Archivio non compatibile.')
             rules = validate_types(data['hourTypes']) if 'hourTypes' in data else None
-            state = {k: data.get(k, {}) for k in EMPTY}
+            from copy import deepcopy
+            state = deepcopy({k: data.get(k, {}) for k in EMPTY})
             for group, dates in state.items():
                 if not isinstance(dates, dict):
                     raise ValueError('Archivio non valido.')
@@ -961,10 +1193,10 @@ def create_app(path=None, seed=None):
                                 raise ValueError('Nota senza assenza o permesso valido.')
                         elif group in ('absenceKinds', 'permitKinds'):
                             source = 'abs' if group == 'absenceKinds' else 'permessi'
-                            if i not in state[source].get(d, {}) or i not in ds['teachers'] or not isinstance(value, str) or value not in ('planned', 'last_minute', 'trip', 'strike'):
+                            if i not in state[source].get(d, {}) or i not in ds['teachers'] or not isinstance(value, str) or value not in ('planned', 'last_minute', 'trip', 'strike', 'assembly'):
                                 raise ValueError('Classificazione assenza non valida.')
                         elif group == 'permitCreators':
-                            if i not in state['permessi'].get(d, {}) or not isinstance(value, str) or value not in SITES:
+                            if i not in state['permessi'].get(d, {}) or not attribution.valid(value):
                                 raise ValueError('Sede inserimento permesso non valida.')
                         elif group == 'permitIds':
                             if i not in state['permessi'].get(d, {}) or not isinstance(value, str):
@@ -981,20 +1213,23 @@ def create_app(path=None, seed=None):
                         elif group == 'disSites':
                             if i not in ds['teachers'] or value not in (*SITES, None, ''):
                                 raise ValueError('Sede non valida.')
-                        elif not isinstance(value, dict) or ('exceptional' in value and type(value['exceptional']) is not bool) or ('communicated' in value and (type(value['communicated']) is not bool or (value.get('v') not in ('ENTRA', 'ESCE') and value.get('t') != 'RP'))) or value.get('v') not in (*ds['teachers'], 'DIR', 'ENTRA', 'ESCE', 'UNCOVERED') or not isinstance(value.get('t'), str) or len(i.split('|')) != 3 or i.split('|')[0] not in ds['teachers'] or not i.split('|')[1].isdigit() or int(i.split('|')[1]) not in HOURS or value.get('c') != i.split('|')[2]:
+                        elif not isinstance(value, dict) or ('exceptional' in value and type(value['exceptional']) is not bool) or ('communicated' in value and (type(value['communicated']) is not bool or (value.get('v') not in ('ENTRA', 'ESCE') and value.get('t') not in ('RP', 'PAID')))) or value.get('v') not in (*ds['teachers'], 'DIR', 'ENTRA', 'ESCE', 'UNCOVERED') or not isinstance(value.get('t'), str) or len(i.split('|')) != 3 or i.split('|')[0] not in ds['teachers'] or not i.split('|')[1].isdigit() or int(i.split('|')[1]) not in HOURS or value.get('c') != i.split('|')[2]:
                             raise ValueError('Assegnazione non valida.')
             if data['schema'] == 1:
                 if data.get('permitIds') or any(a.get('t') == 'RP' or 'permitId' in a for entries in state['asg'].values() for a in entries.values()):
                     raise ValueError('Archivio recuperi richiede schema 2.')
                 recovery.migrate(state)
+            attribution.migrate(state)
             recovery.validate(state)
             paid.metadata(state, ds['teachers'])
+            paid_finance.validate_prices(state)
+            finance = paid_finance.validate(data.get('paidFinance', paid_finance.empty()) if data['schema'] >= 11 else paid_finance.empty(), appointments.catalog(history))
             facts = statistics.validate(data['statistics'], lambda day: timetables.dataset(history, day), state) if 'statistics' in data else timetables.sync(history, state, statistics.empty(), reconstructed=True)
             if preview:
                 return dict(overrides=restore_review)
             identities.generation(advance=True)
             attachments.import_images(db, state, data, data['schema'])
-            if data['schema'] in (4, 5, 6, 7, 8):
+            if data['schema'] in (4, 5, 6, 7, 8, 9, 10, 11):
                 write_history(db, history)
                 store.write(db, 'dataset', history['versions'][0]['dataset'])
             if rules is not None:
@@ -1004,6 +1239,8 @@ def create_app(path=None, seed=None):
             store.write(db, 'timetableOverrides', document)
             store.write(db, 'teacherNameOverrides', labels)
             store.write(db, 'receptions', reception_document)
+            store.write(db, 'teacherAppointments', history['_appointments'])
+            store.write(db, 'paidFinance', finance)
         return {'ok': True, 'overrides': restore_review}
 
     @app.post('/api/import/preview')
@@ -1065,6 +1302,7 @@ def create_app(path=None, seed=None):
         @app.get('/', include_in_schema=False)
         @app.get('/index.html', include_in_schema=False)
         @app.get('/display', include_in_schema=False)
+        @app.get('/docenti', include_in_schema=False)
         def display_page():
             return FileResponse(static / 'index.html', headers={'Cache-Control': 'no-store'})
 

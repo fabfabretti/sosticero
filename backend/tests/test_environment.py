@@ -1,3 +1,5 @@
+from backend.auth import Identities
+import secrets
 import os
 import tempfile
 import unittest
@@ -16,6 +18,7 @@ class EnvironmentTest(unittest.TestCase):
                     os.environ.pop('APP_ENV', None)
                     if value is not None:
                         os.environ['APP_ENV'] = value
+                    if value == 'production': Identities(Path(directory)/'auth.sqlite').create('admin','Admin',None,secrets.token_urlsafe(24),admin=True,protected=True)
                     client = TestClient(create_app(Path(directory) / 'test.sqlite'))
                     response = client.get('/api/environment')
                     self.assertEqual(response.status_code, 200)

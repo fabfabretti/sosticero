@@ -21,7 +21,7 @@ export const norm = (s: string) =>
 
 export type Lesson = { room?: string | null; disabled?: boolean; classes?: string[]; activities?: string[]; special?: string; site?: string | null };
 export type Dataset = {
-  teachers: Record<string, { name: string; importedName?: string; code?: string; classe_concorso?: string; cdcName?: string; retired?: boolean }>;
+  teachers: Record<string, { name: string; importedName?: string; code?: string; classe_concorso?: string; cdcName?: string; retired?: boolean; coveredBy?: string; replaces?: string; continuousAbsence?: boolean }>;
   lessons: Record<string, Lesson>;
   receptions?: { teacher: string }[];
 };
@@ -47,7 +47,7 @@ export function buildTeacherTimetables(dataset: Dataset): TeacherTimetable[] {
   const scheduled = new Set(Object.keys(dataset.lessons || {}).map(k => k.split("|")[0]));
   for (const reception of dataset.receptions || []) scheduled.add(reception.teacher);
   return Object.entries(dataset.teachers || {})
-    .filter(([id, t]) => !t.retired && scheduled.has(id))
+    .filter(([id, t]) => !t.retired && (scheduled.has(id) || t.coveredBy || t.continuousAbsence || t.replaces))
     .map(([id, t]) => ({
       id,
       name: t.name,

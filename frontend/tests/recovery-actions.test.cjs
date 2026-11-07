@@ -97,3 +97,23 @@ test('communication is independent of acceptance and guarded by campus and busy 
     assert.equal(calls, 1);
   }
 });
+
+test('paid assignments expose both status toggles without recovery copy or missing-permit warning', () => {
+  const c = component(), p = { ...props(), assignment: { v: 'rp', t: 'PAID', communicated: true, accepted: true }, permit: undefined };
+  let communicated = 0, accepted = 0;
+  p.onCommunicate = () => communicated++;
+  p.onAccept = () => accepted++;
+  const controls = buttons(c.render(p));
+  assert.equal(controls.length, 2);
+  assert.equal(c.render(p).some(n => n.props?.role === 'status'), false);
+  for (const button of controls) {
+    assert.equal(button.props['aria-pressed'], true);
+    button.props.onClick();
+  }
+  assert.equal(communicated, 1); assert.equal(accepted, 1);
+  p.canAssign = false;
+  for (const button of buttons(c.render(p))) {
+    assert.equal(button.props.disabled, true); button.props.onClick();
+  }
+  assert.equal(communicated, 1); assert.equal(accepted, 1);
+});

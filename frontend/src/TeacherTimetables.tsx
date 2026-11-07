@@ -8,9 +8,10 @@ import type { Reception } from './Receptions';
 
 export type Lesson = { room?: string | null; classes?: string[]; activities?: string[]; special?: string; site?: string | null; disabled?: boolean };
 type Dataset = {
-  teachers: Record<string, { id: string; name: string; importedName?: string; nameOverride?: NameOverride; code?: string; retired?: boolean }>;
+  teachers: Record<string, { id: string; name: string; importedName?: string; nameOverride?: NameOverride; code?: string; retired?: boolean; managedPerson?: boolean; coveredBy?: string; replaces?: string; continuousAbsence?: boolean; staffingPeriod?: { start: string; end: string | null } }>;
   lessons: Record<string, Lesson>;
   receptions?: Reception[];
+  excludedPOT?: Record<string, Lesson>;
 };
 type Group = { before: Record<string, Lesson | null>; after: Record<string, Lesson | null>; conflicts: { id: string; effective: string | null }[] };
 type Override = { id: string; teacher: string; start: string; end: string | null; reset: boolean; groups: Group[] };
@@ -258,19 +259,22 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
     <LoadingRegion pending={loading || busy} label={busy ? "Elaborazione…" : undefined} blocked={!ready || busy || exporting} error={loadError} retry={() => void quietRefresh().catch(() => {})}>
     {data && !filtered.length && <p>Nessun docente trovato.</p>}
     <div className="orari-grids">{filtered.map(g => {
+      const staffing = data?.dataset.teachers[g.id];
+      const managed = staffing?.managedPerson || staffing?.coveredBy || staffing?.replaces || staffing?.continuousAbsence;
       const editing = draft?.teacher === g.id;
       const current = activeOverride(data?.overrides || [], g.id, viewDay);
       const records = (data?.overrides || []).filter(r => r.teacher === g.id).filter((r, i, all) => !all.slice(i + 1).some(other => other.start === r.start));
       const upcoming = records.filter(r => r.start > viewDay && !r.reset && r.groups.length).sort((a, b) => a.start.localeCompare(b.start))[0];
       const marker = current?.groups.length ? current : upcoming;
       const review = current?.groups.some(group => group.conflicts.some(c => !c.effective || c.effective <= viewDay));
-      return <div className={'ui-surface orari-card' + (editing ? ' orari-editing' : '')} key={g.id}>
-        <div className="orari-card-header"><h3>{g.importedName && <><del className="orari-imported-name">{g.importedName}</del>{' '}</>}{g.name} <small>{g.code}</small></h3><div className="orari-card-actions">
+      return <div className={'ui-surface orari-card' + (editing ? ' orari-editing' : '') + (staffing?.continuousAbsence || staffing?.coveredBy ? ' orari-absent-original' : '')} key={g.id}>
+        <div className="orari-card-header"><h3>{staffing?.replaces && <><del>{name(staffing.replaces)}</del>{' → '}</>}{g.importedName && <><del className="orari-imported-name">{g.importedName}</del>{' '}</>}{g.name} <small>{g.code}</small></h3><div className="orari-card-actions">
           {marker && <span className="orari-modified">MODIFICATO · dal {dateLabel(marker.start)}{marker.end ? ` al ${dateLabel(marker.end)}` : ''}{marker.start > viewDay ? ' · programmato' : ''}</span>}
           {review && <span className="orari-review">Da verificare</span>}
-          <button className="ui-button" disabled={busy || editing} onClick={() => begin(g.id)} aria-label={`Modifica orario di ${g.name}`}>Modifica orario</button>
-          <button className="ui-button" disabled={busy} onClick={() => beginName(g.id)} aria-label={`Modifica nome di ${g.name}`}>Modifica nome</button>
+          <button className="ui-button" disabled={busy || editing || !!managed} onClick={() => begin(g.id)} aria-label={`Modifica orario di ${g.name}`}>Modifica orario</button>
+          <button className="ui-button" disabled={busy || !!managed} onClick={() => beginName(g.id)} aria-label={`Modifica nome di ${g.name}`}>Modifica nome</button>
         </div></div>
+        {managed && <p className="orari-staffing-status">{staffing?.continuousAbsence && 'Assenza prolungata · '}{staffing?.coveredBy ? `Coperto da ${name(staffing.coveredBy)}` : staffing?.replaces ? `Supplente di ${name(staffing.replaces)}` : 'Identità personale'}{staffing?.staffingPeriod && ` · dal ${dateLabel(staffing.staffingPeriod.start)}${staffing.staffingPeriod.end ? ` al ${dateLabel(staffing.staffingPeriod.end)}` : ' · in corso'}`} · Gestito in Amministrazione</p>}
         {nameDraft?.teacher === g.id && <form className="orari-name-editor" aria-label={`Modifica nome di ${g.name}`} onSubmit={e => { e.preventDefault(); void saveName(); }}>
           <p className="sub">Nome importato: {data?.dataset.teachers[g.id].importedName || g.name}</p>
           <div className="orari-name-fields">
@@ -310,6 +314,7 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
           const content = cell && <><span title={`${label} · ${site === 'C' ? 'Centrale' : site === 'S' ? 'Succursale' : 'Sede ignota'}`} className={`orari-session campus-${cell.site || 'unknown'}${special ? ' orari-special' : ''}${disabled ? ' orari-disabled' : ''}`}><span className="orari-session-label">{label}</span><span className="orari-session-meta">{cell.partners.length > 0 && <span className="orari-partners">Comp.</span>}<span className="orari-site" title={site === 'C' ? 'Centrale' : site === 'S' ? 'Succursale' : 'Sede ignota'}>{site}</span></span></span>{disabled && <span className="sr-only">Ora disabilitata: solo in caso di necessità</span>}</>;
           const destination = editing && drag?.target === slot;
           return <td key={d} data-timetable-slot={slot} data-teacher={g.id} className={(cell?.partners.length ? 'orari-shared ' : '') + (destination ? 'orari-destination' : '')}>
+            {data?.dataset.excludedPOT?.[`${g.id}|${d}|${h}`] && <span className="staffing-excluded"><del>POT</del> · non ereditato</span>}
             {receptionsBySlot.get(`${g.id}|${d}|${h}`)?.map(reception => <HourHelp key={`${d}|${h}`} text={`Ricevimento · ${DAY_LABELS[d]} ${h}ª · ${reception.time || 'Orario non specificato'} · ${reception.site || 'Sede da verificare'}${reception.location ? ' · ' + reception.location : ''}${cell ? ' · Sovrapposizione con attività in orario' : ''}`}><span className="orari-reception">R{cell ? ' · Sovrapposizione' : ''}</span></HourHelp>)}
             {editing && special ? <><button type="button" className={'orari-cell-button' + (drag?.slot === slot ? ' orari-drag-source' : '')} disabled={busy} aria-pressed={isClassActivity(value) ? undefined : disabled} aria-label={`${isClassActivity(value) ? 'Modifica ' + activity : disabled ? 'Riattiva' : 'Disabilita'} ${DAY_LABELS[d]} ${h}ª ${label}`}
               onKeyDown={e => {

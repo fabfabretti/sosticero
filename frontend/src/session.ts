@@ -1,5 +1,5 @@
 import { ApiError } from './concurrency';
-export type Account = { id: string; username: string; name: string; campus: 'centrale' | 'succursale' };
+export type Account = { id: string; username: string; name: string; admin: boolean; campuses: ('centrale' | 'succursale')[] };
 export type Session = { account: Account; csrf: string; generation: number };
 let session: Session | undefined;
 export const currentSession = () => session;

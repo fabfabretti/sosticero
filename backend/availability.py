@@ -32,7 +32,7 @@ def report(history, state, policies, selected, campus='total'):
         rules = merge_types(ds, policies)
         versions.append(dict(date=d, id=timetables.version(history, d)['id'],
                              effective=timetables.version(history, d)['effective']))
-        active = {i: t for i, t in ds['teachers'].items() if not t.get('retired')}
+        active = {i: t for i, t in ds['teachers'].items() if not t.get('retired') and not t.get('unavailable')}
         debt = {i for i in active if recovery.eligible(permits, i, d)}
         for h in HOURS:
             ordinary, rp, payment = [], [], []

@@ -12,7 +12,7 @@ function harness() {
     useRef(initial){const i=cursor++;if(!(i in slots))slots[i]={current:initial};return slots[i];},
     useEffect(fn,deps){const i=cursor++;if(!(i in slots)||deps.some((d,j)=>d!==slots[i][j]))effects.push(fn);slots[i]=deps;},
   };
-  const exports={},jsx=(type,props)=>({type,props});
+  const exports={},jsx=(type,props,key)=>({type,props,key});
   runInNewContext(ts.transpileModule(readFileSync('src/Auth.tsx','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX}}).outputText,{
     exports,requestAnimationFrame:fn=>fn(),setInterval:fn=>timers.push(fn),clearInterval(){},
     window:{addEventListener:(name,fn)=>events[name]=fn,removeEventListener(){}},document:{documentElement:{dataset:{}},visibilityState:'visible',addEventListener(){},removeEventListener(){}},
@@ -21,7 +21,7 @@ function harness() {
   function render(){cursor=0;const nodes=[];function walk(n){if(Array.isArray(n))return n.forEach(walk);if(!n||typeof n!=='object')return;nodes.push(n);walk(n.props.children);}walk(exports.Auth({children:'content'}));effects.splice(0).forEach(fn=>fn());return nodes;}
   return {render,requests,events,timers,session:()=>session};
 }
-const account={account:{id:'test',name:'Test',campus:'centrale'}};
+const account={account:{id:'test',name:'Test',admin:false,campuses:['centrale']}};
 test('login has pending feedback, blocks duplicate submit and recovers from errors', async()=>{
   const h=harness();h.render();h.requests.shift().reject(Error('sign in'));await settle();
   let nodes=h.render();const submit=nodes.find(n=>n.type==='form').props.onSubmit;
@@ -35,4 +35,17 @@ test('logout blocks duplicates and invalidates a session poll already in flight'
   const a=h.events['session-logout'](),b=h.events['session-logout']();assert.equal(h.requests.length,1);
   assert.ok(h.render().some(n=>n.props.inert));h.requests.shift().resolve({});await Promise.all([a,b]);
   stale.resolve(account);await settle();h.render();assert.equal(h.session(),undefined);
+});
+
+test('same-account reauthentication clears retained content only when permissions changed',async()=>{
+ const h=harness();h.render();h.requests.shift().resolve(account);await settle();
+ const wrapper=()=>h.render().find(n=>n.type==='div'&&n.props.children==='content');
+ const key=wrapper().key;
+ h.events['session-expired']();h.render();
+ let promise=h.render().find(n=>n.type==='form').props.onSubmit({preventDefault(){}});
+ h.requests.shift().resolve(account);await promise;assert.equal(wrapper().key,key);
+ h.events['session-expired']();h.render();
+ promise=h.render().find(n=>n.type==='form').props.onSubmit({preventDefault(){}});
+ h.requests.shift().resolve({account:{...account.account,campuses:[]}});await promise;
+ assert.notEqual(wrapper().key,key);
 });

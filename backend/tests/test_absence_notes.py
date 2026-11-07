@@ -82,7 +82,7 @@ class AbsenceNotesTest(unittest.TestCase):
         self.client.post('/api/permessi', json=dict(day='2026-10-05', id='rp', hours=[2], note='originale')).raise_for_status()
         self.client.post('/api/assignments', json=dict(day=DAY, key='absent|1|1A', value='rp')).raise_for_status()
         before = self.state()
-        for body in (dict(day='2026-10-05', id='rp', hours=None), dict(day='2026-09-01', id='rp', hours=[2], original_day='2026-10-05', original_id='rp', note='changed')):
+        for body in (dict(day='2026-10-05', id='rp', hours=None), dict(day='2026-08-01', id='rp', hours=[2], original_day='2026-10-05', original_id='rp', note='changed')):
             self.assertEqual(self.client.post('/api/permessi', json=body).status_code, 422)
             self.assertEqual(self.state(), before)
         self.client.post('/api/permessi', json=dict(day='2026-10-06', id='rp', hours=[2], original_day='2026-10-05', original_id='rp')).raise_for_status()

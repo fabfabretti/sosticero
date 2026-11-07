@@ -14,7 +14,7 @@ export type StatReport = {
   unknown: { teacherHours: number; demand: number }; provenance: Record<string, number>; issues: number;
 };
 export const metricNames: Record<Metric, string> = { demand: "Ore da coprire", teacherHours: "Ore docenti assenti", teachers: "Docenti assenti" };
-export const absenceKindNames: Record<string, string> = { planned: "Programmata", last_minute: "Last minute", trip: "In gita", strike: "In sciopero", unclassified: "Non classificata" };
+export const absenceKindNames: Record<string, string> = { planned: "Programmata", last_minute: "Last minute", trip: "In gita", strike: "In sciopero", assembly: "In assemblea", unclassified: "Non classificata" };
 export const outcomes = { covered: "Coperte", uncovered: "Senza supplente", late: "Entrata posticipata", early: "Uscita anticipata", pending: "In attesa" };
 export const weekdays = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"];
 export const campuses: Record<string, string> = { total: "Totale", centrale: "Centrale", succursale: "Succursale" };

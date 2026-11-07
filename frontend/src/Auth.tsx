@@ -13,7 +13,11 @@ export function Auth({ children }: { children: React.ReactNode }) {
   const [loggingOut, setLoggingOut] = useState(false);
   const previous = useRef<string | undefined>(undefined);
   const lastFocus = useRef<HTMLElement | null>(null);
+  const acceptedAccount = useRef<Account | undefined>(undefined);
   const accept = (value: Session) => {
+    const old = acceptedAccount.current;
+    acceptedAccount.current = value.account;
+    if (old && (old.admin !== value.account.admin || JSON.stringify(old.campuses) !== JSON.stringify(value.account.campuses))) setIdentity(k => k+1);
     if (previous.current && previous.current !== value.account.id) setIdentity(k => k+1);
     previous.current = value.account.id;
     setSession(value); setAccount(value.account); setReady(true); setLocked(false); setError(''); setPassword('');
@@ -49,14 +53,15 @@ export function Auth({ children }: { children: React.ReactNode }) {
     {!ready && <Loading overlay label="Accesso in corso…" />}
     {loggingOut && <Loading overlay label="Uscita in corso…" />}
     {ready && !locked && error && <p role="alert">{error}</p>}
-    {ready && (locked || !account) && <div className="auth-backdrop"><section className="auth-login ui-surface" role="dialog" aria-modal="true" aria-labelledby="login-title">
-      <h1 id="login-title">Accedi a Sosticero</h1>
+    {ready && (locked || !account) && <div className="auth-backdrop"><section className="auth-login ui-surface ui-scope" role="dialog" aria-modal="true" aria-labelledby="login-title">
+      <h1 id="login-title">Accesso uffici</h1>
       <form onSubmit={async event => { event.preventDefault(); if(action.current)return;action.current=true;++sessionRequest.current;setBusy(true);setError('');try { accept(await requestApi<Session>('auth/login',{username,password})); } catch(e){setError(String(e));} finally{action.current=false;setBusy(false);} }}>
         <label>Nome utente<input autoFocus autoComplete="username" value={username} onChange={e=>setUsername(e.target.value)} required disabled={busy}/></label>
         <label>Password<input type="password" autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)} required disabled={busy}/></label>
         {error && <p role="alert">{error}</p>}
         <button className="ui-button ui-button-primary" disabled={busy}>{busy ? <Loading label="Accesso in corso…" reserve="Accedi" /> : "Accedi"}</button>
       </form>
+      <div className="auth-alternative"><p>Sei un docente?</p><a className="ui-button" href="/docenti">Accedi al portale docenti</a></div>
     </section></div>}
   </AccountContext.Provider>;
 }

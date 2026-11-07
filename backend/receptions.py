@@ -112,7 +112,7 @@ def parse(encoded):
 def review(rows, teachers, names, choices):
     if not isinstance(choices, dict):
         raise ValueError('Abbinamenti non validi.')
-    aliases = {identifier: {normalize(t['name']), *(normalize(v) for v in names['teachers'].get(identifier, {}).values())}
+    aliases = {identifier: {normalize(t['name']), *(normalize(v) for v in (names['teachers'].get(identifier, {}).values() if not t.get('managedPerson') else []))}
                for identifier, t in teachers.items() if not t.get('retired')}
     if any(key not in {str(r['row']) for r in rows} for key in choices):
         raise ValueError('Riga abbinamento non valida.')

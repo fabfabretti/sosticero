@@ -1,4 +1,4 @@
-export type AbsenceKind = "planned" | "last_minute" | "trip" | "strike" | null;
+export type AbsenceKind = "planned" | "last_minute" | "trip" | "strike" | "assembly" | null;
 export type Teacher = {
   id: string;
   name: string;
@@ -8,6 +8,7 @@ export type Teacher = {
   role: string;
   classe_concorso?: string;
   retired?: boolean;
+  unavailable?: boolean;
 };
 export type Row = {
   id: string;
@@ -47,6 +48,8 @@ export type Candidate = {
 export type PermitRecovery = { id: string; deadline: string; recovered: number; remaining: number; expired: boolean; recoveries: { date: string; h: number; key: string }[] };
 export type Assignment = { note?: string; v: string; t: string; c: string; notified?: boolean; assignedBy?: string; permitId?: string; communicated?: boolean; accepted?: boolean };
 export type Data = {
+  continuousAbsences?: Record<string, number[]>;
+  effectiveAbsences?: Record<string, number[]>;
   recoveryRequests?: Record<string, import("./RecoveryActions").RecoveryRequest>;
   concurrency: import("./concurrency").Baseline;
   timetable?: { id: string; effective: string | null };
