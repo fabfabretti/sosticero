@@ -90,6 +90,8 @@ image_id=$(docker image inspect --format '{{.Id}}' "$image")
 marker=$(docker run --rm --network=none --read-only --cap-drop=ALL --entrypoint cat "$image" /app/frontend/dist/sosticero-release.json)
 python3 -c 'import json,sys; assert json.loads(sys.argv[1])=={"snapshot":sys.argv[2]}' "$marker" "$snapshot"
 html_hash=$(docker run --rm --network=none --read-only --cap-drop=ALL --entrypoint cat "$image" /app/frontend/dist/index.html | sha256sum | cut -d ' ' -f1)
+# Read-only activation check using the new image while the old service still runs.
+compose run --rm --no-deps -T --entrypoint python sosticero -m backend.admin_upgrade /data/auth.sqlite --check </dev/null
 mkdir -p -m 700 snapshots
 backup="snapshots/$stage"
 running=$(compose ps -q --status running sosticero)
@@ -101,6 +103,8 @@ fi
 cp .env compose.yaml "$backup/"
 if [[ -f current-release.txt ]]; then cp current-release.txt "$backup/"; fi
 if [[ -n $ids ]]; then docker inspect --format '{{.Image}}' $ids > "$backup/previous-image.txt"; fi
+# The complete snapshot above precedes identity changes. No operational records are replaced.
+compose run --rm --no-deps -T --entrypoint python sosticero -m backend.admin_upgrade /data/auth.sqlite </dev/null
 awk '!/^SOSTICERO_IMAGE=/' .env > "$stage/next.env"
 printf 'SOSTICERO_IMAGE=%s\n' "$image" >> "$stage/next.env"
 mv "$stage/next.env" .env

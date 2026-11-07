@@ -86,6 +86,72 @@ Deployed via ./scripts/deploy.sh as `incoming-20261029T173540-58540`, source sna
 
 Deployed via ./scripts/deploy.sh as `incoming-20261029T174356-61691`, source snapshot `c92e9cf5f6c0a074587519eb94f3c8fafe30243b4e0b1766d7ce8f37c6af5d4b`. The display now uses 15px teacher names, 16px class codes, neutral headers, unboxed assignment codes and a plain signature reminder. The isolated build and browser checks at 1896×881 and 1280×720 confirmed uniform rows and an unclipped footer. Read-only HTTPS checks verified production environment and the new stylesheet. The isolated project was stopped; no teacher snapshots were published.
 
+## Named accounts and protected administrator upgrade
+
+The new release classifies Settings authority by administrator permission, not campus.
+Before stopping the existing service, deploy.sh runs the new image's read-only
+`backend.admin_upgrade --check` against installed identities. For the original
+installation it requires the explicitly verified accounts `centrale / Centrale /
+centrale` and `succursale / Succursale / succursale`. Different legacy installations
+must use local bootstrap and verify/map legacy users explicitly; no automatic guessing.
+
+After the complete stopped-data recovery snapshot, the script runs the same upgrade
+without `--check`, migrates identities preserving IDs/password hashes/enabled states,
+records historical campus mappings and creates `admin / Amministratore` with no
+substitution grants. Its random initial password is written exclusively to
+`data/keys/admin-initial.txt` with mode 0600, never to logs or command arguments.
+Existing Centrale users do not gain administrator privileges. Legacy sessions are
+revoked. The app refuses production activation without an enabled protected admin.
+
+Retrieve the initial credential file privately and reset the admin password from
+Amministrazione after first login. Remove the initial file once credentials are
+safely retained. Password recovery remains available through the local `backend.auth
+reset admin` command (or the account's current username). Do not commit credentials.
+
+Interrupted identity preparation can be retried: the schema and legacy mapping are
+idempotent, and a valid private initial credential file is reused rather than replaced.
+Already initialized installations keep the existing protected account and credentials.
+A deployment failure reports state without automatically restoring data. If recovery
+requires rollback, use the previous image and complete coordinated installation snapshot
+through an explicit recovery procedure; never run old code against a migrated store by
+assumption or overwrite newer operational records automatically. Production release
+checks remain read-only; account behavior is verified on isolated testing projects.
+
+### User administration release verification — 2026-11-03
+
+Deployed with `./scripts/deploy.sh` as `incoming-20261103T131722-147243`.
+Source snapshot: `594e538a36e8dea80d27dea450d630e4aad8681a1a14890676e732d57223a40e`.
+Independent HTTPS checks confirmed testing=false, the exact local source marker,
+served `index-B3c425mg.js`, anonymous denial of account/operational APIs and both
+public display endpoints. Read-only inspection confirmed the production mount,
+protected admin-only account, original campus grants and 77 historical author snapshots.
+Fingerprints matched operational records (excluding intentionally migrated authors),
+attachments, original account IDs/passwords and other documents; only background
+`googleSheetsStatus` changed. No production behavioral tests or test-data transfers ran.
+
+Verification included the 299-test backend suite; its sole remaining failure was
+an unsupported-schema fixture still using the newly supported version 9. Updating
+that fixture to version 10 passed all 12 attachment tests. The subsequently added
+effective-timetable Settings-summary regression also passed. All 30 frontend test
+files, five focused publication checks, ten deployment checks and production builds
+passed. The unique isolated container verified admin/operator/no-role behavior,
+author snapshots and Settings access; browser checks covered full-name display,
+protected controls, direct routes and desktop/mobile layouts in both themes.
+The isolated Compose project was stopped afterward.
+
+### Current account names correction — 2026-11-03
+
+Deployed as `incoming-20261103T132953-153063`, source `6ac25abbf96a9e38a50e5f82923e4b722505166d8c32bc531f1172ab3a85d84a`.
+Permessi, Banca ore and Inbox now resolve current names/usernames by account ID
+for display, with stored snapshots as missing-account fallbacks. The 66 related
+backend tests passed; an isolated container/browser reproduced Centrale renamed
+to Fabiola Fabretti and verified the updated Inserito da label. Stored snapshots
+and concurrency tokens stayed unchanged. The test project was stopped. Read-only
+production fingerprints confirmed all operational documents, authors, attachments
+and account records unchanged (excluding background Google-sync status). The
+deployed resolver matched Fabiola Fabretti for the existing linked permit record;
+HTTPS environment, exact source marker, frontend and authentication checks passed.
+
 ### Permit deadlines and register — 2026-11-03
 
 Deployed with `./scripts/deploy.sh` as `incoming-20261103T142823-164418`, source
@@ -100,6 +166,19 @@ mount, allocated localhost port, testing environment, red TESTING ribbon and ser
 bundle were checked; the project was stopped afterward. Deployment and independent
 read-only HTTPS checks confirmed the expected source marker and testing=false.
 No production behavioral writes were used.
+
+### Administration configuration navigation — 2026-11-03
+
+Deployed with `./scripts/deploy.sh` as `incoming-20261103T222228-23950`, source
+`0d30f9043292e5edcf307a73f4b74f380b86104ecdcff044ae734689dfd6b452`.
+Shared configuration groups now live under Amministrazione → Configurazione;
+Impostazioni retains personal appearance and build information. All 30 frontend
+test files and production builds passed. The unique isolated container verified
+its temporary mount, allocated port, testing environment and red TESTING ribbon;
+browser checks confirmed both menu destinations. The test project was stopped.
+Deployment checks verified the recovery snapshot, production mount and HTTPS
+release. Independent read-only HTTPS checks confirmed testing=false, the exact
+source marker and served frontend. No production behavioral writes were used.
 
 ### Statistics tabs and absence breakdowns — 2026-11-04
 
@@ -121,3 +200,47 @@ complete recovery snapshot, expected replacement image and HTTPS release.
 Independent read-only HTTPS checks confirmed testing=false, the exact source
 marker and available `index-zjN6TU02.js` / `index-CesPA8lM.css` assets. No production
 behavioral writes or test-data transfers were performed.
+
+## Teacher portal
+
+The personal portal is served at `/docenti`; its independent cookie is scoped to `/api/teacher`, with a twelve-hour absolute lifetime. It never grants office permissions. Teacher login uses manually configured institutional email identifiers and generated eight-digit PINs; no email service or Google configuration is required. Configure access in Amministrazione → Gestione docenti → Docenti (see `docs/gestione-docenti.md`).
+
+Teacher credentials/session tables are additive in `auth.sqlite`, remain outside portable school-data archives, and are covered by the installation's protected identity-store backup procedure. Deployment creates no enabled teacher account. Do not copy testing identities to production. Person links unresolved after school-data restore fail closed rather than matching names or timetable sources.
+
+Before non-loopback use, configure the existing trusted `APP_ORIGIN` to the actual HTTPS origin; cookies then use Secure. Same-origin checks apply to login/logout and teacher unsafe requests require their own CSRF token. Do not use arbitrary forwarded headers to establish trust. Teacher login temporarily limits failures to five per normalized identifier and thirty per client source in fifteen minutes, with bounded attempt storage; there is no permanent lockout. PIN/email/status changes revoke prior sessions. Private API responses use `Cache-Control: no-store`; do not configure a proxy/CDN to cache authenticated teacher endpoints. The timetable-only portal has no notification or publication integration.
+
+## Teacher portal release — 2026-11-06
+
+Deployed with `./scripts/deploy.sh` as `incoming-20261106T091706-82086`, source snapshot `25b09ea2e95f181fd9a126ac3727c422aa90ab1b2b6b701823f80188a1ae8fd5`. The script verified the recovery snapshot, replacement image, production environment, source marker and frontend. Independent read-only HTTPS requests verified `/docenti`, the expected snapshot, both served assets and 401 responses for anonymous personal timetable/session and teacher-administration requests. No production teacher accounts were configured or activated by verification.
+
+Verification included 347 passing backend tests, the complete passing frontend suite, a successful build, and isolated container/API/browser checks with synthetic identities (including distinct personal timetables and PIN-reset revocation). Desktop administration and a 390px teacher timetable were visually checked. The uniquely named testing project was stopped after verification; operational local Compose was not started.
+
+## Paid substitution budgets — 2026-11-06
+
+Deployed with `./scripts/deploy.sh` as `incoming-20261106T093054-87493`, source
+snapshot `7d9c4d5f2a63a72e437c7654a4439f411194c13b54ec9ca361d8e652650e4d5a`.
+The script verified the recovery snapshot, selected image, operational mount,
+production HTTPS environment, source marker and frontend. Independent read-only
+HTTPS checks confirmed testing=false, the matching snapshot, served assets
+`index-CDW5uJFU.js` / `index-D5uRROGh.css`, and authentication on `/api/paid-finance`.
+
+Backend regression: 349 tests passed. Frontend regression: 254 tests passed,
+followed by 76 targeted checks including the added drawer budget-warning test.
+The isolated container verified initial pricing and repricing of existing paid
+assignments on a second tariff save, per-sede/combined usage, mobile layout,
+light/dark themes and successful over-budget assignment with visible feedback.
+The isolated project was stopped. Production checks made no financial settings
+changes and created no operational records; budgets and rates remain optional
+until configured by an administrator.
+
+## Teacher-access UX correction
+
+Teacher administration now separates a persistent email-editing toolbar from immediate access actions. Administrators can activate one teacher, selected teachers or all eligible teachers with saved email addresses. Activation atomically creates only missing PINs and preserves existing PINs; deactivation revokes sessions immediately. Generated codes remain in a one-time in-memory copy/download panel until explicitly dismissed. See `docs/gestione-docenti.md` for the revised setup workflow.
+
+Production login investigation was read-only: the reported account was enabled, its supplied PIN matched the stored hash and its person existed in the current teacher catalog. Five failed requests were recorded; the original entered values could not be reconstructed from logs, which do not store credentials. No production PIN was reset and no attempt counter was changed. Teacher login now trims surrounding pasted whitespace and provides an explicit PIN visibility control; office and teacher entry controls are visually distinct. Generic credential failures and temporary limits remain enforced.
+
+### UX correction deployment — 2026-11-06
+
+Deployed `incoming-20261106T194509-34560` with source snapshot `cf55fd263914d9d7bb5d8bea9805a38a69bd54688356d109f1eaabf795dd088b` using `./scripts/deploy.sh`. The deployment verified the recovery snapshot and live image; independent HTTPS checks verified testing=false, the expected source marker, `/docenti`, served assets and anonymous API denial. A final read-only account check confirmed the reported teacher remained enabled at revision 3 with a PIN and no active account-level temporary limit. Credentials and attempt counters were not changed by diagnosis or verification.
+
+All 352 backend tests, the full frontend suite, focused interaction tests and the production build passed. Isolated API checks covered bulk first activation, distinct personal logins, padded PIN input, immediate deactivation/revocation and reactivation without resetting the PIN. Browser checks covered email mode, desktop/mobile layouts and pasted-PIN login. The unique testing project was stopped; normal local Compose remained stopped.

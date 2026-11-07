@@ -64,6 +64,8 @@ elif args[0]=='run':
     if args[-1].endswith('sosticero-release.json'): print(json.dumps({'snapshot':os.environ['SNAPSHOT']}))
     else: print('HTML')
 elif args[0]=='compose':
+    if 'run' in args:
+        assert sys.stdin.read() == '', 'One-off containers must not consume the remote deployment script'
     if 'ps' in args:
         if '-q' in args or '-aq' in args: print('old-container')
 ''')
