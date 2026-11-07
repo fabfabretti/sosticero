@@ -55,6 +55,13 @@ export function PaidHours({ api }: { api: Api }) {
     catch (e) { setError(String(e)); }
     finally { setBusy(false); }
   }
+  const assignedTeachers = new Map<string, Report["records"]>();
+  for (const record of data?.records || []) {
+    const records = assignedTeachers.get(record.teacher) || [];
+    records.push(record); assignedTeachers.set(record.teacher, records);
+  }
+  const assignedGroups = [...assignedTeachers.values()].sort((a, b) => a[0].name.localeCompare(b[0].name, "it"));
+  for (const records of assignedGroups) records.sort((a, b) => a.date.localeCompare(b.date) || a.hour - b.hour || a.c.localeCompare(b.c, "it"));
   return <main className="ui-page paid-page"><header className="paid-heading"><div><h1>Banca ore</h1><p>Disponibilità settimanali per supplenze a pagamento</p></div>
     <div className="ui-actions"><label>Settimana del <input type="date" value={day} disabled={editing || busy} onChange={e => setDay(e.target.value)} /></label>
       <button className="ui-button" disabled={busy || !data || !ready} onClick={() => {
@@ -104,13 +111,18 @@ export function PaidHours({ api }: { api: Api }) {
       <div className="paid-scroll" role="region" tabIndex={0} aria-label="Disponibilità settimanali"><table className="paid-grid"><caption>Disponibilità ricorrenti · sedi calcolate per {dateLabel(data.dates[0])} — {dateLabel(data.dates[4])}</caption>
         <thead><tr><th scope="col">Ora</th>{data.dates.map((d, i) => <th scope="col" key={d}>{weekdays[i]}<small>{dateLabel(d)}</small></th>)}</tr></thead>
         <tbody>{[1, 2, 3, 4, 5, 6, 7].map(h => <tr key={h}><th scope="row">{h}ª</th>{weekdays.map((_, w) => <td key={w}>{data.cells.find(c => c.weekday === w && c.hour === h)?.teachers.map(t => <div key={t.id} className="paid-teacher">
-          {attribution(t.addedBy)}{editing ? <button className="paid-name" onClick={() => openSlot(w, h)}>{t.name}</button> : <strong>{t.name}</strong>}
+          {editing ? <button className="paid-name" onClick={() => openSlot(w, h)}>{t.name}</button> : <strong>{t.name}</strong>}
           <small>{t.why || (t.uncertain ? "Sede da verificare" : t.sites.length === 2 ? "Entrambe" : t.sites.map(campus).join(" / "))}</small>
-        </div>) || "—"}{!data.cells.find(c => c.weekday === w && c.hour === h)?.teachers.length && !editing && "—"}{editing && <button className="paid-edit" aria-label={`Modifica docenti · ${weekdays[w]}, ${h}ª ora`} disabled={busy} onClick={() => openSlot(w, h)}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m16 3 5 5-12 12-6 1 1-6Z"/><path d="m14 5 5 5"/></svg></button>}</td>)}</tr>)}</tbody></table></div>
+        </div>) || "—"}{!data.cells.find(c => c.weekday === w && c.hour === h)?.teachers.length && !editing && "—"}{editing && <button className="paid-edit" aria-label={`Modifica docenti · ${weekdays[w]}, ${h}ª ora`} disabled={busy} onClick={() => openSlot(w, h)}><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15Z" fill="none" stroke="currentColor" strokeWidth="1.6"/></svg></button>}</td>)}</tr>)}</tbody></table></div>
       <p className="paid-method">Sedi calcolate dall’orario, con cambio sede consentito negli intervalli 2–3 e 4–5. Le dichiarazioni sono ricorrenti; assenze e supplenze giornaliere vengono verificate al momento dell’assegnazione.</p>
       <section><h2>Ore assegnate a pagamento</h2><p>Ogni supplenza registrata conta subito, anche se futura. Avviso e richiesta email si gestiscono dalla tabella Supplenze.</p>
 
-        <div className="paid-scroll" role="region" tabIndex={0} aria-label="Registro ore a pagamento"><table><thead><tr>{["Docente", "Data", "Ora", "Classe", "Sede", "Assegnata da", "Avvisato", "Tariffa / costo"].map(c => <th scope="col" key={c}>{c}</th>)}</tr></thead><tbody>{data.records.map(r => <tr key={r.date + r.key}><td>{r.name}</td><td>{dateLabel(r.date)}</td><td>{r.hour}ª</td><td>{r.c}</td><td>{campus(r.paidContext.site)}</td><td><span title={authorLabel(r.assignedBy, true)}>{authorLabel(r.assignedBy)}</span></td><td>{r.notified ? "Sì" : "No"}</td><td>{r.paidPrice ? <>{euro(r.paidPrice.cents)}<small> · {r.paidPrice.classification}</small></> : "Da valorizzare"}</td></tr>)}</tbody></table></div>
+        <div className="paid-scroll" role="region" tabIndex={0} aria-label="Registro ore a pagamento"><table className="paid-register"><thead><tr>{["Docente", "Data", "Ora", "Classe", "Sede", "Assegnata da", "Tariffa / costo"].map(c => <th scope="col" key={c}>{c}</th>)}</tr></thead>
+          {assignedGroups.map(records => <tbody key={records[0].teacher}>{records.map((r, i) => <tr key={r.date + r.key}>
+            {i === 0 && <th scope="rowgroup" rowSpan={records.length} className="paid-register-teacher">{r.name}<small>{records.length} {records.length === 1 ? "ora" : "ore"}</small></th>}
+            <td>{dateLabel(r.date)}</td><td>{r.hour}ª</td><td>{r.c}</td><td>{campus(r.paidContext.site)}</td><td><span title={authorLabel(r.assignedBy, true)}>{authorLabel(r.assignedBy)}</span></td><td>{r.paidPrice ? <>{euro(r.paidPrice.cents)}<small> · {r.paidPrice.classification}</small></> : "Da valorizzare"}</td>
+          </tr>)}</tbody>)}
+        </table></div>
         {!data.records.length && <p>Nessuna supplenza a pagamento registrata.</p>}
       </section>
     </>}

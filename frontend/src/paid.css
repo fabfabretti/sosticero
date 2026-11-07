@@ -47,9 +47,21 @@
 .paid-method, .paid-page section > p { font-size: 12px; line-height: 1.45; margin: .5rem 0; }
 .paid-page section > h2 { font-size: 17px; }
 .paid-heading .ui-actions { flex-wrap: wrap; gap: .5rem; }
-.paid-budget-grid, .paid-budget-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 1rem; }
+.paid-budget-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 1rem; }
 .paid-budget-total { border-top: 2px solid var(--line); padding: .5rem 0; min-width: 0; }
 .paid-budget-total h3 { font-size: 14px; margin: .25rem 0; }
 .paid-budget-total p { margin: .35rem 0; font-size: 13px; overflow-wrap: anywhere; }
-.paid-budget-total progress { width: 100%; height: .5rem; accent-color: var(--accent); }
+.paid-budget-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+.paid-budget-total progress { display: block; appearance: none; width: 100%; height: .625rem; border: 0; border-radius: var(--ui-radius); overflow: hidden; background: var(--soft); color: var(--ink); }
+.paid-budget-total progress::-webkit-progress-bar { background: var(--soft); }
+.paid-budget-total progress::-webkit-progress-value { background: var(--ink); }
+.paid-budget-total progress::-moz-progress-bar { background: var(--ink); }
+.paid-register { min-width: 700px; }
+.paid-register tbody + tbody { border-top: 2px solid var(--line); }
+.paid-register-teacher { width: 22%; }
+.paid-register-teacher small { display: block; margin-top: .25rem; font-weight: 400; color: var(--mute); }
+@media (max-width: 600px) {
+  .paid-budget-grid { gap: .75rem; }
+  .paid-budget-total p { font-size: 12px; }
+}
 .paid-budget-fields > fieldset { min-width: 0; border: 1px solid var(--line); border-radius: var(--ui-radius); padding: 1rem; display: grid; gap: .75rem; }

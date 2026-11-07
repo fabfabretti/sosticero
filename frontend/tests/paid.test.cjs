@@ -38,6 +38,8 @@ test('paid request and Comunicato are independent, permission guarded and give c
 test('Banca ore edits recurring slots and keeps notification controls out of its register', async () => {
   let cursor = 0; const slots = [], calls = [];
   const report = { dates: ['2026-10-26','2026-10-27','2026-10-28','2026-10-29','2026-10-30'], teachers: { rp: { id:'rp', name:'Rossi', code:'DOC01', importedName:'Ròssi Mario' }, retired: {id:'retired',name:'Rossi retired',retired:true}, ...Object.fromEntries(Array.from({length:8},(_,i)=>['t'+i,{id:'t'+i,name:'Rossi '+i}])) }, declarations: {0:{rp:[1]}}, cells: [{ weekday:0,hour:1,teachers:[{id:'rp',name:'Rossi',sites:['centrale'],uncertain:false,why:'',addedBy:'centrale'}]}], totals:{rp:1}, records:[{date:'2026-10-28',key:'a|1|1A',teacher:'rp',name:'Rossi',hour:1,c:'1A',assignedBy:'centrale',notified:true,paidContext:{site:'centrale',room:'12'}}], concurrency:{records:{'paidAvailability|0|rp':'token'},dates:{}} };
+  report.records.push({ ...report.records[0], date:'2026-10-27', key:'b|2|2A', hour:2 });
+  report.records.splice(1, 0, { ...report.records[0], teacher:'other', name:'Bianchi', key:'c|1|1A' });
   const mod = load('src/PaidHours.tsx', {
     react: { useState(initial) { const i=cursor++; if (!(i in slots)) slots[i]=initial; return [slots[i],value=>{ slots[i]=value; }]; }, useEffect() {}, useRef() { return {current:null}; } },
     'react/jsx-runtime':{jsx,jsxs:jsx}, './StatsCalendar':{todayInRome:()=> '2026-10-28'},
@@ -48,6 +50,15 @@ test('Banca ore edits recurring slots and keeps notification controls out of its
   function render(){cursor=0; return flatten(mod.PaidHours({api:async(...args)=>{calls.push(args); if(args[1]) report.declarations[args[1].weekday][args[1].id]=Array.from(args[1].hours); return report;}}));}
   let nodes=render(); nodes=render();
   assert.ok(nodes.some(n=>n.type==='strong' && n.props.children==='Rossi'));
+  assert.ok(!nodes.some(n=>n.type==='th' && n.props.children==='Avvisato'));
+  assert.ok(!flatten(nodes.find(n=>n.props.className==='paid-grid')).some(n=>n.props.className==='author-name'));
+  const groups = flatten(nodes.find(n=>n.props.className==='paid-register')).filter(n=>n.type==='tbody');
+  assert.equal(groups.length,2);
+  assert.equal(flatten(groups[0]).find(n=>n.props.scope==='rowgroup').props.children[0],'Bianchi');
+  const rossi = flatten(groups[1]);
+  assert.equal(rossi.find(n=>n.props.scope==='rowgroup').props.rowSpan,2);
+  assert.equal(rossi.filter(n=>n.type==='tr').length,2);
+  assert.equal(rossi.find(n=>n.type==='td').props.children,'27/10/2026');
   assert.ok(!nodes.some(n=>n.type==='button' && /Avvisato|Copia/.test(String(n.props.children))));
   nodes.find(n=>n.type==='button' && n.props.children==='Modifica disponibilità').props.onClick(); nodes=render();
   assert.equal(nodes.filter(n=>n.props.className==='paid-edit').length,35);
@@ -78,6 +89,7 @@ test('Banca ore edits recurring slots and keeps notification controls out of its
   nodes.find(n=>n.props.children==='Fatto').props.onClick(); nodes=render();
   assert.ok(!nodes.some(n=>n.type==='dialog'));
   nodes.find(n=>n.props.className==='paid-name').props.onClick(); nodes=render();
+  assert.ok(flatten(nodes.find(n=>n.type==='dialog')).some(n=>n.props.className==='author-name'),'attribution remains in the cell editor');
   assert.ok(nodes.some(n=>n.props['aria-label']==='Rimuovi Rossi da questa ora'),'existing names open management of their own slot');
   nodes.find(n=>n.props['aria-label']==='Rimuovi Rossi da questa ora').props.onClick(); await new Promise(resolve=>setImmediate(resolve));
   assert.deepEqual(Array.from(calls[3][1].hours),[2],'editing an existing name affects only its cell');
