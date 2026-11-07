@@ -4,6 +4,10 @@
 After implementing and verifying a feature, always deploy it to atlante with `./scripts/deploy.sh` and verify the deployed release using read-only checks.
 Always ask the user whether they want to commit the work before committing it.
 
+## SSH authentication
+
+- When SSH needs a password, show the user a graphical password prompt directly using an available SSH askpass helper. Never ask them to send the password in chat or open a terminal to enter it. Keep the password out of commands, logs and files. Reuse the authenticated SSH connection for the authorized work.
+
 ## Development database and normal deployment
 
 - Production runs on atlante; server data is authoritative. Keep the old local operational app stopped. Local `compose.yaml` remains pointed at `data/supplenze.sqlite`; never repurpose it for tests.
