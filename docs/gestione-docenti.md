@@ -26,7 +26,7 @@ Ogni persona conserva il proprio ID, permessi, saldo e recuperi anche quando cam
 
 ## Verifica e salvataggio
 
-Ogni operazione ha una verifica prima del salvataggio. Le coperture e le assenze già registrate sono mantenute e consultabili nei dettagli, senza una casella di revisione. Se il docente assente è stato assegnato a coprire un altro docente nel periodo, la copertura viene mostrata come conflitto e blocca la conferma. Nessuna assegnazione o debito viene trasferito implicitamente. Se i dati sono cambiati altrove, ricaricare prima di riprovare.
+Ogni operazione ha una verifica prima del salvataggio. Le coperture e le assenze già registrate sono mantenute e consultabili nei dettagli, senza una casella di revisione. Se il docente assente è stato assegnato a coprire un altro docente nel periodo, la copertura viene mostrata come conflitto e blocca la conferma. Quando un supplente eredita la cattedra, l’anteprima elenca le coperture giornaliere non più necessarie nel periodo: vengono eliminate solo alla conferma. Le coperture fuori periodo restano invariate; eventuali necessità condivise con altri assenti restano soggette a verifica. Nessuna assegnazione o debito viene trasferito implicitamente. Se i dati sono cambiati altrove, ricaricare prima di riprovare.
 
 In Orari il nome originale è barrato accanto al supplente, gli originali assenti sono in grigio e POT è barrato con “non ereditato”. Le ore escluse non contano nel carico, nei limiti dei permessi o nella disponibilità.
 

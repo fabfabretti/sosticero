@@ -5,7 +5,7 @@ const norm=s=>s.toLowerCase().replace(/[\s.-]/g,'');
 const original={id:'original',name:'Anna Rossi',code:'ROS',role:'curricolare',classe_concorso:'A041'};
 const replacement={id:'replacement',name:'Marco Verdi',code:'VER',role:'curricolare',classe_concorso:'A041'};
 const empty={schema:1,people:{},sources:{},absences:[],appointments:[]};
-const result=(extra={})=>({token:'reviewed',ready:true,records:[],issues:[],dataset:{teachers:{},lessons:{}},...extra});
+const result=(extra={})=>({token:'reviewed',ready:true,removals:[],records:[],issues:[],dataset:{teachers:{},lessons:{}},...extra});
 function harness(file='Staffing',props){
  const slots=[],effects=[],requests=[],exports={};let cursor=0,seq=0;
  const react={useRef(initial){const i=cursor++;return slots[i]||(slots[i]={current:initial});},useState(initial){const i=cursor++;if(!(i in slots))slots[i]=typeof initial==='function'?initial():initial;return[slots[i],v=>slots[i]=typeof v==='function'?v(slots[i]):v];},useEffect(fn){const i=cursor++;if(!(i in slots)){slots[i]=true;effects.push(fn);}}};
@@ -49,4 +49,11 @@ test('teacher picker searches names and codes, selects explicitly and supports k
  const input=()=>h.render().find(n=>n.type==='input');input().props.onChange({target:{value:'ver'}});assert.equal(selected,'');assert.equal(h.render().filter(n=>n.props?.role==='option').length,1);
  input().props.onKeyDown({key:'Enter',preventDefault(){}});assert.equal(selected,'replacement');assert.equal(input().props.value,'Marco Verdi');
  input().props.onChange({target:{value:'ros'}});assert.equal(selected,'');h.render().find(n=>n.props?.role==='option').props.onClick();assert.equal(selected,'original');
+});
+
+test('appointment preview explicitly lists covers removed on confirmation',async()=>{
+ const doc=structuredClone(empty);doc.absences=[{id:'absence',person:'original',start:'2020-01-01',end:null}];
+ const h=await loaded(doc);h.button('Assegna supplente').props.onClick();h.render().find(n=>n.type==='teacher-picker').props.onChange('replacement');h.submit();
+ h.requests.shift().resolve(result({removals:[{day:'2026-11-09',key:'original|2|5EB',person:'original',substitute:'replacement',hours:[2]}]}));await settle();
+ assert.match(JSON.stringify(h.render()),/saranno eliminate/);assert.match(JSON.stringify(h.render()),/5EB/);assert.equal(h.button('Conferma supplenza').props.disabled,false);
 });

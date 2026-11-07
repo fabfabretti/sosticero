@@ -45,6 +45,20 @@ class ModelTest(unittest.TestCase):
         self.assertEqual(len(rows(timetables.dataset(h, '2026-10-19'), state, '2026-10-19')), 6)
         self.assertEqual(h, original)
 
+    def test_appointment_removes_only_obsolete_covers_in_its_period(self):
+        current = copy.deepcopy(self.doc)
+        current['appointments'] = []
+        history = dict(self.history, _appointments=current)
+        state = copy.deepcopy(EMPTY)
+        key = 'absent|2|1A'
+        for day in ('2026-10-05', DAY, '2026-10-19'):
+            state['asg'][day] = {key: dict(v='normal', t='POT', c='1A')}
+        before = copy.deepcopy(state)
+        result = appointments.preview(history, state, dict(schema=1, days={}), self.doc, DAY)
+        self.assertTrue(result['ready'], result['issues'])
+        self.assertEqual([(r['day'], r['key']) for r in result['removals']], [(DAY, key)])
+        self.assertEqual(state, before)
+
     def test_invalid_periods_and_conflicts(self):
         for mutate in [lambda d: d['appointments'].append(dict(d['appointments'][0], id='overlap')),
                        lambda d: d['appointments'][0].update(person='absent'),
@@ -207,6 +221,24 @@ class ApiTest(unittest.TestCase):
         self.client = TestClient(self.app)
         self.client.post('/api/timetable', json=fixture()).raise_for_status()
 
+    def test_apply_removes_previewed_covers_and_refreshes_statistics(self):
+        current = document()
+        current['appointments'] = []
+        self.apply(current).raise_for_status()
+        key = 'absent|2|1A'
+        with Store(self.path).connect() as db:
+            state = Store(self.path).read(db, 'state', EMPTY)
+            state['asg'][DAY] = {key: dict(v='normal', t='POT', c='1A')}
+            Store(self.path).write(db, 'state', state)
+        result = self.preview(document()).json()
+        self.assertTrue(result['ready'], result['issues'])
+        self.assertEqual(result['removals'][0]['key'], key)
+        self.apply(document()).raise_for_status()
+        with Store(self.path).connect() as db:
+            self.assertEqual(Store(self.path).read(db, 'state')['asg'][DAY], {})
+            facts = Store(self.path).read(db, 'statistics')
+            self.assertNotIn(DAY, facts['days'])
+
     def preview(self, doc, day=DAY):
         return self.client.post('/api/staffing/preview', json=dict(document=doc, day=day, revision=self.client.get('/api/staffing').json()['revision']))
 
@@ -291,13 +323,16 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(self.client.get('/api/staffing').json()['document'],appointments.empty())
         self.assertEqual(self.preview({}).status_code,422)
 
-    def test_existing_assignment_blocks_backdate(self):
+    def test_existing_assignment_is_removed_only_on_confirmation(self):
         self.client.post('/api/entries',json=dict(day=DAY,group='abs',id='absent',hours=[1])).raise_for_status()
         self.client.post('/api/assignments',json=dict(day=DAY,key='absent|1|1A',value='normal')).raise_for_status()
         before=self.client.get('/api/export').json()
-        self.assertFalse(self.preview(document()).json()['ready'])
-        self.assertEqual(self.apply(document()).status_code,422)
-        self.assertEqual(self.client.get('/api/export').json(),before)
+        preview = self.preview(document()).json()
+        self.assertTrue(preview['ready'])
+        self.assertEqual(preview['removals'][0]['key'], 'absent|1|1A')
+        self.assertEqual(self.client.get('/api/export').json(), before)
+        self.apply(document()).raise_for_status()
+        self.assertEqual(self.client.get('/api/export').json()['asg'][DAY], {})
 
     def test_successor_and_wrong_person_rp(self):
         d=document(); d['people']['next']=dict(id='next',name='Successore',code='',role='curricolare',classe_concorso='')

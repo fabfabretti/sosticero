@@ -568,6 +568,9 @@ def create_app(path=None, seed=None):
             if not result['ready']:
                 raise ValueError('Risolvere le registrazioni incompatibili prima di salvare.')
             backup.backup_database(str(database), str(backup_dir))
+            for removal in result['removals']:
+                state['asg'][removal['day']].pop(removal['key'])
+            store.write(db, 'state', state)
             previous = dict(history)
             history['_appointments'] = result['document']
             before_dataset, after_dataset = timetables.resolver(previous), timetables.resolver(history)

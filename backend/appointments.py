@@ -189,10 +189,12 @@ def affected_assignments(before, after, state, day):
 def preview(history, state, facts, document, day):
     """Compare saved activity; a staffing edit never rewrites operational ownership."""
     from . import timetables, paid
+    from .domain import rows
     validate(document, history)
     proposed = dict(history, _appointments=document)
     before_dataset, after_dataset = timetables.resolver(history), timetables.resolver(proposed)
-    problems, records = [], []
+    problems, records, removals = [], [], []
+    state = deepcopy(state)
     removed = set(catalog(history)) - set(catalog(proposed))
     for group in ('manualPermits', 'manualPermitNotes'):
         if any(i in removed for i in state.get(group, {})):
@@ -209,6 +211,16 @@ def preview(history, state, facts, document, day):
         before, after = before_dataset(d), after_dataset(d)
         if before == after:
             continue
+        old_rows = {r['k']: r for r in rows(before, state, d)}
+        new_slots = {(r['h'], r['c']) for r in rows(after, state, d)}
+        for key, a in list(state['asg'].get(d, {}).items()):
+            person, hour, cls = key.split('|')
+            owner = after['teachers'].get(person, {})
+            if (key in old_rows and owner.get('coveredBy')
+                    and owner.get('coveredBy') != before['teachers'].get(person, {}).get('coveredBy')
+                    and (int(hour), cls) not in new_slots):
+                removals.append(dict(day=d, key=key, person=person, substitute=a['v'], hours=[int(hour)]))
+                del state['asg'][d][key]
         changed = {i for i in after['teachers'] if before['teachers'].get(i) != after['teachers'][i]}
         for key, a in state['asg'].get(d, {}).items():
             if a['v'] in changed or key.split('|')[0] in changed:
@@ -251,4 +263,4 @@ def preview(history, state, facts, document, day):
     ds = after_dataset(day)
     conflicts = {(p['day'], p['key']) for p in problems}
     records = [r for r in records if (r['day'], r.get('key')) not in conflicts]
-    return dict(ready=not problems, issues=problems, records=records, dataset=ds, document=document)
+    return dict(ready=not problems, issues=problems, records=records, removals=removals, dataset=ds, document=document)
