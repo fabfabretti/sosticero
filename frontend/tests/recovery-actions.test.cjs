@@ -26,22 +26,22 @@ function component(clipboard) {
 }
 const row = { k: 'absent|3|1A', h: 3, c: '1A', aula: '12', sede: 'centrale' };
 const permit = { date: '2026-10-12', periods: [2] };
-const props = () => ({ day: '2026-10-27', row, permit, assignment: { v: 'rp', t: 'RP' }, canAssign: true, busy: false, onAccept() {}, onCommunicate() {} });
+const props = () => ({ day: '2026-10-27', row, permit, recipientName: 'Luca Bianchi', signature: 'Maria Rossi', assignment: { v: 'rp', t: 'RP' }, canAssign: true, busy: false, onAccept() {}, onCommunicate() {} });
 const buttons = nodes => nodes.filter(n => n.type === 'button');
 const status = nodes => nodes.find(n => n.props?.role === 'status').props.children;
 const settle = () => new Promise(resolve => setImmediate(resolve));
 
 test('exact request template, sorted multi-period variants and manual balance', () => {
   const { recoveryMessage } = component();
-  assert.equal(recoveryMessage('2026-10-27', row, permit), `[Recupero permesso] 27/10/2026 · 3ª ora · 1A
+  assert.equal(recoveryMessage('2026-10-27', row, permit, 'Luca Bianchi', 'Maria Rossi'), `[Recupero permesso] 27/10/2026 · 3ª ora · 1A
 
-Gentile Professoressa/Professore,
+Gentile Professore/Professoressa Luca Bianchi,
 
 In assenza di altre soluzioni, richiederei la sua presenza in data/ora
 27/10/2026 · 3ª ora classe 1A, aula 12, recuperando l'ora di permesso presa il 12/10/2026 alla 2ª ora. Le è possibile?
 
 Grazie mille e cordiali saluti,
-Fabiola Fabretti`);
+Maria Rossi`);
   assert.match(recoveryMessage('2026-10-27', row, { ...permit, periods: [3, 2] }), /alle ore 2ª e 3ª/);
   assert.match(recoveryMessage('2026-10-27', row, { ...permit, periods: [5, 3, 2] }), /alle ore 2ª, 3ª e 5ª/);
   assert.match(recoveryMessage('2026-10-27', { ...row, aula: null }, { date: null }), /aula da verificare, recuperando un'ora del saldo permessi pregresso\. Le è possibile\?/);
@@ -59,7 +59,7 @@ test('acceptance guarded by campus and busy state; copying stays read-only acros
   accept.props.onClick(); assert.equal(mutations, 1);
   assert.equal(copy.props.disabled, false);
   copy.props.onClick(); await settle();
-  assert.equal(copied[0], c.recoveryMessage(p.day, row, permit));
+  assert.equal(copied[0], c.recoveryMessage(p.day, row, permit, 'Luca Bianchi', 'Maria Rossi'));
   assert.equal(status(c.render(p)), 'Copiato');
   assert.equal(p.assignment.accepted, undefined);
   p.canAssign = true; p.busy = true;

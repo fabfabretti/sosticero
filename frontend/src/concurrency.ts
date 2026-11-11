@@ -17,6 +17,7 @@ export function preconditions(baseline: Baseline | undefined, route: string, bod
     days.forEach(d => add(body.group!, d, body.id!));
   } else if (route === 'assignments') {
     add('asg', day, body.key!);
+    if (body.campus_notice) add('campusNotice', day, body.key!);
     if (body.replace_key) add('asg', day, body.replace_key);
   } else if (route === 'permessi') {
     add('permessi', day, body.id!);

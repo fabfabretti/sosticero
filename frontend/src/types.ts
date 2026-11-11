@@ -47,7 +47,9 @@ export type Candidate = {
 };
 export type PermitRecovery = { id: string; deadline: string; recovered: number; remaining: number; expired: boolean; recoveries: { date: string; h: number; key: string }[] };
 export type Assignment = { note?: string; v: string; t: string; c: string; notified?: boolean; assignedBy?: string; permitId?: string; communicated?: boolean; accepted?: boolean };
+export type CampusNotice = { day: string; teacher: string; origin: string; destination: string; rows: Row[]; fingerprint: string; communicated: boolean; accepted: boolean };
 export type Data = {
+  campusNotices?: Record<string, CampusNotice>;
   continuousAbsences?: Record<string, number[]>;
   effectiveAbsences?: Record<string, number[]>;
   recoveryRequests?: Record<string, import("./RecoveryActions").RecoveryRequest>;

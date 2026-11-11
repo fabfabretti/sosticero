@@ -1,25 +1,25 @@
 import { useState } from "react";
 import type { Assignment, Row } from "./types";
 
-export function paidMessage(day: string, row: Row): string {
+export function paidMessage(day: string, row: Row, recipientName: string, signature: string): string {
   const date = day.split("-").reverse().join("/");
   return `[Supplenza a pagamento] ${date} · ${row.h}ª ora · ${row.c}
 
-Gentile Professoressa/Professore,
+Gentile Professore/Professoressa ${recipientName},
 
 Richiederei la sua presenza per una supplenza a pagamento il ${date}, ${row.h}ª ora, classe ${row.c}, aula ${row.aula || "da verificare"}, sede ${row.sede || "da verificare"}. Le è possibile?
 
 Grazie mille e cordiali saluti,
-Fabiola Fabretti`;
+${signature}`;
 }
 
-export function PaidActions({ day, row, assignment, busy, canAssign, onNotify, onAccept }: {
-  day: string; row: Row; assignment: Assignment; busy: boolean; canAssign: boolean; onNotify: () => void; onAccept: () => void;
+export function PaidActions({ day, row, recipientName, signature, assignment, busy, canAssign, onNotify, onAccept }: {
+  day: string; row: Row; recipientName: string; signature: string; assignment: Assignment; busy: boolean; canAssign: boolean; onNotify: () => void; onAccept: () => void;
 }) {
   const communicated = assignment.notified || assignment.communicated;
   const [feedback, setFeedback] = useState("");
   async function copy() {
-    try { await navigator.clipboard.writeText(paidMessage(day, row)); setFeedback("Copiato"); }
+    try { await navigator.clipboard.writeText(paidMessage(day, row, recipientName, signature)); setFeedback("Copiato"); }
     catch { setFeedback("Copia non riuscita: accesso agli appunti non disponibile o negato."); }
   }
   return <span className="recovery-actions"><span className="opt communicated">

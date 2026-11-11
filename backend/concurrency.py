@@ -34,6 +34,9 @@ def snapshot(state, ds=None, day=None):
         records[key('manualPermits', '', identifier)] = digest([value, state['manualPermitNotes'].get(identifier)])
     if ds is not None:
         current_rows = {r['k']: r for r in rows(ds, state, day)}
+        from . import campus_notices
+        for identifier, notice in campus_notices.groups(ds, state, day).items():
+            records[key('campusNotice', day, identifier)] = digest(notice)
         for identifier in current_rows.keys() | state['asg'].get(day, {}).keys():
             records[key('asg', day, identifier)] = digest([state['asg'].get(day, {}).get(identifier), current_rows.get(identifier)])
     return dict(records=records, dates={g: sorted(state[g]) for g in ('abs', 'cf', 'dis')})

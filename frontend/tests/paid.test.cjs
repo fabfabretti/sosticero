@@ -20,13 +20,15 @@ const row = { h: 3, c: '1A', aula: '12', sede: 'centrale' };
 test('paid request and Comunicato are independent, permission guarded and give clipboard feedback', async () => {
   let feedback = '', notified = 0; const copied = [];
   const mod = load('src/PaidActions.tsx', { react: { useState: () => [feedback, value => { feedback = value; }] }, 'react/jsx-runtime': { jsx, jsxs: jsx } }, { navigator: { clipboard: { writeText: async value => copied.push(value) } } });
-  const props = { day: '2026-10-28', row, assignment: { v: 'rp', t: 'PAID' }, busy: false, canAssign: false, onNotify: () => notified++ };
+  const props = { day: '2026-10-28', row, recipientName: 'Luca Bianchi', signature: 'Maria Rossi', assignment: { v: 'rp', t: 'PAID' }, busy: false, canAssign: false, onNotify: () => notified++ };
   const nodes = () => flatten(mod.PaidActions(props));
   let buttons = nodes().filter(n => n.type === 'button');
   assert.equal(buttons[0].props.disabled, true); buttons[0].props.onClick(); assert.equal(notified, 0);
   buttons[2].props.onClick(); await new Promise(resolve => setImmediate(resolve));
   assert.equal(notified, 0); assert.equal(feedback, 'Copiato');
   assert.match(copied[0], /28\/10\/2026, 3ª ora, classe 1A, aula 12, sede centrale/);
+  assert.match(copied[0], /Gentile Professore\/Professoressa Luca Bianchi,/);
+  assert.ok(copied[0].endsWith('cordiali saluti,\nMaria Rossi'));
   assert.match(copied[0], /supplenza a pagamento/); assert.match(copied[0], /Le è possibile/);
   props.canAssign = true; buttons = nodes().filter(n => n.type === 'button'); buttons[0].props.onClick(); assert.equal(notified, 1);
   assert.match(mod.paidMessage(props.day, { ...row, aula: null }), /aula da verificare/);

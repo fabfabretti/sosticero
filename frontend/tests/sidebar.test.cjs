@@ -100,6 +100,7 @@ function app(localStorage = { getItem: () => null, setItem() {} }, confirm = () 
     document,
     fetch: fetcher,
     require(id) {
+      if (id === './CampusNoticeActions') return { CampusNoticeActions: 'campus-notice-actions' };
       if (id === './PaidBudgetSettings') return { PaidBudgetSettings: 'paid-budget-settings' };
       if (id === './TeacherPortal') return { TeacherPortal: 'teacher-portal' };
       if (id === './Staffing') return { Staffing: 'staffing-management' };
@@ -1502,4 +1503,39 @@ test('paid assignment from drawer saves immediately and retains advisory budget 
   a.requests.shift().resolve(data); await settle();
   assert.ok(a.render().some(n => n.props?.role === 'status' && /Budget Centrale superato/.test(n.props.children)));
   assert.ok(!drawer(a));
+});
+
+test('campus notice rows share status and save grouped preconditions', async () => {
+  const second={...row,k:'r2',h:2};
+  const notice={day:todayYmd,teacher:'t',origin:'succursale',destination:'centrale',rows:[row,second],communicated:true,accepted:false,fingerprint:'f'};
+  const a=await loaded({rows:[row,second],state:{...data.state,asg:{[todayYmd]:{r:{v:'t',t:'D',c:'1A'},r2:{v:'t',t:'D',c:'1A'}}}},campusNotices:{r:notice,r2:notice},concurrency:{records:{[`asg|${todayYmd}|r`]:'a',[`campusNotice|${todayYmd}|r`]:'n'},dates:{}}});
+  const controls=a.render().filter(n=>n.type==='campus-notice-actions');
+  assert.equal(controls.length,2);assert.equal(controls[0].props.notice,controls[1].props.notice);assert.equal(controls[0].props.signature,'Test');
+  controls[0].props.onToggle('accepted');
+  const request=a.requests.shift();const body=JSON.parse(request.options.body);
+  assert.equal(body.campus_notice,true);assert.equal(body.accepted,true);assert.equal(body.expected[`campusNotice|${todayYmd}|r`],'n');
+  request.resolve({});await settle();a.requests.shift()?.resolve({...data});await settle();
+});
+
+test('changing day from a campus notice keeps the screen usable while the next snapshot loads', async () => {
+  const notice={day:todayYmd,teacher:'t',origin:'succursale',destination:'centrale',rows:[row],communicated:true,accepted:false,fingerprint:'f'};
+  const a=await loaded({state:{...data.state,asg:{[todayYmd]:{r:{v:'t',t:'D',c:'1A'}}}},campusNotices:{r:notice}});
+  const controls=()=>a.render().filter(n=>n.type==='campus-notice-actions');
+  assert.equal(controls().length,1);
+  const next=a.render().find(n=>n.type==='button' && n.props.className==='d' && n.props.children[0]===now.getDate()+1);
+  assert.ok(next);next.props.onClick();
+  assert.doesNotThrow(()=>a.render());
+  assert.equal(controls().length,0,'previous day notice must not render against next day assignments');
+  assert.ok(a.render().some(n=>n.props?.className==='ui-loading-content' && n.props.inert));
+  a.requests.shift().resolve({...data,campusNotices:{}});await settle();
+  assert.equal(controls().length,0);
+  assert.ok(a.render().some(n=>n.type==='button' && n.props.className?.startsWith('fill ')));
+});
+
+test('all copied teacher messages receive recipient name and signed-in user name', async () => {
+  for (const [category,component] of [['RP','recovery-actions'],['PAID','paid-actions'],['D','campus-notice-actions']]) {
+    const a=await loaded({dataset:{...data.dataset,teachers:{t:{id:'t',name:'Luca Bianchi'}}},state:{...data.state,asg:{[todayYmd]:{[row.k]:{v:'t',t:category,c:'1A',permitId:'p'}}}},campusNotices:category==='D'?{[row.k]:{day:todayYmd,teacher:'t',origin:'succursale',destination:'centrale',rows:[row],communicated:false,accepted:false,fingerprint:'f'}}:{}});
+    const action=a.render().find(n=>n.type===component);
+    assert.ok(action,category);assert.equal(action.props.recipientName,'Luca Bianchi');assert.equal(action.props.signature,'Test');
+  }
 });

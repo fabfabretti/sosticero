@@ -38,6 +38,7 @@ import { ReceptionImport } from './Receptions';
 import { norm, teacherSearchText, entryExitLabel } from "./timetables";
 import { HourHelp } from "./Tooltip";
 import { SubstitutionExport } from "./SubstitutionExportPanel";
+import { CampusNoticeActions } from "./CampusNoticeActions";
 import { RecoveryActions } from "./RecoveryActions";
 import { HashRouter, Link, useLocation } from "react-router";
 const hours = [1, 2, 3, 4, 5, 6, 7];
@@ -1200,11 +1201,13 @@ function Supplenze() {
                           </button>
                           {assigned[r.k]?.note && <p className="sub">{assigned[r.k].note}</p>}
                           {assignmentIssues[r.k] && <p id={`assignment-issue-${r.k}`} className="ui-notice ui-notice-error" role="alert">Da riassegnare: {assignmentIssues[r.k]}</p>}
+                          {loadedDay === day && assigned[r.k]?.t === "D" && data?.campusNotices?.[r.k] && <CampusNoticeActions key={`${day}|${r.k}|${assigned[r.k].v}`} notice={data.campusNotices[r.k]} recipientName={name(assigned[r.k].v)} signature={account?.name || ""} busy={busy} canAssign={canAssign(r.sede)}
+                            onToggle={field => void mutate("assignments", { day, key: r.k, campus_notice: true, [field]: !data.campusNotices![r.k][field] })} />}
                           {assigned[r.k]?.t === "RP" && <RecoveryActions key={`${day}|${r.k}|${assigned[r.k].v}|${assigned[r.k].permitId}`} day={day} row={r}
-                            assignment={assigned[r.k]} permit={data?.recoveryRequests?.[r.k]} busy={busy} canAssign={canAssign(r.sede)}
+                            recipientName={name(assigned[r.k].v)} signature={account?.name || ""} assignment={assigned[r.k]} permit={data?.recoveryRequests?.[r.k]} busy={busy} canAssign={canAssign(r.sede)}
                             onCommunicate={() => void mutate("assignments", { day, key: r.k, communicated: !assigned[r.k].communicated })}
                             onAccept={() => void mutate("assignments", { day, key: r.k, accepted: !assigned[r.k].accepted })} />}
-                          {assigned[r.k]?.t === "PAID" && <PaidActions key={`${day}|${r.k}|${assigned[r.k].v}`} day={day} row={r} assignment={assigned[r.k]} busy={busy} canAssign={canAssign(r.sede)} onAccept={() => void mutate("assignments", { day, key: r.k, accepted: !assigned[r.k].accepted })} onNotify={() => void mutate("assignments", { day, key: r.k, notified: !(assigned[r.k].notified || assigned[r.k].communicated) })} />}
+                          {assigned[r.k]?.t === "PAID" && <PaidActions key={`${day}|${r.k}|${assigned[r.k].v}`} day={day} row={r} recipientName={name(assigned[r.k].v)} signature={account?.name || ""} assignment={assigned[r.k]} busy={busy} canAssign={canAssign(r.sede)} onAccept={() => void mutate("assignments", { day, key: r.k, accepted: !assigned[r.k].accepted })} onNotify={() => void mutate("assignments", { day, key: r.k, notified: !(assigned[r.k].notified || assigned[r.k].communicated) })} />}
                           {entryExitBoundary(r.k, assigned) && <span className="opt communicated">
                             <button type="button" className={assigned[r.k].communicated ? "on" : ""}
                               aria-pressed={assigned[r.k].communicated === true} disabled={busy || !canAssign(r.sede)}

@@ -3,7 +3,7 @@ import type { Assignment, Row } from "./types";
 
 export type RecoveryRequest = { date: string; periods: number[] } | { date: null };
 
-export function recoveryMessage(day: string, row: Row, permit: RecoveryRequest): string {
+export function recoveryMessage(day: string, row: Row, permit: RecoveryRequest, recipientName: string, signature: string): string {
   const date = (value: string) => value.split("-").reverse().join("/");
   let clause = "recuperando un'ora del saldo permessi pregresso";
   if (permit.date !== null) {
@@ -13,17 +13,17 @@ export function recoveryMessage(day: string, row: Row, permit: RecoveryRequest):
   }
   return `[Recupero permesso] ${date(day)} · ${row.h}ª ora · ${row.c}
 
-Gentile Professoressa/Professore,
+Gentile Professore/Professoressa ${recipientName},
 
 In assenza di altre soluzioni, richiederei la sua presenza in data/ora
 ${date(day)} · ${row.h}ª ora classe ${row.c}, aula ${row.aula || "da verificare"}, ${clause}. Le è possibile?
 
 Grazie mille e cordiali saluti,
-Fabiola Fabretti`;
+${signature}`;
 }
 
-export function RecoveryActions({ day, row, assignment, permit, busy, canAssign, onAccept, onCommunicate }: {
-  day: string; row: Row; assignment: Assignment; permit?: RecoveryRequest;
+export function RecoveryActions({ day, row, recipientName, signature, assignment, permit, busy, canAssign, onAccept, onCommunicate }: {
+  day: string; row: Row; recipientName: string; signature: string; assignment: Assignment; permit?: RecoveryRequest;
   busy: boolean; canAssign: boolean; onAccept: () => void; onCommunicate: () => void;
 }) {
   const [feedback, setFeedback] = useState("");
@@ -33,7 +33,7 @@ export function RecoveryActions({ day, row, assignment, permit, busy, canAssign,
     setFeedback("");
     if (!permit) { setFeedback(missing); return; }
     try {
-      await navigator.clipboard.writeText(recoveryMessage(day, row, permit));
+      await navigator.clipboard.writeText(recoveryMessage(day, row, permit, recipientName, signature));
       setFeedback("Copiato");
     } catch {
       setFeedback("Copia non riuscita: accesso agli appunti non disponibile o negato.");

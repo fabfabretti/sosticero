@@ -1,4 +1,4 @@
-from . import attribution
+from . import attribution, campus_notices
 import os
 import re
 import sqlite3
@@ -66,6 +66,7 @@ class PaidAvailability(ConditionalWrite):
 class Assignment(ConditionalWrite):
     note: StrictStr | None = Field(default=None, max_length=2000)
     category: StrictStr | None = None
+    campus_notice: StrictBool = False
     notified: StrictBool | None = None
     accepted: StrictBool | None = None
     communicated: StrictBool | None = None
@@ -144,6 +145,10 @@ def create_app(path=None, seed=None):
         return teacher_names.dataset(ds, name_overrides(db))
 
     def write_history(db, value):
+        state = store.read(db, 'state', EMPTY)
+        for day in state['asg']:
+            campus_notices.reconcile(timetables.dataset(value, day), state, day)
+        store.write(db, 'state', state)
         store.write(db, 'timetables', {k: v for k, v in value.items() if not k.startswith('_')})
         store.write(db, 'timetableOverrides', value.get('_overrides', overrides.empty()))
 
@@ -254,6 +259,9 @@ def create_app(path=None, seed=None):
         return state
 
     def save_state(db, ds, state, days, revalidate=False):
+        history = read_history(db)
+        for day in state['asg']:
+            campus_notices.reconcile(timetables.dataset(history, day) if history else ds, state, day)
         facts = store.read(db, 'statistics', statistics.empty())
         store.write(db, 'statistics', timetables.sync(read_history(db), state, facts, days, revalidate=revalidate))
         store.write(db, 'state', state)
@@ -377,7 +385,7 @@ def create_app(path=None, seed=None):
         for item in problems:
             item['context'] = timetables.conflict_context(history, d, item['key'], state['asg'][d][item['key']]) or timetables.context(history, state, d, item['key'], facts)
         selected = timetables.version(history, d)
-        return dict(continuousAbsences=appointments.derived(ds, d), effectiveAbsences=absences(state, d, ds), concurrency=concurrency.snapshot(state, ds, d), dataset=display, state=state, rows=rs, issues=problems, references=timetables.reference_issues(history, state, d),
+        return dict(campusNotices=campus_notices.groups(ds, state, d), continuousAbsences=appointments.derived(ds, d), effectiveAbsences=absences(state, d, ds), concurrency=concurrency.snapshot(state, ds, d), dataset=display, state=state, rows=rs, issues=problems, references=timetables.reference_issues(history, state, d),
                     recoveryRequests=recovery.request_details(state, d),
                     timetable=dict(id=selected['id'], effective=selected['effective']), autoDis={d: auto_availability(ds, state, d)})
 
@@ -594,6 +602,9 @@ def create_app(path=None, seed=None):
                     if lesson(before, i, d, h) != lesson(after, i, d, h):
                         facts['days'][d]['absences'].pop(key)
             updated = timetables.sync(history, state, facts, days)
+            for day in state['asg']:
+                campus_notices.reconcile(after_dataset(day), state, day)
+            store.write(db, 'state', state)
             store.write(db, 'teacherAppointments', result['document'])
             store.write(db, 'statistics', updated)
             identities.generation(advance=True)
@@ -786,6 +797,11 @@ def create_app(path=None, seed=None):
                 raise HTTPException(status_code=409, detail='Anteprima scaduta: genera una nuova anteprima.')
             backup.backup_database(str(database), str(backup_dir))
             store.write(db, 'timetableOverrides', document)
+            history = read_history(db)
+            state = load_state(db)
+            for day in state['asg']:
+                campus_notices.reconcile(timetables.dataset(history, day), state, day)
+            store.write(db, 'state', state)
             store.write(db, 'statistics', facts)
         return dict(ok=True)
 
@@ -1077,10 +1093,23 @@ def create_app(path=None, seed=None):
                 if not context or context.get('site') not in request.state.account['campuses']:
                     raise HTTPException(403, 'Assegnazione riservata alla sede della riga; verifica anche la sede delle assegnazioni da risolvere.')
             references = [concurrency.key('asg', e.day.isoformat(), e.key)]
+            if e.campus_notice:
+                references.append(concurrency.key('campusNotice', e.day.isoformat(), e.key))
             if e.replace_key:
                 references.append(concurrency.key('asg', e.day.isoformat(), e.replace_key))
             concurrency.check(e.expected, concurrency.snapshot(state, ds, e.day.isoformat()), references)
             assignments = state['asg'].setdefault(e.day.isoformat(), {})
+            if e.campus_notice:
+                notice = campus_notices.groups(ds, state, e.day.isoformat()).get(e.key)
+                fields = [f for f in ('communicated', 'accepted') if f in e.model_fields_set]
+                if not notice or len(fields) != 1 or getattr(e, fields[0]) is None or e.value is not None or e.replace_key or e.category is not None or e.exceptional or 'notified' in e.model_fields_set:
+                    raise ValueError('Comunicazione cambio sede non valida.')
+                metadata = {f: notice[f] for f in ('fingerprint', 'communicated', 'accepted')}
+                metadata[fields[0]] = getattr(e, fields[0])
+                for row in notice['rows']:
+                    assignments[row['k']]['campusNotice'] = dict(metadata)
+                save_state(db, ds, state, [e.day.isoformat()])
+                return {'ok': True, 'concurrency': concurrency.snapshot(state, ds, e.day.isoformat())}
             if 'notified' in e.model_fields_set:
                 old = assignments.get(e.key)
                 if e.notified is None or e.value is not None or e.replace_key or e.category is not None or e.accepted is not None or e.communicated is not None or e.exceptional or not old or old.get('t') != 'PAID':
@@ -1117,6 +1146,8 @@ def create_app(path=None, seed=None):
                 if not unchanged:
                     assignments.pop(e.key, None)
                 assignments[e.key] = validate_assignment(ds, state, e.day.isoformat(), e.key, e.value, policies(db, ds), e.exceptional, saved=bool(unchanged), category=e.category)
+                if old and old['v'] == e.value and old.get('t') == assignments[e.key]['t'] and 'campusNotice' in old:
+                    assignments[e.key]['campusNotice'] = old['campusNotice']
                 if assignments[e.key]['t'] == 'MANUAL' and e.note and e.note.strip():
                     assignments[e.key]['note'] = e.note.strip()
                 if assignments[e.key]['t'] == 'PAID' and not unchanged:
@@ -1236,6 +1267,7 @@ def create_app(path=None, seed=None):
                 recovery.migrate(state)
             attribution.migrate(state)
             recovery.validate(state)
+            campus_notices.validate(state)
             paid.metadata(state, ds['teachers'])
             paid_finance.validate_prices(state)
             finance = paid_finance.validate(data.get('paidFinance', paid_finance.empty()) if data['schema'] >= 11 else paid_finance.empty(), appointments.catalog(history))
