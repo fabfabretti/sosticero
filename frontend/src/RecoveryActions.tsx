@@ -22,9 +22,9 @@ Grazie mille e cordiali saluti,
 ${signature}`;
 }
 
-export function RecoveryActions({ day, row, recipientName, signature, assignment, permit, busy, canAssign, onAccept, onCommunicate }: {
+export function RecoveryActions({ day, row, recipientName, signature, assignment, permit, busy, canAssign, onRefuse, onAccept, onCommunicate }: {
   day: string; row: Row; recipientName: string; signature: string; assignment: Assignment; permit?: RecoveryRequest;
-  busy: boolean; canAssign: boolean; onAccept: () => void; onCommunicate: () => void;
+  busy: boolean; canAssign: boolean; onRefuse: () => void; onAccept: () => void; onCommunicate: () => void;
 }) {
   const [feedback, setFeedback] = useState("");
   const reason = `Assegnazione riservata alla sede ${row.sede || "non indicata"}`;
@@ -58,6 +58,10 @@ export function RecoveryActions({ day, row, recipientName, signature, assignment
         aria-describedby={!permit ? `recovery-${row.k}` : undefined} onClick={() => void copy()}>
         <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="13" rx="2" fill="none" stroke="currentColor" strokeWidth="1.6"/><path d="M15 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h3" fill="none" stroke="currentColor" strokeWidth="1.6"/></svg>
       </button>}
+
+      <button type="button" className="refuse" disabled={busy || !canAssign}
+        title={!canAssign ? `Assegnazione riservata alla sede ${row.sede || "non indicata"}` : "Registra il rifiuto e libera la supplenza"}
+        aria-label={`Rifiutata ${row.c}, ${row.h}ª ora`} onClick={() => { if (!busy && canAssign) onRefuse(); }}>Rifiutata</button>
     </span>
     {assignment.t === "RP" && <small id={`recovery-${row.k}`} role="status">{!permit ? missing : feedback}</small>}
   </span>;

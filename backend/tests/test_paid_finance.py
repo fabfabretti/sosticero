@@ -89,7 +89,7 @@ class FinanceTest(unittest.TestCase):
         self.assertEqual(self.configure(config).json()['unpriced'],1)
         config['overrides']['rp']='laureato'
         self.assertEqual(self.configure(config).json()['priced'],1)
-        archive=self.archive();self.assertEqual(archive['schema'],11)
+        archive=self.archive();self.assertEqual(archive['schema'],12)
         self.client.post('/api/import',json=archive).raise_for_status()
         self.assertEqual(self.archive()['paidFinance'],config)
         self.assertEqual(self.report()['all']['cost'],3111)

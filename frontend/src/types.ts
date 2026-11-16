@@ -63,6 +63,7 @@ export type Data = {
     warnings: unknown[];
   };
   state: {
+    substitutionRefusals?: Record<string, Record<string, { teacher: string; name: string }[]>>;
     absenceAttachments?: Record<string, Record<string, string>>;
     permitAttachments?: Record<string, Record<string, string>>;
     disAttachments?: Record<string, Record<string, string>>;

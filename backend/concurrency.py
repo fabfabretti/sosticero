@@ -35,10 +35,12 @@ def snapshot(state, ds=None, day=None):
     if ds is not None:
         current_rows = {r['k']: r for r in rows(ds, state, day)}
         from . import campus_notices
+        history = state.get('substitutionRefusals', {}).get(day, {})
         for identifier, notice in campus_notices.groups(ds, state, day).items():
-            records[key('campusNotice', day, identifier)] = digest(notice)
+            members = [[state['asg'][day][r['k']], history.get(r['k'])] for r in notice['rows']]
+            records[key('campusNotice', day, identifier)] = digest([notice, members])
         for identifier in current_rows.keys() | state['asg'].get(day, {}).keys():
-            records[key('asg', day, identifier)] = digest([state['asg'].get(day, {}).get(identifier), current_rows.get(identifier)])
+            records[key('asg', day, identifier)] = digest([state['asg'].get(day, {}).get(identifier), current_rows.get(identifier), history.get(identifier)])
     return dict(records=records, dates={g: sorted(state[g]) for g in ('abs', 'cf', 'dis')})
 
 

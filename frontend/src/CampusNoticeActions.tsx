@@ -21,8 +21,9 @@ Cordiali saluti,
 ${signature}`;
 }
 
-export function CampusNoticeActions({ notice, signature, recipientName, busy, canAssign, onToggle }: {
+export function CampusNoticeActions({ notice, signature, recipientName, busy, canAssign, onRefuse, onToggle }: {
   notice: CampusNotice; signature: string; recipientName: string; busy: boolean; canAssign: boolean;
+  onRefuse: () => void;
   onToggle: (field: "communicated" | "accepted") => void;
 }) {
   const [feedback, setFeedback] = useState("");
@@ -41,5 +42,8 @@ export function CampusNoticeActions({ notice, signature, recipientName, busy, ca
     <button type="button" aria-label={`Copia comunicazione cambio sede disposizione, ${label}`} title="Copia comunicazione cambio sede disposizione" onClick={() => void copy()}>
       <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="13" rx="2" fill="none" stroke="currentColor" strokeWidth="1.6"/><path d="M15 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h3" fill="none" stroke="currentColor" strokeWidth="1.6"/></svg>
     </button>
+    <button type="button" className="refuse" disabled={busy || !canAssign}
+      title={!canAssign ? `Assegnazione riservata alla sede ${notice.destination}` : `Registra il rifiuto e libera tutte le ore del cambio sede: ${label}`}
+      aria-label={`Rifiutata intera comunicazione cambio sede, ${label}`} onClick={() => { if (!busy && canAssign) onRefuse(); }}>Rifiutata (tutte le ore)</button>
   </span><small role="status">{feedback}</small></span>;
 }

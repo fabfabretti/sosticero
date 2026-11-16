@@ -104,9 +104,9 @@ test('paid assignments expose both status toggles without recovery copy or missi
   p.onCommunicate = () => communicated++;
   p.onAccept = () => accepted++;
   const controls = buttons(c.render(p));
-  assert.equal(controls.length, 2);
+  assert.equal(controls.length, 3);
   assert.equal(c.render(p).some(n => n.props?.role === 'status'), false);
-  for (const button of controls) {
+  for (const button of controls.slice(0, 2)) {
     assert.equal(button.props['aria-pressed'], true);
     button.props.onClick();
   }
@@ -116,4 +116,15 @@ test('paid assignments expose both status toggles without recovery copy or missi
     assert.equal(button.props.disabled, true); button.props.onClick();
   }
   assert.equal(communicated, 1); assert.equal(accepted, 1);
+});
+
+test('refusal is a guarded action rather than a status toggle', () => {
+  const c = component(), p = props(); let refused = 0;
+  p.onRefuse = () => refused++;
+  const refusal = () => buttons(c.render(p)).find(n => n.props.className === 'refuse');
+  assert.equal(refusal().props.children, 'Rifiutata');
+  assert.equal(refusal().props['aria-pressed'], undefined);
+  refusal().props.onClick(); assert.equal(refused, 1);
+  p.busy = true; assert.equal(refusal().props.disabled, true); refusal().props.onClick();
+  p.busy = false; p.canAssign = false; refusal().props.onClick(); assert.equal(refused, 1);
 });

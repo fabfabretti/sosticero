@@ -158,7 +158,7 @@ class AdministrationTest(unittest.TestCase):
         client.headers['X-Data-Generation']=response.headers['x-data-generation']
         summary=client.get('/api/settings/overview').json()
         self.assertGreater(summary['teacherCount'],0);self.assertNotIn('lessons',summary)
-        archive=client.get('/api/export').json();self.assertEqual(archive['schema'],11)
+        archive=client.get('/api/export').json();self.assertEqual(archive['schema'],12)
         client.post('/api/import/preview',json=archive).raise_for_status()
         response=client.post('/api/import',json=archive);response.raise_for_status()
         client.headers['X-Data-Generation']=response.headers['x-data-generation']

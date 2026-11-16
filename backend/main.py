@@ -1,4 +1,4 @@
-from . import attribution, campus_notices
+from . import attribution, campus_notices, refusals
 import os
 import re
 import sqlite3
@@ -67,6 +67,7 @@ class Assignment(ConditionalWrite):
     note: StrictStr | None = Field(default=None, max_length=2000)
     category: StrictStr | None = None
     campus_notice: StrictBool = False
+    refused: StrictBool = False
     notified: StrictBool | None = None
     accepted: StrictBool | None = None
     communicated: StrictBool | None = None
@@ -241,6 +242,7 @@ def create_app(path=None, seed=None):
 
     def load_state(db):
         state = store.read(db, 'state', EMPTY)
+        state.setdefault('substitutionRefusals', {})
         state.setdefault('paidAvailability', {})
         state.setdefault('permessi', {})
         state.setdefault('permitRequests', {})
@@ -1099,6 +1101,26 @@ def create_app(path=None, seed=None):
                 references.append(concurrency.key('asg', e.day.isoformat(), e.replace_key))
             concurrency.check(e.expected, concurrency.snapshot(state, ds, e.day.isoformat()), references)
             assignments = state['asg'].setdefault(e.day.isoformat(), {})
+            if 'refused' in e.model_fields_set and not e.refused:
+                raise ValueError('Il rifiuto deve essere confermato come azione.')
+            if e.refused:
+                if any(field in e.model_fields_set for field in ('value', 'category', 'replace_key', 'note', 'notified', 'accepted', 'communicated', 'exceptional')):
+                    raise ValueError('Il rifiuto non può essere combinato con altre modifiche.')
+                old = assignments.get(e.key)
+                notice = campus_notices.groups(ds, state, e.day.isoformat()).get(e.key) if e.campus_notice else None
+                if e.key not in current_rows or not old or (not notice if e.campus_notice else old.get('t') not in ('RP', 'PAID')):
+                    raise ValueError('Rifiuto disponibile solo per recuperi, ore a pagamento o cambi sede già assegnati.')
+                members = notice['rows'] if notice else [current_rows[e.key]]
+                teachers = presented(db, ds)['teachers']
+                for row in members:
+                    if row['sede'] not in request.state.account['campuses']:
+                        raise HTTPException(403, 'Assegnazione riservata alla sede della riga.')
+                for row in members:
+                    teacher = assignments[row['k']]['v']
+                    refusals.record(state, e.day.isoformat(), row['k'], teacher, teachers[teacher]['name'])
+                    assignments.pop(row['k'])
+                save_state(db, ds, state, [e.day.isoformat()], revalidate=True)
+                return {'ok': True, 'concurrency': concurrency.snapshot(state, ds, e.day.isoformat())}
             if e.campus_notice:
                 notice = campus_notices.groups(ds, state, e.day.isoformat()).get(e.key)
                 fields = [f for f in ('communicated', 'accepted') if f in e.model_fields_set]
@@ -1180,33 +1202,38 @@ def create_app(path=None, seed=None):
             images = attachments.export(db, state)
             labels = name_overrides(db)
             finance = store.read(db, 'paidFinance', paid_finance.empty())
-        return dict(schema=11, paidFinance=finance, teacherAppointments=history['_appointments'], receptions=history['_receptions'], teacherNameOverrides=labels, timetables={k: v for k, v in history.items() if not k.startswith('_')}, timetableOverrides=history['_overrides'], attachments=images, datasetId='v1:'+','.join(sorted(ds['teachers'])), hourTypes=rules, statistics=facts, **state)
+        return dict(schema=12, paidFinance=finance, teacherAppointments=history['_appointments'], receptions=history['_receptions'], teacherNameOverrides=labels, timetables={k: v for k, v in history.items() if not k.startswith('_')}, timetableOverrides=history['_overrides'], attachments=images, datasetId='v1:'+','.join(sorted(ds['teachers'])), hourTypes=rules, statistics=facts, **state)
 
     @app.post('/api/import')
     def import_state(data: dict, preview: bool = False):
         with store.connect() as db:
             db.execute('BEGIN IMMEDIATE')
-            history = timetables.validate(data.get('timetables'), data.get('teacherAppointments') if data.get('schema') in (10, 11) else None) if data.get('schema') in (4, 5, 6, 7, 8, 9, 10, 11) else read_history(db)
-            history['_appointments'] = appointments.validate(data.get('teacherAppointments', appointments.empty()) if data.get('schema') in (10, 11) else appointments.empty(), history)
+            history = timetables.validate(data.get('timetables'), data.get('teacherAppointments') if data.get('schema') in (10, 11, 12) else None) if data.get('schema') in (4, 5, 6, 7, 8, 9, 10, 11, 12) else read_history(db)
+            history['_appointments'] = appointments.validate(data.get('teacherAppointments', appointments.empty()) if data.get('schema') in (10, 11, 12) else appointments.empty(), history)
             retained = store.read(db, 'timetableOverrides', overrides.empty())
-            document = overrides.validate(data.get('timetableOverrides'), history) if data.get('schema') in (5, 6, 7, 8, 9, 10, 11) else retained
+            document = overrides.validate(data.get('timetableOverrides'), history) if data.get('schema') in (5, 6, 7, 8, 9, 10, 11, 12) else retained
             document, restore_review = overrides.reconcile(document, history)
             history['_overrides'] = document
-            reception_document = receptions.validate(data.get('receptions', receptions.empty()) if data.get('schema') in (7, 8, 9, 10, 11) else receptions.empty(), teacher_names.catalog(history))
+            reception_document = receptions.validate(data.get('receptions', receptions.empty()) if data.get('schema') in (7, 8, 9, 10, 11, 12) else receptions.empty(), teacher_names.catalog(history))
             history['_receptions'] = reception_document
-            labels = teacher_names.validate(data.get('teacherNameOverrides') if data.get('schema') in (6, 7, 8, 9, 10, 11) else name_overrides(db), teacher_names.catalog(history))
-            if data.get('schema') not in (4, 5, 6, 7, 8, 9, 10, 11):
+            labels = teacher_names.validate(data.get('teacherNameOverrides') if data.get('schema') in (6, 7, 8, 9, 10, 11, 12) else name_overrides(db), teacher_names.catalog(history))
+            if data.get('schema') not in (4, 5, 6, 7, 8, 9, 10, 11, 12):
                 ds, _ = load(db)
-            if data.get('schema') in (4, 5, 6, 7, 8, 9, 10, 11):
+            if data.get('schema') in (4, 5, 6, 7, 8, 9, 10, 11, 12):
                 ds = timetables.dataset(history, datetime.now(ZoneInfo('Europe/Rome')).date().isoformat())
             identifier = data.get('datasetId')
-            compatible = identifier == 'v1:'+','.join(sorted(ds['teachers'])) if data.get('schema') in (4, 5, 6, 7, 8, 9, 10, 11) else isinstance(identifier, str) and identifier.startswith('v1:') and set(identifier[3:].split(',')) <= set(ds['teachers'])
-            if type(data.get('schema')) is not int or data['schema'] not in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11) or not compatible:
+            compatible = identifier == 'v1:'+','.join(sorted(ds['teachers'])) if data.get('schema') in (4, 5, 6, 7, 8, 9, 10, 11, 12) else isinstance(identifier, str) and identifier.startswith('v1:') and set(identifier[3:].split(',')) <= set(ds['teachers'])
+            if type(data.get('schema')) is not int or data['schema'] not in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12) or not compatible:
                 raise ValueError('Archivio non compatibile.')
             rules = validate_types(data['hourTypes']) if 'hourTypes' in data else None
             from copy import deepcopy
             state = deepcopy({k: data.get(k, {}) for k in EMPTY})
+            if data['schema'] < 12:
+                state['substitutionRefusals'] = {}
+            refusals.validate(state['substitutionRefusals'])
             for group, dates in state.items():
+                if group == 'substitutionRefusals':
+                    continue
                 if not isinstance(dates, dict):
                     raise ValueError('Archivio non valido.')
                 if group == 'paidAvailability':
@@ -1276,7 +1303,7 @@ def create_app(path=None, seed=None):
                 return dict(overrides=restore_review)
             identities.generation(advance=True)
             attachments.import_images(db, state, data, data['schema'])
-            if data['schema'] in (4, 5, 6, 7, 8, 9, 10, 11):
+            if data['schema'] in (4, 5, 6, 7, 8, 9, 10, 11, 12):
                 write_history(db, history)
                 store.write(db, 'dataset', history['versions'][0]['dataset'])
             if rules is not None:

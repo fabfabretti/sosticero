@@ -178,3 +178,21 @@ Do not combine testing Compose with `compose.yaml`, create an automatic override
 ## Licence
 
 Copyright © 2026 fabfabretti. **Proprietary software; all rights reserved.** Running a separate instance requires express written permission from the copyright holder. Authorised use of the hosted service is permitted. Third-party components retain their respective licences. See [LICENSE.md](LICENSE.md).
+
+### Rifiuti delle supplenze
+
+Per recuperi permesso (RP), supplenze a pagamento e cambi sede delle ore a disposizione,
+**Rifiutata** registra il docente e libera la supplenza. Per un cambio sede raggruppato,
+**Rifiutata (tutte le ore)** libera tutte le ore della comunicazione. La nota rossa
+«Ha già rifiutato: …» rimane sotto la scelta del supplente anche dopo una nuova
+assegnazione o un ricaricamento. Il docente può essere assegnato di nuovo se cambia
+risposta: il rifiuto precedente resta storico, mentre Comunicato e Accettata ripartono
+vuoti. Le ore rifiutate non consumano recuperi o budget a pagamento.
+
+La cronologia segue data e identificativo della riga, non l'assegnazione. Se una riga
+scompare, la cronologia rimane conservata; ricompare con la stessa identità, ma non
+viene trasferita automaticamente a righe diverse quando cambiano i raggruppamenti.
+Le note sono interne alla tabella operativa e non compaiono nel tabellone pubblico.
+Gli archivi portabili **schema 12** conservano i rifiuti; gli schemi 1–11 restano
+importabili e iniziano senza cronologia. Per ripristinare archivi schema 12 serve una
+versione aggiornata dell'app. I backup SQLite conservano anche questa cronologia.

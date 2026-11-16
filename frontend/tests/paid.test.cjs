@@ -111,7 +111,7 @@ test('paid communication is one status and acceptance is a separate toggle', () 
   let notified = 0, accepted = 0;
   const props = { day: '2026-11-06', row, assignment: { v: 'rp', t: 'PAID', notified: true, accepted: true }, busy: false, canAssign: true, onNotify: () => notified++, onAccept: () => accepted++ };
   const buttons = () => flatten(mod.PaidActions(props)).filter(n => n.type === 'button');
-  assert.equal(buttons().length, 3);
+  assert.equal(buttons().length, 4);
   assert.match(buttons()[0].props['aria-label'], /^Comunicato /);
   assert.match(buttons()[1].props['aria-label'], /^Accettata /);
   assert.equal(buttons()[0].props['aria-pressed'], true);
@@ -123,4 +123,13 @@ test('paid communication is one status and acceptance is a separate toggle', () 
   props.canAssign = false;
   for (const b of buttons().slice(0, 2)) { assert.equal(b.props.disabled, true); b.props.onClick(); }
   assert.equal(notified, 1); assert.equal(accepted, 1);
+});
+
+test('paid refusal releases through its own guarded callback', () => {
+  const mod = load('src/PaidActions.tsx', { react: { useState: () => ['', () => {}] }, 'react/jsx-runtime': { jsx, jsxs: jsx } });
+  let refused = 0;
+  const props = { day: '2026-11-06', row, assignment: { v: 'rp', t: 'PAID' }, busy: false, canAssign: true, onRefuse: () => refused++ };
+  const button = () => flatten(mod.PaidActions(props)).find(n => n.props.className === 'refuse');
+  button().props.onClick(); assert.equal(refused, 1);
+  props.canAssign = false; assert.equal(button().props.disabled, true); button().props.onClick(); assert.equal(refused, 1);
 });

@@ -33,3 +33,14 @@ test('group mutation sends group and assignment preconditions',()=>{
  const result=preconditions({records:{'asg|d|k':'a','campusNotice|d|k':'n'},dates:{}},'assignments',{day:'d',key:'k',campus_notice:true});
  assert.equal(result['asg|d|k'],'a');assert.equal(result['campusNotice|d|k'],'n');
 });
+
+test('campus refusal explicitly covers the whole notice and enforces permissions',()=>{
+ let refused=0;
+ const mod=load('src/CampusNoticeActions.tsx',{require:id=>id==='react'?{useState:()=>['',()=>{}]}:{jsx,jsxs:jsx}});
+ const props={notice,busy:false,canAssign:true,onRefuse:()=>refused++};
+ const button=()=>flatten(mod.CampusNoticeActions(props)).find(n=>n.props.className==='refuse');
+ assert.match(button().props.children,/tutte le ore/);assert.match(button().props['aria-label'],/intera comunicazione/);
+ button().props.onClick();assert.equal(refused,1);
+ props.busy=true;assert.equal(button().props.disabled,true);button().props.onClick();
+ props.busy=false;props.canAssign=false;button().props.onClick();assert.equal(refused,1);
+});
