@@ -1,7 +1,7 @@
 """On-paper timetable capacity; daily scheduling state only supplies the RP ledger."""
 from datetime import timedelta
 
-from . import recovery, timetables, receptions, paid
+from . import recovery, timetables, receptions, paid, student_groups
 from .domain import HOURS, SITES, lesson, rp_context
 from .hour_types import activity_codes, merge_types
 
@@ -37,6 +37,8 @@ def report(history, state, policies, selected, campus='total'):
         for h in HOURS:
             ordinary, rp, payment = [], [], []
             for i, teacher in active.items():
+                if student_groups.at(ds, i, d, h):
+                    continue
                 l = lesson(ds, i, d, h)
                 if l:
                     codes = activity_codes(l)

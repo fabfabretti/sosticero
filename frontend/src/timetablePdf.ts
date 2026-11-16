@@ -8,7 +8,7 @@ export function projectTimetableExport(dataset: Omit<Dataset, 'receptions'> & { 
   return buildTeacherTimetables(dataset).map(t => ({ name: t.name + (dataset.teachers[t.id].coveredBy ? ' · Coperto da ' + dataset.teachers[dataset.teachers[t.id].coveredBy!]?.name : dataset.teachers[t.id].replaces ? ' · Supplente di ' + dataset.teachers[dataset.teachers[t.id].replaces!]?.name : dataset.teachers[t.id].continuousAbsence ? ' · Assenza prolungata' : ''),
     kinds: DAYS.map((day, di) => HOURS.map(hour => {
       const cell = t.cells[di][hour - 1];
-      return { activity: cell ? cell.codes.length ? 'activity' as const : 'lesson' as const : null,
+      return { activity: cell ? cell.codes.length ? 'activity' as const : 'lesson' as const : dataset.studentGroups?.some(g => g.teacher === t.id && g.day === day && g.hour === hour) ? 'activity' as const : null,
         reception: !!dataset.receptions?.some(r => r.teacher === t.id && r.day === day && r.hour === hour) };
     })),
     cells: DAYS.map((day, di) => HOURS.map(hour => {
@@ -18,8 +18,10 @@ export function projectTimetableExport(dataset: Omit<Dataset, 'receptions'> & { 
         lines.push([...c.classes, ...c.codes, location].filter(Boolean).join(' · '));
         if (c.partners.length) lines.push('Comp.: ' + c.partners.map(id => dataset.teachers[id]?.name || id).join(', '));
       }
+      for (const g of dataset.studentGroups || []) if (g.teacher === t.id && g.day === day && g.hour === hour)
+        lines.push(['Gruppo' + (c || dataset.receptions?.some(r => r.teacher === t.id && r.day === day && r.hour === hour) ? ' [sovrapposizione]' : ''), g.sources.map(s => s.class + (s.count === null ? '' : ` (${s.count})`)).join(' + '), g.room, campus(g.site)].filter(Boolean).join(' · '));
       for (const r of dataset.receptions || []) if (r.teacher === t.id && r.day === day && r.hour === hour)
-        lines.push(['Ricevimento' + (c ? ' [sovrapposizione]' : ''), r.time, r.location, r.site ? campus(r.site) : ''].filter(Boolean).join(' · '));
+        lines.push(['Ricevimento' + (c || dataset.studentGroups?.some(g => g.teacher === t.id && g.day === day && g.hour === hour) ? ' [sovrapposizione]' : ''), r.time, r.location, r.site ? campus(r.site) : ''].filter(Boolean).join(' · '));
       if ((dataset as Dataset & { excludedPOT?: Record<string, unknown> }).excludedPOT?.[`${t.id}|${day}|${hour}`]) lines.push('POT non ereditato');
       return lines.filter(Boolean).join('\n');
     })),
@@ -30,7 +32,7 @@ export function generateTimetablePdf(teachers: ReturnType<typeof projectTimetabl
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4', compress: true });
   doc.setProperties({ title: `Orari - ${day}`, creator: 'Sosticero' });
   const date = (v: string) => v.split('-').reverse().join('/');
-  const margin = 8, hourWidth = 10, width = (281 - hourWidth) / 5, height = 10;
+  const margin = 8, hourWidth = 10, width = (281 - hourWidth) / 5;
   const font = (size: number, bold = false) => doc.setFont('helvetica', bold ? 'bold' : 'normal').setFontSize(size);
   const fit = (text: string, w: number, h: number, context: string) => {
     for (let size = 9; size >= 7; size -= 0.5) {
@@ -40,11 +42,24 @@ export function generateTimetablePdf(teachers: ReturnType<typeof projectTimetabl
     }
     throw Error(`Testo troppo lungo: ${context}. Ridurre il testo prima di esportare.`);
   };
-  const prepared = teachers.map(t => ({ ...t, heading: fit(t.name, 281, 7, t.name),
-    fitted: t.cells.map((cells, di) => cells.map((text, hi) => fit(text, width, height, `${t.name}, ${dayNames[di]} ${hi + 1}ª ora`))),
-  }));
+  let nextTop = 25, page = 1;
+  const prepared = teachers.map(t => {
+    const heights = HOURS.map((_, hi) => Math.max(10, ...t.cells.map(cells => {
+      if (!cells[hi].includes('Gruppo')) return 10;
+      font(7);
+      return Math.ceil(doc.splitTextToSize(cells[hi], width - 3).length * 7 * 0.352778 * 1.05 + 1.5);
+    })));
+    const bodyHeight = 13 + heights.reduce((a,b) => a + b, 0);
+    if (bodyHeight > 173) throw Error(`Testo troppo lungo: ${t.name}. Ridurre il testo prima di esportare.`);
+    if (nextTop + bodyHeight > 198) { page++; nextTop = 25; }
+    const placement = { page, top: nextTop };
+    nextTop += bodyHeight + 5;
+    return { ...t, ...placement, heights, heading: fit(t.name, 281, 7, t.name),
+      fitted: t.cells.map((cells, di) => cells.map((text, hi) => fit(text, width, heights[hi], `${t.name}, ${dayNames[di]} ${hi + 1}ª ora`))),
+    };
+  });
   prepared.forEach((t, index) => {
-    if (index % 2 === 0) {
+    if (index === 0 || t.page !== prepared[index - 1].page) {
       if (index) doc.addPage();
       font(11, true); doc.text(`Orari al ${date(day)}`, margin, 10);
       font(8); doc.text(effective ? `Orario dal ${date(effective)}` : 'Orario attuale', 289, 10, { align: 'right' });
@@ -55,9 +70,9 @@ export function generateTimetablePdf(teachers: ReturnType<typeof projectTimetabl
         doc.text(['Lezione', 'Altra attività', 'Ricevimento'][i], x + 6, 21);
       });
       doc.text('Fascia verde: ricevimento nella stessa ora', margin + 161, 21);
-      doc.text(`Pagina ${Math.floor(index / 2) + 1} / ${Math.ceil(teachers.length / 2)}`, 289, 205, { align: 'right' });
+      doc.text(`Pagina ${t.page} / ${page}`, 289, 205, { align: 'right' });
     }
-    const top = 25 + (index % 2) * 88;
+    const top = t.top;
     font(t.heading.size, true); doc.text(t.heading.lines, margin, top + 4, { lineHeightFactor: 1.05 });
     font(8, true); doc.rect(margin, top + 7, hourWidth, 6); doc.text('Ora', margin + 2, top + 11);
     dayNames.forEach((label, di) => {
@@ -65,7 +80,7 @@ export function generateTimetablePdf(teachers: ReturnType<typeof projectTimetabl
       doc.rect(x, top + 7, width, 6); doc.text(label, x + width / 2, top + 11, { align: 'center' });
     });
     HOURS.forEach((hour, hi) => {
-      const y = top + 13 + hi * height;
+      const height = t.heights[hi], y = top + 13 + t.heights.slice(0, hi).reduce((a,b) => a + b, 0);
       font(8, true); doc.rect(margin, y, hourWidth, height); doc.text(String(hour), margin + hourWidth / 2, y + 5.5, { align: 'center' });
       DAYS.forEach((_, di) => {
         const x = margin + hourWidth + di * width, c = t.fitted[di][hi];

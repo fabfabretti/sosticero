@@ -92,3 +92,13 @@
   .orari { padding: 16px 12px; }
   .orari-toolbar label, .orari-toolbar .orari-filter { flex: 1 1 100%; max-width: none; }
 }
+
+.student-group-editor { margin-block: 1rem; padding: 1rem; }
+.student-group-editor summary { cursor: pointer; font-weight: 600; min-height: 44px; }
+.student-group-form fieldset { display: flex; flex-wrap: wrap; gap: 1rem; margin-block: 1rem; }
+.student-group-form label { display: flex; flex-direction: column; gap: .35rem; }
+.student-group-source { display: flex; flex-wrap: wrap; align-items: end; gap: .75rem; width: 100%; }
+.student-group-list { list-style: none; padding: 0; }
+.student-group-list li { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; padding-block: .75rem; border-bottom: 1px solid var(--ui-border); }
+.student-group-list li > span { flex: 1 1 20rem; }
+.orari-group { display: flex; flex-direction: column; padding: .3rem; border: 1px solid currentColor; border-radius: .3rem; font-size: .8rem; }

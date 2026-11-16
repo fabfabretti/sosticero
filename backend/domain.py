@@ -4,7 +4,7 @@ from enum import IntEnum
 from datetime import date
 import re
 from .hour_types import canonical, activity_codes
-from . import recovery
+from . import recovery, student_groups
 
 HOURS = list(range(1, 8))
 DAYS = ['lun', 'mar', 'mer', 'gio', 'ven', 'sab', 'dom']
@@ -201,6 +201,8 @@ def eligibility(ds, state, day, row, teacher, policies=None):
     reception = at(ds, i, day, h)
     if i in row['ids'] or (teacher.get('retired') or teacher.get('unavailable')):
         return None
+    if student_groups.at(ds, i, day, h):
+        return None
     l = lesson(ds, i, day, h)
     same_room = not l or not l.get('room') or not row.get('aula') or l['room'] == row['aula']
     manual = h in state['dis'].get(day, {}).get(i, [])
@@ -278,6 +280,10 @@ def rp_context(ds, state, day, row, teacher, details=False):
         commitments[period] = l['site']
         if (l['classes'] and not activity_codes(l)) or set(activity_codes(l)).intersection(('PE', 'POT', 'ALF', 'RIT', 'UTS', 'UTC')):
             teaching[period] = l['site']
+    for period in HOURS:
+        group = student_groups.at(ds, teacher, day, period)
+        if group and period not in absent:
+            commitments[period] = teaching[period] = group['site']
     for key, a in state['asg'].get(day, {}).items():
         if key != row['k'] and a['v'] == teacher:
             period = int(key.split('|')[1])
@@ -314,7 +320,7 @@ def rp_context(ds, state, day, row, teacher, details=False):
 def rp_candidate(ds, state, day, row, teacher, permits):
     from .receptions import at
     i, h = teacher['id'], row['h']
-    if i in row['ids'] or (teacher.get('retired') or teacher.get('unavailable')) or lesson(ds, i, day, h) or at(ds, i, day, h) or h in state['dis'].get(day, {}).get(i, []):
+    if i in row['ids'] or (teacher.get('retired') or teacher.get('unavailable')) or lesson(ds, i, day, h) or student_groups.at(ds, i, day, h) or at(ds, i, day, h) or h in state['dis'].get(day, {}).get(i, []):
         return None
     available = recovery.eligible(permits, i, day)
     if not available:
@@ -414,6 +420,8 @@ def manual_candidates(ds, state, day, row):
         l = lesson(ds, i, day, row['h'])
         if l and (not l['classes'] or not all(class_out(state, day, c, row['h'], row['k']) for c in l['classes'])):
             warnings.append('Ora occupata: ' + (', '.join(l['classes']) or 'attività in orario'))
+        if student_groups.at(ds, i, day, row['h']):
+            warnings.append('Ora occupata: gruppo di alunni')
         if at(ds, i, day, row['h']):
             warnings.append('Ricevimento in questa ora')
         if row['h'] in absences(state, day, ds).get(i, []):
@@ -454,7 +462,7 @@ def validate_assignment(ds, state, day, key, value, policies=None, exceptional=F
         return dict(old)
     if saved and old and old.get('t') == 'RP' and old['v'] == value:
         recovery.validate(state)
-        if value not in ds['teachers'] or (ds['teachers'][value].get('retired') or ds['teachers'][value].get('unavailable')) or lesson(ds, value, day, row['h']) or at(ds, value, day, row['h']) or row['h'] in state['dis'].get(day, {}).get(value, []):
+        if value not in ds['teachers'] or (ds['teachers'][value].get('retired') or ds['teachers'][value].get('unavailable')) or lesson(ds, value, day, row['h']) or student_groups.at(ds, value, day, row['h']) or at(ds, value, day, row['h']) or row['h'] in state['dis'].get(day, {}).get(value, []):
             raise ValueError('Recupero da verificare: docente non attivo o impegnato nell’orario.')
         _, why, _ = rp_context(ds, state, day, row, value)
         if why:
@@ -497,7 +505,7 @@ def auto_availability(ds, state, day):
         hours = {}
         for h in HOURS:
             l = lesson(ds, i, day, h)
-            if not l or not l['classes'] or h in absences(state, day, ds).get(i, []):
+            if student_groups.at(ds, i, day, h) or not l or not l['classes'] or h in absences(state, day, ds).get(i, []):
                 continue
             reasons = []
             for c in l['classes']:
@@ -513,4 +521,4 @@ def auto_availability(ds, state, day):
 
 
 def default_availability(ds, teacher, day):
-    return [h for h in HOURS if not (lesson(ds, teacher, day, h) or {}).get('classes')]
+    return [h for h in HOURS if not student_groups.at(ds, teacher, day, h) and not (lesson(ds, teacher, day, h) or {}).get('classes')]

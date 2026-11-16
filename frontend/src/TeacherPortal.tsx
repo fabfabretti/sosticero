@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Loading } from './Loading';
 
 type Session = { account: { id: string; person: string; email: string }; csrf: string };
-type Timetable = { day: string; status: 'ready' | 'no_timetable'; teacher: { name: string } | null; periods: { hour: number; classes: string[]; activities: string[]; room?: string; site?: string }[] };
+type Timetable = { day: string; status: 'ready' | 'no_timetable'; teacher: { name: string } | null; periods: { groups?: { room: string; site: string; sources: { class: string; count: number | null }[] }[]; hour: number; classes: string[]; activities: string[]; room?: string; site?: string }[] };
 const today = () => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Rome' }).format(new Date());
 export const moveDate = (day: string, offset: number) => { const date = new Date(day + 'T12:00:00Z'); date.setUTCDate(date.getUTCDate() + offset); return date.toISOString().slice(0,10); };
 const dateLabel = (day: string) => new Intl.DateTimeFormat('it-IT', { dateStyle: 'full', timeZone: 'Europe/Rome' }).format(new Date(day + 'T12:00:00Z'));
@@ -86,7 +86,7 @@ export function TeacherPortal() {
         {error && <p className="ui-notice ui-notice-error" role="alert">{error} L’aggiornamento verrà ritentato automaticamente.</p>}
         {loading && !data && <Loading label="Caricamento orario…" />}
         {data?.day === day && (data.status === 'no_timetable' ? <p className="ui-notice">Orario non ancora disponibile.</p> : !data.periods.length ? <p className="ui-surface teacher-empty">Nessuna lezione o attività prevista per questa data.</p> : <ol className="teacher-day">
-          {data.periods.map(period => <li key={period.hour} className="ui-surface"><div className="teacher-period">{period.hour}<span>ora</span></div><div><h3>{period.classes.join(', ') || period.activities.join(' · ') || 'Attività'}</h3>{!!period.classes.length && !!period.activities.length && <p>{period.activities.join(' · ')}</p>}<p className="settings-muted">{[period.room && `Aula ${period.room}`, period.site === 'centrale' ? 'Centrale' : period.site === 'succursale' ? 'Succursale' : period.site].filter(Boolean).join(' · ') || 'Aula e sede non indicate'}</p></div></li>)}
+          {data.periods.map(period => <li key={period.hour} className="ui-surface"><div className="teacher-period">{period.hour}<span>ora</span></div><div><h3>{period.classes.join(', ') || period.activities.join(' · ') || (period.groups?.length ? 'Gruppo di alunni' : 'Attività')}</h3>{period.groups?.map((g,i) => <p key={i}><strong>Gruppo: {g.sources.map(s => s.class + (s.count === null ? '' : ` (${s.count})`)).join(' + ')}</strong><br />{g.room} · {g.site === 'centrale' ? 'Centrale' : 'Succursale'}{period.classes.length || period.activities.length ? ' · Sovrapposizione con attività in orario' : ''}</p>)}{!!period.classes.length && !!period.activities.length && <p>{period.activities.join(' · ')}</p>}{(!period.groups?.length || !!period.classes.length || !!period.activities.length) && <p className="settings-muted">{[period.room && `Aula ${period.room}`, period.site === 'centrale' ? 'Centrale' : period.site === 'succursale' ? 'Succursale' : period.site].filter(Boolean).join(' · ') || 'Aula e sede non indicate'}</p>}</div></li>)}
         </ol>)}
       </>}
     </main>

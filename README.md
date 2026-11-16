@@ -196,3 +196,19 @@ Le note sono interne alla tabella operativa e non compaiono nel tabellone pubbli
 Gli archivi portabili **schema 12** conservano i rifiuti; gli schemi 1–11 restano
 importabili e iniziano senza cronologia. Per ripristinare archivi schema 12 serve una
 versione aggiornata dell'app. I backup SQLite conservano anche questa cronologia.
+
+### Ore con gruppi di alunni
+
+In **Orari → Ore con gruppi di alunni** si gestiscono impegni settimanali con docente, sede, aula,
+classi di provenienza e numerosità facoltative. Ogni gruppo ha una decorrenza e
+un’eventuale fine inclusiva. Le classi restano etichette di provenienza: non
+creano compresenze o domanda di supplenza per l’intera classe. Il docente è
+occupato anche quando le classi di provenienza sono in uscita. Le sovrapposizioni
+con lezioni o ricevimenti sono conservate e segnalate.
+
+L’assenza del docente genera una sola attività **Da valutare**, separata dalle
+supplenze ordinarie: la segreteria decide come gestire il gruppo. L’ora di assenza
+si conta una sola volta; sede, aula e provenienze storiche sono conservate.
+L’archivio schema 13 include `studentGroupHours`; gli archivi precedenti non
+cancellano i gruppi esistenti. Il salvataggio usa revisione e generazione dei dati,
+rispetta le sedi autorizzate e crea un backup prima della modifica.

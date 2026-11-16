@@ -11,11 +11,11 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel, Field, StrictInt, StrictBool, StrictStr
-from .domain import absences, normalize_dataset, rows, candidates, manual_candidates, consultation, validate_assignment, default_availability, auto_availability, HOURS, SITES, lesson, validate_permit, CDC_NAMES
+from .domain import DAYS, absences, normalize_dataset, rows, candidates, manual_candidates, consultation, validate_assignment, default_availability, auto_availability, HOURS, SITES, lesson, validate_permit, CDC_NAMES
 from .storage import Store, EMPTY
 from . import backup, attachments, concurrency, auth, display, publication, teacher_access
 from .hour_types import merge_types, validate_types
-from . import statistics, recovery, timetables, overrides, teacher_names, availability, receptions, paid, appointments, paid_finance, permit_context
+from . import statistics, recovery, timetables, overrides, teacher_names, availability, receptions, paid, appointments, paid_finance, permit_context, student_groups
 from zoneinfo import ZoneInfo
 from hashlib import sha256
 from copy import deepcopy
@@ -136,6 +136,7 @@ def create_app(path=None, seed=None):
         if value is not None:
             value['_overrides'] = store.read(db, 'timetableOverrides', overrides.empty())
             value['_receptions'] = store.read(db, 'receptions', receptions.empty())
+            value['_studentGroups'] = store.read(db, 'studentGroupHours', student_groups.empty())
             value['_appointments'] = store.read(db, 'teacherAppointments', appointments.empty())
         return value
 
@@ -387,7 +388,7 @@ def create_app(path=None, seed=None):
         for item in problems:
             item['context'] = timetables.conflict_context(history, d, item['key'], state['asg'][d][item['key']]) or timetables.context(history, state, d, item['key'], facts)
         selected = timetables.version(history, d)
-        return dict(campusNotices=campus_notices.groups(ds, state, d), continuousAbsences=appointments.derived(ds, d), effectiveAbsences=absences(state, d, ds), concurrency=concurrency.snapshot(state, ds, d), dataset=display, state=state, rows=rs, issues=problems, references=timetables.reference_issues(history, state, d),
+        return dict(groupReviews=student_groups.reviews(ds, state, d), campusNotices=campus_notices.groups(ds, state, d), continuousAbsences=appointments.derived(ds, d), effectiveAbsences=absences(state, d, ds), concurrency=concurrency.snapshot(state, ds, d), dataset=display, state=state, rows=rs, issues=problems, references=timetables.reference_issues(history, state, d),
                     recoveryRequests=recovery.request_details(state, d),
                     timetable=dict(id=selected['id'], effective=selected['effective']), autoDis={d: auto_availability(ds, state, d)})
 
@@ -531,9 +532,11 @@ def create_app(path=None, seed=None):
             periods = []
             for hour in HOURS:
                 cell = ds['lessons'].get(f'{person}|{weekday}|{hour}')
-                if cell:
-                    periods.append(dict(hour=hour, classes=cell.get('classes', []), room=cell.get('room'),
-                                        site=cell.get('site'), activities=cell.get('activities') or ([cell['special']] if cell.get('special') else [])))
+                group = student_groups.at(ds, person, viewed.isoformat(), hour)
+                if cell or group:
+                    cell = cell or {}
+                    periods.append(dict(hour=hour, group=group, classes=cell.get('classes', []), room=cell.get('room'),
+                                        site=cell.get('site'), activities=cell.get('activities') or ([cell['special']] if cell.get('special') else []), groups=[group] if group else []))
             return dict(day=viewed.isoformat(), status='ready', teacher=dict(name=teacher['name']), periods=periods)
 
     @app.get('/api/staffing')
@@ -630,6 +633,72 @@ def create_app(path=None, seed=None):
         return JSONResponse(dict(effective=effective, day=viewed, version=selected['id'] if history else '', dataset=dict(ds, teachers=teachers),
                     basis=timetables.digest(history), imported=selected['dataset'] if history else ds,
                     overrides=history.get('_overrides', overrides.empty())['records'] if history else []))
+
+    @app.get('/api/student-groups')
+    def get_student_groups(day: date | None = None):
+        viewed = (day or datetime.now(ZoneInfo('Europe/Rome')).date()).isoformat()
+        with store.connect() as db:
+            db.execute('BEGIN')
+            ds, _ = load(db, viewed)
+            history = read_history(db)
+            document = history['_studentGroups']
+            return dict(document=document, revision=timetables.digest(document),
+                        teachers=presented(db, ds)['teachers'], classes=ds['classes'], conflicts=student_groups.conflicts(ds))
+
+    @app.post('/api/student-groups')
+    def save_student_groups(data: dict, request: Request):
+        if set(data) != {'document', 'revision'}:
+            raise ValueError('Richiesta gruppi non valida.')
+        with store.connect() as db:
+            db.execute('BEGIN IMMEDIATE')
+            history = read_history(db)
+            if not history:
+                raise ValueError('Carica prima un orario.')
+            previous = history['_studentGroups']
+            if data['revision'] != timetables.digest(previous):
+                raise HTTPException(409, 'Gruppi modificati da un altro utente. Ricarica prima di salvare.')
+            document = student_groups.validate(data['document'])
+            catalog = teacher_names.catalog(history)
+            classes = {c for v in history['versions'] for c in v['dataset']['classes']}
+            old = {r['id']: r for r in previous['records']}
+            new = {r['id']: r for r in document['records']}
+            for identifier in old.keys() | new.keys():
+                before, after = old.get(identifier), new.get(identifier)
+                if before == after:
+                    continue
+                if any(r and r['site'] not in request.state.account['campuses'] for r in (before, after)):
+                    raise HTTPException(403, 'Sede gruppo non autorizzata.')
+                if after:
+                    student_groups.validate(dict(schema=1, records=[after]), catalog, classes)
+            if document == previous:
+                return dict(ok=True)
+            try:
+                snapshot = backup.backup_database(str(database), str(backup_dir))
+            except Exception as exc:
+                raise ValueError('Backup prima del salvataggio fallito. Nessun dato modificato.') from exc
+            history['_studentGroups'] = document
+            state = store.read(db, 'state', EMPTY)
+            facts = store.read(db, 'statistics', statistics.empty())
+            changed = [r for identifier in old.keys() | new.keys() if old.get(identifier) != new.get(identifier) for r in (old.get(identifier), new.get(identifier)) if r]
+            affected = [d for d in timetables.dates(state, facts) if any(r['day'] == DAYS[date.fromisoformat(d).weekday()] and r['start'] <= d and (not r['end'] or d <= r['end']) for r in changed)]
+            for d in affected:
+                campus_notices.reconcile(timetables.dataset(history, d), state, d)
+            from copy import deepcopy
+            facts = deepcopy(facts)
+            for d in affected:
+                current = timetables.dataset(history, d)
+                for slot in facts['days'].get(d, {}).get('absences', {}).values():
+                    group = student_groups.at(current, slot['teacher'], d, slot['h'])
+                    if group and 'group' not in slot:
+                        slot['group'] = deepcopy(group)
+                        if not slot['classes']:
+                            slot['site'] = group['site']
+            updated = timetables.sync(history, state, facts, affected, revalidate=True)
+            identities.generation(advance=True)
+            store.write(db, 'studentGroupHours', document)
+            store.write(db, 'state', state)
+            store.write(db, 'statistics', updated)
+        return dict(ok=True, backup=snapshot)
 
     @app.get('/api/receptions')
     def get_receptions():
@@ -1202,28 +1271,29 @@ def create_app(path=None, seed=None):
             images = attachments.export(db, state)
             labels = name_overrides(db)
             finance = store.read(db, 'paidFinance', paid_finance.empty())
-        return dict(schema=12, paidFinance=finance, teacherAppointments=history['_appointments'], receptions=history['_receptions'], teacherNameOverrides=labels, timetables={k: v for k, v in history.items() if not k.startswith('_')}, timetableOverrides=history['_overrides'], attachments=images, datasetId='v1:'+','.join(sorted(ds['teachers'])), hourTypes=rules, statistics=facts, **state)
+        return dict(schema=13, studentGroupHours=history['_studentGroups'], paidFinance=finance, teacherAppointments=history['_appointments'], receptions=history['_receptions'], teacherNameOverrides=labels, timetables={k: v for k, v in history.items() if not k.startswith('_')}, timetableOverrides=history['_overrides'], attachments=images, datasetId='v1:'+','.join(sorted(ds['teachers'])), hourTypes=rules, statistics=facts, **state)
 
     @app.post('/api/import')
     def import_state(data: dict, preview: bool = False):
         with store.connect() as db:
             db.execute('BEGIN IMMEDIATE')
-            history = timetables.validate(data.get('timetables'), data.get('teacherAppointments') if data.get('schema') in (10, 11, 12) else None) if data.get('schema') in (4, 5, 6, 7, 8, 9, 10, 11, 12) else read_history(db)
-            history['_appointments'] = appointments.validate(data.get('teacherAppointments', appointments.empty()) if data.get('schema') in (10, 11, 12) else appointments.empty(), history)
+            history = timetables.validate(data.get('timetables'), data.get('teacherAppointments') if data.get('schema') in (10, 11, 12, 13) else None) if data.get('schema') in (4, 5, 6, 7, 8, 9, 10, 11, 12, 13) else read_history(db)
+            history['_appointments'] = appointments.validate(data.get('teacherAppointments', appointments.empty()) if data.get('schema') in (10, 11, 12, 13) else appointments.empty(), history)
             retained = store.read(db, 'timetableOverrides', overrides.empty())
-            document = overrides.validate(data.get('timetableOverrides'), history) if data.get('schema') in (5, 6, 7, 8, 9, 10, 11, 12) else retained
+            document = overrides.validate(data.get('timetableOverrides'), history) if data.get('schema') in (5, 6, 7, 8, 9, 10, 11, 12, 13) else retained
             document, restore_review = overrides.reconcile(document, history)
             history['_overrides'] = document
-            reception_document = receptions.validate(data.get('receptions', receptions.empty()) if data.get('schema') in (7, 8, 9, 10, 11, 12) else receptions.empty(), teacher_names.catalog(history))
+            reception_document = receptions.validate(data.get('receptions', receptions.empty()) if data.get('schema') in (7, 8, 9, 10, 11, 12, 13) else receptions.empty(), teacher_names.catalog(history))
+            history['_studentGroups'] = student_groups.validate(data.get('studentGroupHours')) if data.get('schema') == 13 else store.read(db, 'studentGroupHours', student_groups.empty())
             history['_receptions'] = reception_document
-            labels = teacher_names.validate(data.get('teacherNameOverrides') if data.get('schema') in (6, 7, 8, 9, 10, 11, 12) else name_overrides(db), teacher_names.catalog(history))
-            if data.get('schema') not in (4, 5, 6, 7, 8, 9, 10, 11, 12):
+            labels = teacher_names.validate(data.get('teacherNameOverrides') if data.get('schema') in (6, 7, 8, 9, 10, 11, 12, 13) else name_overrides(db), teacher_names.catalog(history))
+            if data.get('schema') not in (4, 5, 6, 7, 8, 9, 10, 11, 12, 13):
                 ds, _ = load(db)
-            if data.get('schema') in (4, 5, 6, 7, 8, 9, 10, 11, 12):
+            if data.get('schema') in (4, 5, 6, 7, 8, 9, 10, 11, 12, 13):
                 ds = timetables.dataset(history, datetime.now(ZoneInfo('Europe/Rome')).date().isoformat())
             identifier = data.get('datasetId')
-            compatible = identifier == 'v1:'+','.join(sorted(ds['teachers'])) if data.get('schema') in (4, 5, 6, 7, 8, 9, 10, 11, 12) else isinstance(identifier, str) and identifier.startswith('v1:') and set(identifier[3:].split(',')) <= set(ds['teachers'])
-            if type(data.get('schema')) is not int or data['schema'] not in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12) or not compatible:
+            compatible = identifier == 'v1:'+','.join(sorted(ds['teachers'])) if data.get('schema') in (4, 5, 6, 7, 8, 9, 10, 11, 12, 13) else isinstance(identifier, str) and identifier.startswith('v1:') and set(identifier[3:].split(',')) <= set(ds['teachers'])
+            if type(data.get('schema')) is not int or data['schema'] not in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13) or not compatible:
                 raise ValueError('Archivio non compatibile.')
             rules = validate_types(data['hourTypes']) if 'hourTypes' in data else None
             from copy import deepcopy
@@ -1303,7 +1373,7 @@ def create_app(path=None, seed=None):
                 return dict(overrides=restore_review)
             identities.generation(advance=True)
             attachments.import_images(db, state, data, data['schema'])
-            if data['schema'] in (4, 5, 6, 7, 8, 9, 10, 11, 12):
+            if data['schema'] in (4, 5, 6, 7, 8, 9, 10, 11, 12, 13):
                 write_history(db, history)
                 store.write(db, 'dataset', history['versions'][0]['dataset'])
             if rules is not None:
@@ -1312,6 +1382,7 @@ def create_app(path=None, seed=None):
             store.write(db, 'statistics', facts)
             store.write(db, 'timetableOverrides', document)
             store.write(db, 'teacherNameOverrides', labels)
+            store.write(db, 'studentGroupHours', history['_studentGroups'])
             store.write(db, 'receptions', reception_document)
             store.write(db, 'teacherAppointments', history['_appointments'])
             store.write(db, 'paidFinance', finance)

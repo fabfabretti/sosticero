@@ -11,6 +11,7 @@ type Dataset = {
   teachers: Record<string, { id: string; name: string; importedName?: string; nameOverride?: NameOverride; code?: string; retired?: boolean; managedPerson?: boolean; coveredBy?: string; replaces?: string; continuousAbsence?: boolean; staffingPeriod?: { start: string; end: string | null } }>;
   lessons: Record<string, Lesson>;
   receptions?: Reception[];
+  studentGroups?: StudentGroup[];
   excludedPOT?: Record<string, Lesson>;
 };
 type Group = { before: Record<string, Lesson | null>; after: Record<string, Lesson | null>; conflicts: { id: string; effective: string | null }[] };
@@ -98,7 +99,8 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
     });
     return () => cancelAnimationFrame(frame);
   }, [draft?.teacher, nameDraft?.teacher]);
-  const dirty = !!draft || !!nameDraft;
+  const [groupDirty, setGroupDirty] = useState(false);
+  const dirty = !!draft || !!nameDraft || groupDirty;
   const endpoint = (day: string) => 'orari?' + new URLSearchParams({ day });
   const { refresh: quietRefresh, enter, invalidate: invalidateRefresh, loading, ready, loadError } = useQuietRefresh(
     () => api<Orari>(endpoint(viewDay)),
@@ -141,9 +143,9 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
     return q ? grids.filter(g => norm(teacherSearchText(g)).includes(q)) : grids;
   }, [grids, query]);
   const name = (id: string) => data?.dataset.teachers[id]?.name || id;
-  const discard = () => { rememberTimetable(draft?.teacher || nameDraft?.teacher); setClassEdit(undefined); request.current++; baseline.current = undefined; setDraft(undefined); setNameDraft(undefined); setImpact(undefined); setDeletion(undefined); setDrag(undefined); setError(''); };
+  const discard = () => { rememberTimetable(draft?.teacher || nameDraft?.teacher); setClassEdit(undefined); request.current++; baseline.current = undefined; setDraft(undefined); setNameDraft(undefined); setImpact(undefined); setDeletion(undefined); setDrag(undefined); setGroupDirty(false); setError(''); };
   const beginName = (teacher: string) => {
-    if (!data || !ready || data.day !== viewDay || busy || (dirty && !window.confirm('Scartare la bozza corrente?'))) return;
+    if (!data || !ready || data.day !== viewDay || busy || groupDirty || (dirty && !window.confirm('Scartare la bozza corrente?'))) return;
     discard(); setNameStatus('');
     rememberTimetable(teacher);
     const previous = data.dataset.teachers[teacher].nameOverride || null;
@@ -163,7 +165,7 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
     finally { setBusy(false); }
   };
   const begin = (teacher: string) => {
-    if (!data || !ready || data.day !== viewDay || busy || (dirty && !window.confirm('Scartare la bozza corrente?'))) return;
+    if (!data || !ready || data.day !== viewDay || busy || groupDirty || (dirty && !window.confirm('Scartare la bozza corrente?'))) return;
     rememberTimetable(teacher);
     setClassEdit(undefined);
     setNameDraft(undefined); setNameStatus('');
@@ -271,6 +273,7 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
       }}>{exporting ? <Loading label="Generazione…" reserve="Scarica PDF completo" /> : 'Scarica PDF completo'}</button>
       <span className="sub">Salva o annulla le modifiche prima di esportare.</span>
     </div>
+    <div inert={!ready || busy || !!draft || !!nameDraft}><StudentGroupEditor key={viewDay} api={api} day={viewDay} onDirty={setGroupDirty} onSaved={async () => { invalidateRefresh(); await quietRefresh(); }} /></div>
     <div className="orari-legend" aria-label="Legenda sedi">
       <span className="campus-centrale"><i aria-hidden="true" />C · Centrale</span>
       <span className="campus-succursale"><i aria-hidden="true" />S · Succursale</span>
@@ -280,7 +283,7 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
     {nameStatus && <p className="ui-notice" role="status">{nameStatus}</p>}
     <LoadingRegion pending={loading || busy} label={busy ? "Elaborazione…" : undefined} blocked={!ready || busy || exporting} error={loadError} retry={() => void quietRefresh().catch(() => {})}>
     {data && !filtered.length && <p>Nessun docente trovato.</p>}
-    <ProgressiveTimetables scope={`${viewDay}|${norm(query)}`} ready={ready && data?.day === viewDay}>{filtered.map(g => <TimetableCard key={g.id} render={() => {
+    <div inert={groupDirty}><ProgressiveTimetables scope={`${viewDay}|${norm(query)}`} ready={ready && data?.day === viewDay}>{filtered.map(g => <TimetableCard key={g.id} render={() => {
       const staffing = data?.dataset.teachers[g.id];
       const managed = staffing?.managedPerson || staffing?.coveredBy || staffing?.replaces || staffing?.continuousAbsence;
       const editing = draft?.teacher === g.id;
@@ -336,6 +339,7 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
           const content = cell && <><span title={`${label} · ${site === 'C' ? 'Centrale' : site === 'S' ? 'Succursale' : 'Sede ignota'}`} className={`orari-session campus-${cell.site || 'unknown'}${special ? ' orari-special' : ''}${disabled ? ' orari-disabled' : ''}`}><span className="orari-session-label">{label}</span><span className="orari-session-meta">{cell.partners.length > 0 && <span className="orari-partners">Comp.</span>}<span className="orari-site" title={site === 'C' ? 'Centrale' : site === 'S' ? 'Succursale' : 'Sede ignota'}>{site}</span></span></span>{disabled && <span className="sr-only">Ora disabilitata: solo in caso di necessità</span>}</>;
           const destination = editing && drag?.target === slot;
           return <td key={d} data-timetable-slot={slot} data-teacher={g.id} className={(cell?.partners.length ? 'orari-shared ' : '') + (destination ? 'orari-destination' : '')}>
+            {(data?.dataset.studentGroups || []).filter(group => group.teacher === g.id && group.day === d && group.hour === h).map(group => <span key={group.id} className={`orari-group campus-${group.site}`}><strong>Gruppo · {groupLabel(group)}</strong><small>{group.room} · {group.site === 'centrale' ? 'C' : 'S'}{cell || receptionsBySlot.has(`${g.id}|${d}|${h}`) ? ' · Sovrapposizione' : ''}</small></span>)}
             {data?.dataset.excludedPOT?.[`${g.id}|${d}|${h}`] && <span className="staffing-excluded"><del>POT</del> · non ereditato</span>}
             {receptionsBySlot.get(`${g.id}|${d}|${h}`)?.map(reception => <HourHelp key={`${d}|${h}`} text={`Ricevimento · ${DAY_LABELS[d]} ${h}ª · ${reception.time || 'Orario non specificato'} · ${reception.site || 'Sede da verificare'}${reception.location ? ' · ' + reception.location : ''}${cell ? ' · Sovrapposizione con attività in orario' : ''}`}><span className="orari-reception">R{cell ? ' · Sovrapposizione' : ''}</span></HourHelp>)}
             {editing && special ? <><button type="button" className={'orari-cell-button' + (drag?.slot === slot ? ' orari-drag-source' : '')} disabled={busy} aria-pressed={isClassActivity(value) ? undefined : disabled} aria-label={`${isClassActivity(value) ? 'Modifica ' + activity : disabled ? 'Riattiva' : 'Disabilita'} ${DAY_LABELS[d]} ${h}ª ${label}`}
@@ -381,7 +385,7 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
           </td>;
         })}</tr>)}</tbody></table>
       </div>;
-    }} />)}</ProgressiveTimetables>
+    }} />)}</ProgressiveTimetables></div>
     </LoadingRegion>
     {classEdit && editedHour && <dialog ref={activityDialog} className="orari-activity-editor" aria-labelledby="activity-editor-title" onCancel={closeActivityEditor}>
       <div className="orari-activity-header"><div><h3 id="activity-editor-title">Modifica {editedActivity}</h3><p className="sub">{name(classEdit.teacher)} · {DAY_LABELS[classEdit.slot.split('|')[0]]} {classEdit.slot.split('|')[1]}ª ora</p></div><button type="button" className="x" aria-label="Chiudi editor attività" onClick={closeActivityEditor}>×</button></div>
@@ -407,4 +411,62 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
       <small>{drag.target ? `${draft?.cells[drag.target] ? 'Scambia' : 'Sposta'} · ${DAY_LABELS[drag.target.split('|')[0]]} ${drag.target.split('|')[1]}ª` : 'Posizione non disponibile'}</small>
     </div>}
   </section>;
+}
+
+export type StudentGroup = { id: string; teacher: string; day: string; hour: number; site: string; room: string; sources: { class: string; count: number | null }[]; start: string; end: string | null };
+type GroupData = { generation?: number; document: { schema: number; records: StudentGroup[] }; revision: string; teachers: Record<string, { name: string }>; classes: string[]; conflicts: { id: string; messages: string[] }[] };
+const groupLabel = (g: StudentGroup) => g.sources.map(s => s.class + (s.count === null ? '' : ` (${s.count})`)).join(' + ');
+
+export function StudentGroupEditor({ api, day, onSaved, onDirty }: { api: <T>(url: string, body?: unknown) => Promise<T>; day: string; onSaved: () => Promise<unknown>; onDirty: (dirty: boolean) => void }) {
+  const [data, setData] = useState<GroupData>();
+  const [draft, setDraft] = useState<StudentGroup>();
+  const [error, setError] = useState(''), [status, setStatus] = useState('');
+  const [busy, setBusy] = useState(false);
+  const load = async () => { setError(''); try { setData(await api<GroupData>('student-groups?' + new URLSearchParams({ day }))); } catch (e) { setError(String(e)); } };
+  const edit = (value?: StudentGroup) => { setDraft(value); onDirty(!!value); setError(''); setStatus(''); };
+  const save = async (records: StudentGroup[]) => {
+    if (!data || busy) return;
+    setBusy(true); setError(''); setStatus('');
+    try {
+      await api('student-groups', { _generation: data.generation, revision: data.revision, document: { schema: 1, records } });
+      edit(); await load(); await onSaved(); setStatus('Gruppi salvati.');
+    } catch (e) { setError(String(e)); }
+    finally { setBusy(false); }
+  };
+  const change = (value: Partial<StudentGroup>) => setDraft(d => d && ({ ...d, ...value }));
+  return <details className="ui-surface student-group-editor" onToggle={e => { if (e.currentTarget.open && !data) void load(); }}>
+    <summary>Ore con gruppi di alunni</summary>
+    <p className="sub">Una sola ora per docente. Le classi indicano la provenienza degli alunni. In caso di assenza: da valutare.</p>
+    {error && <p className="ui-notice ui-notice-error" role="alert">{error}</p>}
+    {status && <p role="status">{status}</p>}
+    {!data ? <button className="ui-button" onClick={() => void load()}>Carica gruppi</button> : <>
+      <button type="button" className="ui-button" disabled={busy || !!draft} onClick={() => { void load(); }}>Aggiorna gruppi</button>{' '}
+      <button type="button" className="ui-button" disabled={busy || !!draft} onClick={() => edit({ id: crypto.randomUUID(), teacher: '', day: 'lun', hour: 1, site: 'centrale', room: '', sources: [{ class: '', count: null }], start: day, end: null })}>Aggiungi gruppo</button>
+      {data.conflicts.map(c => <p key={c.id} className="ui-notice">{data.teachers[data.document.records.find(r => r.id === c.id)?.teacher || '']?.name}: {c.messages.join(' · ')}</p>)}
+      {draft && <form className="student-group-form" onSubmit={e => { e.preventDefault(); void save([...data.document.records.filter(r => r.id !== draft.id), draft]); }}>
+        <fieldset disabled={busy}><legend>{data.document.records.some(r => r.id === draft.id) ? 'Modifica gruppo' : 'Nuovo gruppo'}</legend>
+          <label>Docente<select required value={draft.teacher} onChange={e => change({ teacher: e.target.value })}><option value="">Seleziona docente</option>{Object.entries(data.teachers).sort((a,b) => a[1].name.localeCompare(b[1].name)).map(([id,t]) => <option key={id} value={id}>{t.name}</option>)}</select></label>
+          <label>Giorno<select value={draft.day} onChange={e => change({ day: e.target.value })}>{DAYS.map(d => <option key={d} value={d}>{DAY_LABELS[d]}</option>)}</select></label>
+          <label>Ora<select value={draft.hour} onChange={e => change({ hour: Number(e.target.value) })}>{HOURS.map(h => <option key={h} value={h}>{h}ª</option>)}</select></label>
+          <label>Sede<select value={draft.site} onChange={e => change({ site: e.target.value })}><option value="centrale">Centrale</option><option value="succursale">Succursale</option></select></label>
+          <label>Aula<input maxLength={200} value={draft.room} onChange={e => change({ room: e.target.value })} /></label>
+          <label>Dal<input required type="date" value={draft.start} onChange={e => change({ start: e.target.value })} /></label>
+          <label>Al (facoltativo)<input type="date" min={draft.start} value={draft.end || ''} onChange={e => change({ end: e.target.value || null })} /></label>
+          {draft.sources.map((source, index) => <div className="student-group-source" key={index}>
+            <label>Classe di provenienza {index + 1}<select required value={source.class} onChange={e => change({ sources: draft.sources.map((s,i) => i === index ? { ...s, class: e.target.value } : s) })}><option value="">Seleziona classe</option>{data.classes.map(c => <option key={c}>{c}</option>)}</select></label>
+            <label>Alunni {index + 1} (vuoto se ignoto)<input type="number" min={1} max={1000} value={source.count ?? ''} onChange={e => change({ sources: draft.sources.map((s,i) => i === index ? { ...s, count: e.target.value === '' ? null : Number(e.target.value) } : s) })} /></label>
+            <button type="button" className="ui-button" disabled={draft.sources.length === 1} aria-label={`Rimuovi classe ${index + 1}`} onClick={() => change({ sources: draft.sources.filter((_,i) => i !== index) })}>Rimuovi classe</button>
+          </div>)}
+          <button type="button" className="ui-button" onClick={() => change({ sources: [...draft.sources, { class: '', count: null }] })}>Aggiungi classe di provenienza</button>
+          <p className="sub">Le sovrapposizioni restano visibili e non sostituiscono le attività già in orario.</p>
+          <button className="ui-button ui-button-primary">{busy ? 'Salvataggio…' : 'Salva gruppo'}</button>{' '}<button type="button" className="ui-button" onClick={() => edit()}>Annulla</button>
+        </fieldset>
+      </form>}
+      <ul className="student-group-list">{data.document.records.map(g => <li key={g.id}>
+        <span><strong>{data.teachers[g.teacher]?.name || g.teacher}</strong> · {DAY_LABELS[g.day]} {g.hour}ª · {groupLabel(g)} · {g.room} · {g.site}<br /><small>Dal {dateLabel(g.start)}{g.end ? ` al ${dateLabel(g.end)}` : ''}</small></span>
+        <button type="button" className="ui-button" disabled={busy || !!draft} aria-label={`Modifica gruppo ${data.teachers[g.teacher]?.name || g.teacher} ${g.day} ${g.hour}`} onClick={() => edit(structuredClone(g))}>Modifica</button>
+        <button type="button" className="ui-button" disabled={busy || !!draft} aria-label={`Elimina gruppo ${g.day} ${g.hour}`} onClick={() => { if (window.confirm('Eliminare questo gruppo? Le registrazioni storiche delle assenze saranno conservate.')) void save(data.document.records.filter(r => r.id !== g.id)); }}>Elimina</button>
+      </li>)}</ul>
+    </>}
+  </details>;
 }

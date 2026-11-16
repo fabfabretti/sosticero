@@ -1,0 +1,277 @@
+{
+  "schema": 1,
+  "records": [
+    {
+      "id": "group-20261116-d038-lun-2",
+      "teacher": "d038",
+      "day": "lun",
+      "hour": 2,
+      "site": "succursale",
+      "room": "Aula Magna",
+      "sources": [
+        {
+          "class": "2DST",
+          "count": null
+        }
+      ],
+      "start": "2026-11-16",
+      "end": null
+    },
+    {
+      "id": "group-20261116-d051-mar-4",
+      "teacher": "d051",
+      "day": "mar",
+      "hour": 4,
+      "site": "succursale",
+      "room": "Aula Magna",
+      "sources": [
+        {
+          "class": "3AM",
+          "count": 5
+        }
+      ],
+      "start": "2026-11-16",
+      "end": null
+    },
+    {
+      "id": "group-20261116-d051-gio-3",
+      "teacher": "d051",
+      "day": "gio",
+      "hour": 3,
+      "site": "succursale",
+      "room": "Aula Magna",
+      "sources": [
+        {
+          "class": "3CI",
+          "count": 5
+        }
+      ],
+      "start": "2026-11-16",
+      "end": null
+    },
+    {
+      "id": "group-20261116-d135-ven-3",
+      "teacher": "d135",
+      "day": "ven",
+      "hour": 3,
+      "site": "succursale",
+      "room": "Aula Magna",
+      "sources": [
+        {
+          "class": "3DI",
+          "count": 7
+        },
+        {
+          "class": "5EI",
+          "count": 3
+        }
+      ],
+      "start": "2026-11-16",
+      "end": null
+    },
+    {
+      "id": "group-20261116-d135-ven-4",
+      "teacher": "d135",
+      "day": "ven",
+      "hour": 4,
+      "site": "succursale",
+      "room": "Aula Magna",
+      "sources": [
+        {
+          "class": "5BM",
+          "count": 1
+        },
+        {
+          "class": "4CI",
+          "count": 6
+        }
+      ],
+      "start": "2026-11-16",
+      "end": null
+    },
+    {
+      "id": "group-20261116-d119-lun-4",
+      "teacher": "d119",
+      "day": "lun",
+      "hour": 4,
+      "site": "centrale",
+      "room": "Aula Lingue",
+      "sources": [
+        {
+          "class": "2AC",
+          "count": 2
+        },
+        {
+          "class": "5BE",
+          "count": 4
+        }
+      ],
+      "start": "2026-11-16",
+      "end": null
+    },
+    {
+      "id": "group-20261116-d080-lun-5",
+      "teacher": "d080",
+      "day": "lun",
+      "hour": 5,
+      "site": "centrale",
+      "room": "Aula 20",
+      "sources": [
+        {
+          "class": "1AST",
+          "count": 10
+        },
+        {
+          "class": "2CE",
+          "count": 5
+        }
+      ],
+      "start": "2026-11-16",
+      "end": null
+    },
+    {
+      "id": "group-20261116-d135-mar-4",
+      "teacher": "d135",
+      "day": "mar",
+      "hour": 4,
+      "site": "centrale",
+      "room": "Piano seminterrato",
+      "sources": [
+        {
+          "class": "4CE",
+          "count": 6
+        }
+      ],
+      "start": "2026-11-16",
+      "end": null
+    },
+    {
+      "id": "group-20261116-d135-mar-5",
+      "teacher": "d135",
+      "day": "mar",
+      "hour": 5,
+      "site": "centrale",
+      "room": "Aula Lingue",
+      "sources": [
+        {
+          "class": "4BE",
+          "count": 5
+        }
+      ],
+      "start": "2026-11-16",
+      "end": null
+    },
+    {
+      "id": "group-20261116-d080-mer-2",
+      "teacher": "d080",
+      "day": "mer",
+      "hour": 2,
+      "site": "centrale",
+      "room": "Aula 1FST",
+      "sources": [
+        {
+          "class": "4AC",
+          "count": 4
+        },
+        {
+          "class": "3DE",
+          "count": 9
+        },
+        {
+          "class": "1FST",
+          "count": 14
+        }
+      ],
+      "start": "2026-11-16",
+      "end": null
+    },
+    {
+      "id": "group-20261116-d080-mer-3",
+      "teacher": "d080",
+      "day": "mer",
+      "hour": 3,
+      "site": "centrale",
+      "room": "Aula 20",
+      "sources": [
+        {
+          "class": "1EST",
+          "count": 5
+        },
+        {
+          "class": "2BE",
+          "count": 10
+        }
+      ],
+      "start": "2026-11-16",
+      "end": null
+    },
+    {
+      "id": "group-20261116-d135-gio-3",
+      "teacher": "d135",
+      "day": "gio",
+      "hour": 3,
+      "site": "centrale",
+      "room": "Aula 20",
+      "sources": [
+        {
+          "class": "1CST",
+          "count": 9
+        }
+      ],
+      "start": "2026-11-16",
+      "end": null
+    },
+    {
+      "id": "group-20261116-d135-gio-5",
+      "teacher": "d135",
+      "day": "gio",
+      "hour": 5,
+      "site": "centrale",
+      "room": "Aula 20",
+      "sources": [
+        {
+          "class": "3FB",
+          "count": 6
+        },
+        {
+          "class": "3AE",
+          "count": 6
+        }
+      ],
+      "start": "2026-11-16",
+      "end": null
+    },
+    {
+      "id": "group-20261116-d080-ven-2",
+      "teacher": "d080",
+      "day": "ven",
+      "hour": 2,
+      "site": "centrale",
+      "room": "Aula Lingue",
+      "sources": [
+        {
+          "class": "1GS",
+          "count": 9
+        }
+      ],
+      "start": "2026-11-16",
+      "end": null
+    },
+    {
+      "id": "group-20261116-d080-ven-5",
+      "teacher": "d080",
+      "day": "ven",
+      "hour": 5,
+      "site": "centrale",
+      "room": "Aula Lingue",
+      "sources": [
+        {
+          "class": "1BE",
+          "count": 10
+        }
+      ],
+      "start": "2026-11-16",
+      "end": null
+    }
+  ]
+}

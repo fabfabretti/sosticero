@@ -141,7 +141,7 @@ def resolve(ds, document, day):
 def derived(ds, day):
     from .domain import DAYS
     weekday = DAYS[date.fromisoformat(day).weekday()]
-    result = {i: sorted(int(k.rsplit('|', 1)[1]) for k in ds['lessons'] if k.startswith(f'{i}|{weekday}|'))
+    result = {i: sorted({int(k.rsplit('|', 1)[1]) for k in ds['lessons'] if k.startswith(f'{i}|{weekday}|')} | {g['hour'] for g in ds.get('studentGroups', []) if g['teacher'] == i and g['day'] == weekday})
             for i, t in ds['teachers'].items() if t.get('continuousAbsence') and not t.get('coveredBy') and not t.get('retired')}
     return {i: hours for i, hours in result.items() if hours}
 

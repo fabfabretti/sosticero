@@ -6,7 +6,7 @@ from bisect import bisect_right
 import json
 
 from .domain import normalize_dataset, lesson, rows, validate_assignment, HOURS, SITES
-from . import statistics, overrides, receptions, appointments
+from . import statistics, overrides, receptions, appointments, student_groups
 
 
 def digest(value):
@@ -36,7 +36,9 @@ def dataset(history, day):
             selected['teachers'][i] = dict(teacher, retired=True)
     selected['classes'] = sorted(classes)
     selected['receptions'] = receptions.on_day(history.get('_receptions', receptions.empty()), day)
-    return appointments.resolve(selected, history.get('_appointments', appointments.empty()), day)
+    selected = appointments.resolve(selected, history.get('_appointments', appointments.empty()), day)
+    selected['studentGroups'] = student_groups.on_day(history.get('_studentGroups', student_groups.empty()), day)
+    return selected
 
 
 def dates(state, facts):
@@ -45,7 +47,7 @@ def dates(state, facts):
 
 def resolver(history):
     """Reuse immutable effective timetables within one operation."""
-    boundaries = sorted(set(appointments.boundaries(history)) | {
+    boundaries = sorted(set(appointments.boundaries(history)) | student_groups.boundaries(history.get('_studentGroups', student_groups.empty())) | {
         v['effective'] for v in history.get('_receptions', receptions.empty())['versions']})
     cached = {}
     def resolve(day):

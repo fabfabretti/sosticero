@@ -59,12 +59,13 @@ def edit(state, weekday, teacher, selected, account):
 def slot(ds, state, day, hour, teacher, key='', declared=True):
     from .domain import lesson, absences, rp_context, SITES
     from .receptions import at
+    from . import student_groups
     t = ds['teachers'].get(teacher)
     if not t or (t.get('retired') or t.get('unavailable')):
         return dict(sites=[], uncertain=False, why='Docente non attivo')
     if declared and hour not in hours(state, date.fromisoformat(day).weekday(), teacher):
         return dict(sites=[], uncertain=False, why='Disponibilità a pagamento non dichiarata')
-    why = ('Impegnato nell’orario' if lesson(ds, teacher, day, hour) or at(ds, teacher, day, hour) else
+    why = ('Impegnato nell’orario' if lesson(ds, teacher, day, hour) or student_groups.at(ds, teacher, day, hour) or at(ds, teacher, day, hour) else
            'Assente' if hour in absences(state, day, ds).get(teacher, []) else
            'A disposizione' if hour in state.get('dis', {}).get(day, {}).get(teacher, []) else
            'Già assegnato in questa ora' if any(k != key and int(k.split('|')[1]) == hour and a['v'] == teacher for k, a in state['asg'].get(day, {}).items()) else '')

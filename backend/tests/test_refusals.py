@@ -68,7 +68,7 @@ class RefusalAPI(RecoveryTest):
         self.assign(1).raise_for_status()
         self.refuse().raise_for_status()
         archive = self.client.get('/api/export').json()
-        self.assertEqual(archive['schema'], 12)
+        self.assertEqual(archive['schema'], 13)
         self.client.post('/api/import', json=archive).raise_for_status()
         self.assertEqual(self.history(), archive['substitutionRefusals'])
         for history in ([], {DAY: {'bad': []}}, {DAY: {self.key: [{'teacher': '', 'name': 'x'}]}}, {DAY: {self.key: [dict(teacher='rp', name='x')]*2}}):

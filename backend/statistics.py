@@ -4,6 +4,7 @@ from copy import deepcopy
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
+from . import student_groups
 from .domain import HOURS, SITES, absences, lesson, rows, validate_assignment
 
 OUTCOMES = ('covered', 'uncovered', 'late', 'early', 'pending')
@@ -33,6 +34,11 @@ def sync(ds, state, facts, days=None, reconstructed=False, revalidate=False):
                     context = dict(teacher=teacher, h=h, classes=l['classes'][:] if l else [],
                                    site=l.get('site') if l else None,
                                    provenance='reconstructed' if reconstructed else 'recorded')
+                    group = student_groups.at(current_ds, teacher, day, h)
+                    if group:
+                        context['group'] = deepcopy(group)
+                        if not l:
+                            context['site'] = group['site']
                 slots[key] = dict(context, manual=h in state['abs'].get(day, {}).get(teacher, []),
                                   permit=h in state.get('permessi', {}).get(day, {}).get(teacher, []))
         demands = {}
@@ -98,7 +104,7 @@ def validate(facts, ds, state):
             if date.fromisoformat(d).isoformat() != d or set(day) != {'absences', 'demand', 'issues'}:
                 raise ValueError()
             for k, slot in day['absences'].items():
-                if set(slot) != {'teacher', 'h', 'classes', 'site', 'provenance', 'manual', 'permit'}:
+                if set(slot) - {'group'} != {'teacher', 'h', 'classes', 'site', 'provenance', 'manual', 'permit'}:
                     raise ValueError()
                 if slot['teacher'] not in current_ds['teachers'] or type(slot['h']) is not int or slot['h'] not in HOURS or k != f"{slot['teacher']}|{slot['h']}":
                     raise ValueError()
@@ -108,6 +114,10 @@ def validate(facts, ds, state):
                     raise ValueError()
                 if any(type(slot[s]) is not bool for s in ('manual', 'permit')):
                     raise ValueError()
+                if 'group' in slot:
+                    student_groups.validate(dict(schema=1, records=[slot['group']]))
+                    if slot['group']['teacher'] != slot['teacher'] or slot['group']['hour'] != slot['h']:
+                        raise ValueError()
                 actual.add((d, k))
             for row in day['demand'].values():
                 if type(row.get('valid')) is not bool or type(row.get('eligible')) is not bool or row.get('outcome') not in OUTCOMES:

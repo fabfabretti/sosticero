@@ -79,6 +79,7 @@ export type Data = {
     disSites: Record<string, Record<string, string>>;
     asg: Record<string, Record<string, Assignment>>;
   };
+  groupReviews?: { key: string; teacher: string; hour: number; room: string; site: string; sources: { class: string; count: number | null }[]; status: string }[];
   rows: Row[];
   issues: { key: string; message: string; context?: { teacherName: string; h: number; c: string; site: string | null; substituteName: string } }[];
   autoDis: Record<string, Record<string, Record<number, string[]>>>;

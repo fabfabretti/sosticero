@@ -42,7 +42,7 @@ function screen() {
     }, URLSearchParams, setTimeout:fn=>{timers.set(++timerId,fn);return timerId;}, clearTimeout:id=>timers.delete(id),
     window:{confirm:()=>true,addEventListener(){},removeEventListener(){}}, document:{addEventListener(){},removeEventListener(){}},
   });
-  const nodes=()=>{let result;do{changed=false;cursor=0;result=[];function walk(n){if(Array.isArray(n))return n.forEach(walk);if(!n||typeof n!=='object')return;if(typeof n.type==='function'){const previous=slots,index=cursor;slots=stores[1];cursor=0;walk(n.type(n.props));slots=previous;cursor=index;return;}result.push(n);walk(n.props?.children);}walk(component.TeacherTimetables({api}));effects.splice(0).forEach(fn=>fn());}while(changed);return result;};
+  const nodes=()=>{let result;do{changed=false;cursor=0;result=[];function walk(n){if(Array.isArray(n))return n.forEach(walk);if(!n||typeof n!=='object')return;if(n.type===component.StudentGroupEditor)return;if(typeof n.type==='function'){const previous=slots,index=cursor;slots=stores[1];cursor=0;walk(n.type(n.props));slots=previous;cursor=index;return;}result.push(n);walk(n.props?.children);}walk(component.TeacherTimetables({api}));effects.splice(0).forEach(fn=>fn());}while(changed);return result;};
   return {nodes,timers,exports,dataset,prepared,refresh:()=>refresh(),accept:v=>accept(v),defer:()=>{pending=new Promise(()=>{});},tick:()=>{const [id,fn]=timers.entries().next().value;timers.delete(id);fn();},unmount:()=>stores.flat().forEach(s=>s?.cleanup?.())};
 }
 const settle = () => new Promise(resolve=>setImmediate(resolve));

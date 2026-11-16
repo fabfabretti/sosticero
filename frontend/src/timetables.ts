@@ -24,6 +24,7 @@ export type Dataset = {
   teachers: Record<string, { name: string; importedName?: string; code?: string; classe_concorso?: string; cdcName?: string; retired?: boolean; coveredBy?: string; replaces?: string; continuousAbsence?: boolean }>;
   lessons: Record<string, Lesson>;
   receptions?: { teacher: string }[];
+  studentGroups?: { teacher: string; day: string; hour: number; site: string; room: string; sources: { class: string; count: number | null }[] }[];
 };
 
 export type TimetableCell = { classes: string[]; codes: string[]; partners: string[]; site: string | null; room: string | null; disabled: boolean };
@@ -46,6 +47,7 @@ export function buildTeacherTimetables(dataset: Dataset): TeacherTimetable[] {
   }
   const scheduled = new Set(Object.keys(dataset.lessons || {}).map(k => k.split("|")[0]));
   for (const reception of dataset.receptions || []) scheduled.add(reception.teacher);
+  for (const group of dataset.studentGroups || []) scheduled.add(group.teacher);
   return Object.entries(dataset.teachers || {})
     .filter(([id, t]) => !t.retired && (scheduled.has(id) || t.coveredBy || t.continuousAbsence || t.replaces))
     .map(([id, t]) => ({
