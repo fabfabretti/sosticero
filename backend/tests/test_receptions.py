@@ -116,9 +116,19 @@ class ReceptionApiTest(unittest.TestCase):
         self.assertTrue(impact['ready'])
         self.assertFalse(self.client.get('/api/receptions').json()['versions'])
         self.save(body, impact).raise_for_status()
-        self.assertNotIn('rp', [c['id'] for c in self.candidates(4)])
-        response = self.client.post('/api/assignments', json=dict(day=DAY, key='absent|4|1A', value='rp', exceptional=True))
+        candidate = next(c for c in self.candidates(4) if c['id'] == 'rp')
+        self.assertEqual(candidate['ty'], 'D')
+        self.assertTrue(candidate['exceptional'])
+        self.assertIn('Ricevimento', candidate['typeLabel'])
+        self.assertFalse(candidate['why'])
+        response = self.client.post('/api/assignments', json=dict(day=DAY, key='absent|4|1A', value='rp'))
         self.assertEqual(response.status_code, 422)
+        response = self.client.post('/api/assignments', json=dict(day=DAY, key='absent|4|1A', value='rp', exceptional=True))
+        response.raise_for_status()
+        self.assertFalse(self.client.get('/api/day/' + DAY).json()['issues'])
+        saved = self.client.get('/api/export').json()['asg'][DAY]['absent|4|1A']
+        self.assertEqual(saved['t'], 'D')
+        self.assertTrue(saved['exceptional'])
         self.assertEqual(self.client.get('/api/orari', params=dict(day=DAY)).json()['dataset']['receptions'][0]['teacher'], 'rp')
         archive = self.client.get('/api/export').json()
         self.client.post('/api/import', json=archive).raise_for_status()
@@ -130,6 +140,23 @@ class ReceptionApiTest(unittest.TestCase):
         archive['schema'] = 6
         self.client.post('/api/import', json=archive).raise_for_status()
         self.assertFalse(self.client.get('/api/receptions').json()['versions'])
+
+    def test_reception_keeps_absence_and_double_booking_blocks(self):
+        body, impact = self.preview()
+        self.save(body, impact).raise_for_status()
+        self.client.post('/api/entries', json=dict(day=DAY, group='abs', id='rp', hours=[4])).raise_for_status()
+        candidate = next(c for c in self.candidates(4) if c['id'] == 'rp')
+        self.assertEqual(candidate['why'], 'Assente')
+        self.assertEqual(self.client.post('/api/assignments', json=dict(day=DAY, key='absent|4|1A', value='rp', exceptional=True)).status_code, 422)
+        self.client.post('/api/entries', json=dict(day=DAY, group='abs', id='rp', hours=[])).raise_for_status()
+        self.client.post('/api/assignments', json=dict(day=DAY, key='absent|4|1A', value='rp', exceptional=True)).raise_for_status()
+        # Check the shared eligibility against a second simultaneous substitution.
+        from backend.domain import eligibility, normalize_dataset
+        ds = normalize_dataset(fixture())
+        ds['receptions'] = [dict(teacher='rp', day='lun', hour=4, site=None)]
+        state = self.client.get('/api/export').json()
+        candidate = eligibility(ds, state, DAY, dict(k='other|4|2A', h=4, ids=[], c='2A', sede='centrale'), ds['teachers']['rp'])
+        self.assertEqual(candidate['why'], 'Già assegnato in questa ora')
 
     def test_background_sync_status_does_not_expire_preview(self):
         from backend.storage import Store

@@ -196,7 +196,9 @@ def candidate_order(candidate):
 
 
 def eligibility(ds, state, day, row, teacher, policies=None):
+    from .receptions import at
     i, h = teacher['id'], row['h']
+    reception = at(ds, i, day, h)
     if i in row['ids'] or (teacher.get('retired') or teacher.get('unavailable')):
         return None
     l = lesson(ds, i, day, h)
@@ -230,6 +232,8 @@ def eligibility(ds, state, day, row, teacher, policies=None):
                 ty, keys = 'C', ['derived:itp']
     if not ty and policies is not None and l and l['classes']:
         ty, keys = 'LESSON', ['derived:lesson']
+    if not ty and reception and not l:
+        ty = 'D'
     if not ty:
         return None
     policy = [policies[k] for k in keys] if policies is not None else []
@@ -253,6 +257,10 @@ def eligibility(ds, state, day, row, teacher, policies=None):
         label += ' · Ora disabilitata'
     if ty == 'C' and not same_class_activity and teacher['role'] not in ('sostegno', 'ITP'):
         label = LABELS['C']
+    if reception:
+        exceptional = True
+        label += ' · Ricevimento'
+        loc = loc or reception['site']
     return dict(id=i, name=teacher['name'], ty=ty, loc=loc, why=why, tag=why or ('Occupato · ' if exceptional else '') + label,
                 typeLabel=label, color=policy[0]['color'] if policy else None, exceptional=exceptional)
 
