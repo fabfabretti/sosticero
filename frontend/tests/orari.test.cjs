@@ -9,7 +9,7 @@ function load(file, require, confirm = () => true) {
   const exports = {};
   runInNewContext(ts.transpileModule(readFileSync(file, 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
-  }).outputText, { exports, require: id => id === './Loading' ? requireLoading : id === './useQuietRefresh' ? {useQuietRefresh:(load,apply)=>({ready:true,loading:false,loadError:"",refresh:async()=>{const v=await load();apply(v);return v;},invalidate(){}})} : require(id), URLSearchParams, setTimeout, clearTimeout, requestAnimationFrame: fn => { fn(); return 1; }, cancelAnimationFrame() {}, window: { confirm, scrollBy: options => scrollsForTest.push(options) }, document: { elementFromPoint: () => null } });
+  }).outputText, { exports, require: id => id === './Loading' ? requireLoading : id === './useQuietRefresh' ? {useQuietRefresh:(load,apply)=>({ready:true,loading:false,loadError:"",enter:async()=>apply(await load()),refresh:async()=>{const v=await load();apply(v);return v;},invalidate(){}})} : require(id), URLSearchParams, setTimeout, clearTimeout, requestAnimationFrame: fn => { fn(); return 1; }, cancelAnimationFrame() {}, window: { confirm, scrollBy: options => scrollsForTest.push(options) }, document: { elementFromPoint: () => null } });
   return exports;
 }
 const exportsForTest = [], downloadsForTest = [];
@@ -33,7 +33,7 @@ function component(file, confirm) {
   };
   const jsx = (type, props) => ({ type, props });
   const exports = load(file, id => {
-    if (id === './useQuietRefresh') return { useQuietRefresh: (load,apply) => ({ refresh:async()=>{const v=await load();apply(v);return v;},invalidate(){} }) };
+    if (id === './useQuietRefresh') return { useQuietRefresh: (load,apply) => ({ enter:async()=>apply(await load()),refresh:async()=>{const v=await load();apply(v);return v;},invalidate(){} }) };
     if (id === 'react') return react;
     if (id === 'react/jsx-runtime') return { jsx, jsxs: jsx };
     if (id === './timetables') return timetables;

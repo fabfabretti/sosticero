@@ -55,3 +55,11 @@ Read-only production profiling identified a cost absent from the original synthe
 Representative full API measurements also include redundant generic response conversion. The two read handlers construct JSON-native values only; return an explicit JSON response so those dictionaries are encoded once, without FastAPI's recursive conversion pass. Keep authentication, headers, consistent read transactions and returned JSON unchanged. Compare complete responses on an isolated online backup, not only payload sizes.
 
 Progressive mounting alone still eagerly constructs every card's contents in the parent. Wrap each card's render callback in a lightweight component so its contents are constructed only when that component mounts. Keep complete search/grid data and PDF projection unchanged; the existing child-local progress continues to preserve mounted card elements between appends. Verify that later teachers' cell data is not read before their batch appears.
+
+## Approved navigation-cache follow-up
+
+The earlier exclusion of shared refresh work is superseded only for opt-in caching on Supplenze, Permessi and Orari. Store response objects and receipt timestamps by endpoint in a bounded in-memory map. Hydrate before paint, retain cached content during stale revalidation, and measure refresh age from the last successful response rather than navigation. Share pending reads; an invalidation epoch rejects obsolete reads after writes or session changes. Preserve active-draft deferral, scope ownership and scroll restoration. Explicit refresh after saves bypasses freshness. Clear snapshots on successful mutating requests and session identity/permissions or database-generation changes; routine auth polling must not clear an unchanged session. No localStorage, backend changes or mandatory prewarming.
+
+## Approved cache extension
+
+Apply the existing session-memory cache to Banca ore, the main statistics report and its A disposizione report. Key each response by endpoint and all effective date/campus/period parameters (including today for relative periods). Preserve forced retries and refresh after saves. Enable 15-second quiet polling for valid statistics selections; invalid ranges remain blocked with validation feedback. Reuse existing write/session invalidation and editing protections.

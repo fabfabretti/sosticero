@@ -28,3 +28,13 @@
 - [x] 5.2 Remove redundant timetable copying and any measured redundant response encoding while preserving detached resolver results and identical API JSON; verify focused backend tests and before/after representative timings.
 - [x] 5.3 Defer Orari card preparation as well as mounting; verify unrendered cards are not prepared, complete search/export still work, drafts/focus/scroll survive and all cards finish automatically.
 - [x] 5.4 Run appropriate regression/build checks and isolated browser verification, stop the isolated test project, deploy with `./scripts/deploy.sh`, and verify the exact production release using read-only checks; record measured improvement and limitations.
+
+## 6. Immediate cached navigation
+
+- [x] 6.1 Implement opt-in endpoint-scoped memory caching for the three pages, timestamp-based quiet refresh, save/session invalidation and obsolete-request protection while retaining draft/concurrency safeguards; verify focused automated tests.
+- [x] 6.2 Run frontend regression/build checks and isolated browser navigation verification; stop the test project, deploy using the required script and verify the production release read-only. Record evidence and limitations; ask before committing.
+
+## 7. Extend cached navigation
+
+- [x] 7.1 Extend cache use to Banca ore and both statistics loads with complete selection keys, valid-range polling, forced retries and existing edit/save protections; verify focused tests and frontend regressions/build.
+- [x] 7.2 Verify navigation in a standalone isolated testing project, stop it, deploy with the required script and verify the production release read-only; document evidence and ask before committing.

@@ -166,12 +166,12 @@ function Permessi() {
   const [busy, setBusy] = useState(false);
   const editBaseline = useRef<Baseline | undefined>(undefined);
   const [conflict, setConflict] = useState(false);
-  const { refresh, invalidate, loading: refreshing, ready, loadError } = useQuietRefresh(
+  const { refresh, enter, invalidate, loading: refreshing, ready, loadError } = useQuietRefresh(
     () => api<NonNullable<typeof data>>("permessi"),
     next => setData(old => JSON.stringify(old) === JSON.stringify(next) ? old : next),
-    busy || !!query || !!teacher || !!note || !!attachment || !!manualHours || !!original || selected.length > 0 || dayInput !== italianDate(localDate(new Date())) || requestedInput !== italianDate(localDate(new Date())), "permessi",
+    busy || !!query || !!teacher || !!note || !!attachment || !!manualHours || !!original || selected.length > 0 || dayInput !== italianDate(localDate(new Date())) || requestedInput !== italianDate(localDate(new Date())), "permessi", false, "permessi",
   );
-  useEffect(() => { void refresh().catch(e => setError(String(e))); }, []);
+  useEffect(() => { void enter().catch(e => setError(String(e))); }, []);
   useEffect(() => { editBaseline.current = data?.concurrency; }, [original, editingManual]);
   const permitDataset = (date: string) => data?.timetableVersions?.filter(v => !v.effective || v.effective <= date).at(-1)?.dataset || data?.dataset;
   const teachingSites = (id: string, date: string) => permitDataset(date)?.sites[id] || [];
@@ -579,19 +579,20 @@ function Supplenze() {
   useEffect(() => { editBaseline.current = data?.concurrency; }, [editingKind, editingDis]);
   const [conflict, setConflict] = useState(false);
   const [conflictSummary, setConflictSummary] = useState("");
-  const { refresh, invalidate, loading: refreshing, ready, loadError } = useQuietRefresh(
+  const { refresh, enter, invalidate, loading: refreshing, ready, loadError } = useQuietRefresh(
     () => api<Data>("day/" + day),
     next => { setData(old => JSON.stringify(old) === JSON.stringify(next) ? old : next); setLoadedDay(day); },
     entryOpen || busy || loadingCandidates || !!open || !!consultation || !!editingKind || !!editingDis || !!disTeacher || !!query || !!chosen || !!entryNote || !!entryAttachment,
     day,
     entryOpen,
+    "day/" + day,
   );
   useEffect(() => {
     ++candidateRequest.current;
     setOpen(undefined);
     setEntryOpen(false);
     clearEntry();
-    void refresh().catch(e => setError(String(e)));
+    void enter().catch(e => setError(String(e)));
     setConflict(false);
     setError("");
     setLoadingCandidates(false);

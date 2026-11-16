@@ -10,7 +10,7 @@ function compile(file, globals) {
 const loading = compile('src/Loading.tsx', { require: id => id === 'react-dom' ? { createPortal: node => node } : ({ jsx, jsxs: jsx }), document: { body: {} }, requestAnimationFrame: fn => fn() });
 function quiet(react) {
   return compile('src/useQuietRefresh.ts', {
-    require: () => ({ ...react, useLayoutEffect: react.useLayoutEffect || react.useEffect }),
+    require: id => id === './pageCache' ? compile('src/pageCache.ts', {}) : ({ ...react, useLayoutEffect: react.useLayoutEffect || react.useEffect }),
     document: { visibilityState: 'visible', querySelectorAll: () => [], addEventListener() {}, removeEventListener() {} },
     setInterval: () => 1, clearInterval() {},
   });

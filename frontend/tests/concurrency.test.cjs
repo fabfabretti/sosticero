@@ -16,7 +16,9 @@ test('preconditions select only affected records and cover range, future and mov
   assert.equal(Object.keys(preconditions(b, 'entries', { day: '2026-10-16', group: 'abs', id: 't', until: '2026-10-19' })).length, 2);
   assert.equal(Object.keys(preconditions(b, 'permessi', { day: '2026-10-13', id: 'b', original_day: '2026-10-12', original_id: 'a' })).length, 2);
 });
-function harness() {
+function harness(options = {}) {
+  let now = 0;
+  const Clock = { now: () => now };
   let index = 0, active = false, scope = 'day1', renderRequested = false;
   const slots = [], effects = [], timers = new Map(), listeners = new Map(), requests = [], applied = [];
   const element = { scrollTop: 123, scrollLeft: 8 };
@@ -33,15 +35,16 @@ function harness() {
   };
   react.useLayoutEffect = react.useEffect;
   const doc = { visibilityState: 'visible', querySelectorAll: () => [element], addEventListener: (e, fn) => listeners.set(e, fn), removeEventListener: e => listeners.delete(e) };
-  const { useQuietRefresh } = load('useQuietRefresh', { require: () => react, document: doc, setInterval: fn => { timers.set(fn, fn); return fn; }, clearInterval: id => timers.delete(id) });
+  const cache = options.cache || load('pageCache', { Date: Clock });
+  const { useQuietRefresh } = load('useQuietRefresh', { require: id => id === './pageCache' ? cache : react, document: doc, Date: Clock, setInterval: fn => { timers.set(fn, fn); return fn; }, clearInterval: id => timers.delete(id) });
   const render = () => {
     renderRequested = false;
     index = 0;
-    const result = useQuietRefresh(() => new Promise((resolve, reject) => requests.push({ resolve, reject })), value => applied.push(value), active, scope);
+    const result = useQuietRefresh(() => new Promise((resolve, reject) => requests.push({ resolve, reject })), value => applied.push(value), active, scope, false, options.cached ? 'page/' + scope : undefined);
     effects.splice(0).forEach(f => f());
     return result;
   };
-  return { render, flush: () => { if (renderRequested) render(); }, requests, applied, element, listeners, timers, active: value => { active = value; }, scope: value => { scope = value; }, poll: async () => { [...timers.values()][0](); await settle(); }, unmount: () => slots.forEach(s => s?.cleanup?.()) };
+  return { cache, time: value => { now = value; }, render, flush: () => { if (renderRequested) render(); }, requests, applied, element, listeners, timers, active: value => { active = value; }, scope: value => { scope = value; }, poll: async () => { [...timers.values()][0](); await settle(); }, unmount: () => slots.forEach(s => s?.cleanup?.()) };
 }
 const settle = () => new Promise(resolve => setImmediate(resolve));
 test('unchanged refresh clears its scroll snapshot before a later interaction', async () => {
@@ -109,4 +112,41 @@ test('foreground failure stops loading but keeps stale data blocked until explic
   assert.deepEqual(h.applied, ['saved']);
   const retry = c.refresh(); h.requests.shift().resolve('current'); await retry;
   c = h.render(); assert.equal(c.ready, true); assert.equal(c.loadError, ''); h.unmount();
+});
+
+test('cached navigation hydrates before network, keeps response age across remounts and refreshes quietly', async () => {
+  const first = harness({cached:true}); let c = first.render();
+  const initial = c.enter(); first.requests.shift().resolve('saved'); await initial;
+  first.unmount();
+  const h = harness({cached:true, cache:first.cache}); h.time(14000); h.render(); c = h.render();
+  assert.deepEqual(h.applied,['saved']); assert.equal(c.ready,true); assert.equal(c.loading,false);
+  await c.enter(); assert.equal(h.requests.length,0);
+  h.time(15000); const poll = h.poll(); assert.equal(h.requests.length,1);
+  c = h.render(); assert.equal(c.loading,false); assert.equal(c.ready,true);
+  h.requests.shift().resolve('new'); await poll; assert.deepEqual(h.applied,['saved','new']); h.unmount();
+});
+test('stale cached entry stays usable on failure and retries at the polling interval', async () => {
+  const h = harness({cached:true}); await h.cache.loadPage('page/day1',async()=> 'cached');
+  h.time(20000); h.render(); let c=h.render(); const entered=c.enter();
+  h.requests.shift().reject(Error('offline')); await entered;
+  c=h.render(); assert.equal(c.ready,true); assert.equal(c.loading,false); assert.match(c.loadError,/offline/);
+  await h.poll(); assert.equal(h.requests.length,0);
+  h.time(35000); const poll=h.poll();h.requests.shift().resolve('recovered');await poll;
+  c=h.render();assert.equal(c.loadError,'');assert.deepEqual(h.applied,['cached','recovered']);h.unmount();
+});
+test('cached refresh protects active drafts and discards pending snapshots invalidated by a save', async () => {
+  const h=harness({cached:true});await h.cache.loadPage('page/day1',async()=> 'cached');
+  h.active(true);h.render();h.time(15000);const poll=h.poll();h.requests.shift().resolve('pending');await poll;
+  assert.deepEqual(h.applied,['cached']);h.cache.clearPageCache();h.active(false);h.render();
+  assert.deepEqual(h.applied,['cached']);h.unmount();
+});
+test('cache deduplicates reads and old requests cannot repopulate after invalidation', async () => {
+  const cache=load('pageCache');let resolveOld,resolveNew;
+  const old=cache.loadPage('permessi',()=>new Promise(r=>resolveOld=r));
+  assert.equal(cache.loadPage('permessi',()=>{throw Error('duplicate');}),old);
+  cache.clearPageCache();const fresh=cache.loadPage('permessi',()=>new Promise(r=>resolveNew=r));
+  resolveOld('old');await assert.rejects(old,/Riprova/);assert.equal(cache.cachedPage('permessi'),undefined);
+  resolveNew('saved');await fresh;assert.equal(cache.cachedPage('permessi').value,'saved');
+  await cache.loadPage('day/other',async()=> 'other date');assert.equal(cache.cachedPage('permessi').value,'saved');
+  cache.clearPageCache();assert.equal(cache.cachedPage('day/other'),undefined);
 });

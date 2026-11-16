@@ -242,3 +242,13 @@ test('metric help, pie, teacher rows and CSV use absent teacher-hours', async()=
   const empty=screen();empty.render();empty.requests[0].resolve({...fixture,totals:{...counts,teacherHours:0},absenceTypes:[],teacherAbsences:[]});await settle();
   assert.ok(!empty.render().some(n=>n.type==='Pie'));
 });
+
+test('returning to a cached statistics campus restores its own report without another request', async () => {
+  const s=screen();s.render();s.requests[0].resolve({...fixture,campus:'total'});await settle();
+  let nodes=s.render();nodes.find(n=>n.type==='button'&&n.props.children==='Centrale').props.onClick();s.render();
+  s.requests[1].resolve({...fixture,campus:'centrale'});await settle();nodes=s.render();
+  nodes.find(n=>n.type==='button'&&n.props.children==='Totale').props.onClick();s.render();nodes=s.render();
+  assert.equal(s.requests.length,2);
+  assert.ok(nodes.some(n=>n.props.className==='stats-scope'&&JSON.stringify(n.props.children).includes('Totale')));
+  assert.equal(nodes.find(n=>n.type===loading.LoadingRegion).props.blocked,false);
+});

@@ -38,6 +38,10 @@ const tooltip = (() => {
 // Run the actual App handlers with deferred HTTP responses and minimal hook storage.
 function app(localStorage = { getItem: () => null, setItem() {} }, confirm = () => false, campus = 'centrale', entryPath = '/', permissions) {
   const effects = [], requests = [], comps = new Map(), timers = [];
+  let elapsed = 0;
+  class Clock extends SchoolDayDate { static now() { return Date.now() + elapsed; } }
+  const cache = {};
+  runInNewContext(ts.transpileModule(readFileSync('src/pageCache.ts', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, {exports: cache, Date: Clock});
   const listeners = new Map(), inboxCalls = [];
   const document = { documentElement: { dataset: {} }, activeElement: null, visibilityState: 'visible',
     getElementById: () => ({ focus() {} }), querySelectorAll: () => [],
@@ -117,7 +121,10 @@ function app(localStorage = { getItem: () => null, setItem() {} }, confirm = () 
       if (id === './concurrency' || id === './useQuietRefresh') {
         const exports = {};
         runInNewContext(ts.transpileModule(readFileSync('src/' + id.slice(2) + '.ts', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, {
-          exports, require: () => ({ ...react, useLayoutEffect: react.useEffect }),
+          exports, Date: Clock, require: id => {
+            if (id === './pageCache') return cache;
+            return { ...react, useLayoutEffect: react.useEffect };
+          },
           document,
           setInterval: fn => { timers.push(fn); return timers.length; }, clearInterval() {},
         });
@@ -186,7 +193,7 @@ function app(localStorage = { getItem: () => null, setItem() {} }, confirm = () 
     effects.splice(0).forEach(fn => fn());
     return nodes;
   }
-  return { render, requests, inboxStatus, inboxCalls, document, timers, key: e => { for (const fn of listeners.get("keydown") || []) fn(e); }, go: p => {
+  return { render, requests, cache, advance: ms => { elapsed += ms; }, inboxStatus, inboxCalls, document, timers, key: e => { for (const fn of listeners.get("keydown") || []) fn(e); }, go: p => {
     const screen = path => ['/permessi', '/settings', '/stats', '/banca-ore', '/orari'].includes(path) ? path : '/';
     if (screen(p) !== screen(pathname)) for (const component of comps.keys()) {
       if (['Supplenze', 'Permessi', 'Settings', 'BackupSection'].includes(component?.name)) comps.delete(component);
@@ -699,7 +706,7 @@ test('permit date headers toggle sorting, with missing request dates always last
 });
 
 
-test('permit recovery register shows dated links, expiry, totals and refreshes on return', async () => {
+test('permit recovery register shows dated links, expiry, totals and cached return', async () => {
   const a = app(); a.go('/permessi'); a.render();
   const response = { ...permitData, permessi: { '2026-10-12': { t: [2,3] } },
     balances: { t: { remaining: 1, expired: 1, eligible: 0 } },
@@ -716,7 +723,8 @@ test('permit recovery register shows dated links, expiry, totals and refreshes o
   a.go('/'); a.render();
   a.requests.shift().resolve(data); await settle();
   a.go('/permessi'); a.render();
-  assert.equal(a.requests.shift().url, '/api/permessi');
+  assert.equal(a.requests.length, 0);
+  assert.ok(a.render().some(n => n.type === 'li' && n.props.children.join('').includes('19/10/2026 · 4ª ora')));
 });
 
 test('completed permit is struck independently of the teacher balance and keeps actions', async () => {
@@ -1287,7 +1295,7 @@ test('entry dialog trigger, dismissal, focus trap, draft reset and refresh pause
   backdrop.props.onClick({ target: {}, currentTarget: {} }); assert.ok(entryDialog(a), 'inside click keeps dialog open');
   const outside = {}; backdrop.props.onClick({ target: outside, currentTarget: outside }); assert.equal(entryDialog(a), undefined);
   openEntry(a); a.render().find(n => n.props?.['aria-label'] === 'Chiudi inserimento').props.onClick(); assert.equal(entryDialog(a), undefined);
-  for (const timer of a.timers) timer(); await settle(); assert.equal(a.requests.length, 1, 'polling resumes after close');
+  a.advance(15000); for (const timer of a.timers) timer(); await settle(); assert.equal(a.requests.length, 1, 'polling resumes after close');
 });
 test('opening entry cancels pending candidates and opening candidates closes entry', async () => {
   const a = await loaded(entryData);
@@ -1391,7 +1399,7 @@ test('day transitions retain dimmed rows, block stale handlers, and keep calenda
   const old=a.requests.shift(); days[1].props.onClick();a.render();const current=a.requests.shift();
   current.resolve({...data,rows:[]});await settle();old.resolve({...data,rows:[{k:'t|2|OLD',h:2,c:'OLD',ids:['t'],sede:'centrale'}]});await settle();
   assert.ok(!JSON.stringify(a.render()).includes('OLD'));
-  dayButtons().find(n=>n.props.className==='d').props.onClick();a.render();a.requests.shift().resolve({detail:'offline'},false);await settle();
+  a.cache.clearPageCache();dayButtons().find(n=>n.props.className==='d').props.onClick();a.render();a.requests.shift().resolve({detail:'offline'},false);await settle();
   nodes=a.render();const retry=nodes.find(n=>n.type==='button' && n.props.children==='Riprova');assert.ok(retry);assert.equal(retry.props.disabled,false);
   assert.ok(nodes.some(n=>n.props?.className==='ui-loading-content' && n.props.inert));
 });
@@ -1537,5 +1545,30 @@ test('all copied teacher messages receive recipient name and signed-in user name
     const a=await loaded({dataset:{...data.dataset,teachers:{t:{id:'t',name:'Luca Bianchi'}}},state:{...data.state,asg:{[todayYmd]:{[row.k]:{v:'t',t:category,c:'1A',permitId:'p'}}}},campusNotices:category==='D'?{[row.k]:{day:todayYmd,teacher:'t',origin:'succursale',destination:'centrale',rows:[row],communicated:false,accepted:false,fingerprint:'f'}}:{}});
     const action=a.render().find(n=>n.type===component);
     assert.ok(action,category);assert.equal(action.props.recipientName,'Luca Bianchi');assert.equal(action.props.signature,'Test');
+  }
+});
+
+test('refusal sends preconditions and leaves history visible after release and replacement', async () => {
+  for (const category of ['RP', 'PAID', 'D']) {
+    const assignment = { v: 'rp', t: category, c: row.c, permitId: 'permit' };
+    const notice = { day: todayYmd, teacher: 'rp', origin: 'succursale', destination: 'centrale', rows: [row], communicated: false, accepted: false };
+    const response = { ...data, campusNotices: category === 'D' ? { [row.k]: notice } : {}, state: { ...data.state, asg: { [todayYmd]: { [row.k]: assignment } } } };
+    const a = await loaded(response);
+    const type = category === 'RP' ? 'recovery-actions' : category === 'PAID' ? 'paid-actions' : 'campus-notice-actions';
+    a.render().find(n => n.type === type).props.onRefuse();
+    const body = JSON.parse(a.requests[0].options.body);
+    assert.equal(body.refused, true); assert.equal(body.key, row.k); assert.equal(body.day, todayYmd);
+    assert.equal(body.expected[`asg|${todayYmd}|${row.k}`], 'absent');
+    if (category === 'D') { assert.equal(body.campus_notice, true); assert.equal(body.expected[`campusNotice|${todayYmd}|${row.k}`], 'absent'); }
+    a.requests.shift().resolve({ ok: true }); await settle();
+    const history = { [todayYmd]: { [row.k]: [{ teacher: 'missing', name: 'Rossi' }, { teacher: 't', name: 'Old name' }] }, '1999-01-01': { [row.k]: [{ teacher: 'x', name: 'Other day' }] } };
+    const released = { ...response, dataset: { ...response.dataset, teachers: { ...response.dataset.teachers, t: { id: 't', name: 'Bianchi' } } }, campusNotices: {}, state: { ...response.state, asg: {}, substitutionRefusals: history } };
+    a.requests.shift().resolve(released); await settle();
+    const note = a.render().find(n => n.props.className === 'refusal-note');
+    assert.match(JSON.stringify(note.props.children), /Rossi, Bianchi/);
+    assert.ok(!JSON.stringify(note.props.children).includes('Other day'));
+    assert.equal(a.render().find(n => n.type === type), undefined);
+    const replacement = await loaded({ ...released, state: { ...released.state, asg: { [todayYmd]: { [row.k]: { v: 't', t: 'POT' } } } } });
+    assert.match(JSON.stringify(replacement.render().find(n => n.props.className === 'refusal-note').props.children), /Rossi, Bianchi/);
   }
 });

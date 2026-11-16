@@ -223,3 +223,13 @@ test('category toggles independently filter counts, including none and all combi
   assert.deepEqual(Array.from(view.find(n=>n.type===s.AvailabilityTable).props.selected),['recovery','paid']);
   assert.equal(s.render('total',true).filter(n=>n.type===s.AvailabilityTable).length,1);
 });
+
+test('cached availability is isolated by campus and date and restores readiness on return', async () => {
+  const s=screen();s.render();s.requests[0].resolve(data);await settle();
+  s.render('centrale');s.requests[1].resolve({...data,campus:'centrale'});await settle();
+  s.render('total');let nodes=s.render('total');assert.equal(s.requests.length,2);
+  assert.equal(nodes.find(n=>n.type===s.AvailabilityTable).props.data.campus,'total');
+  assert.equal(s.ready.at(-1),true);
+  nodes.find(n=>n.type==='input').props.onChange({target:{value:'2099-10-12'}});s.render('total');
+  assert.equal(s.requests.length,3);assert.match(s.requests.at(-1).url,/date=2099-10-12/);
+});

@@ -38,8 +38,8 @@ export function PaidHours({ api }: { api: Api }) {
     .sort((a, b) => Number(!norm(a.name).startsWith(norm(query))) - Number(!norm(b.name).startsWith(norm(query))) || a.name.localeCompare(b.name))
     .slice(0, 6) : [];
   const load = async () => { if (!day) throw Error("Seleziona una data valida."); return api<Report>("paid-availability?" + new URLSearchParams({ day })); };
-  const { refresh, loading, ready, loadError } = useQuietRefresh(load, setData, editing || busy, day, !day);
-  useEffect(() => { void refresh().catch(e => setError(String(e))); }, [day]);
+  const { refresh, enter, loading, ready, loadError } = useQuietRefresh(load, setData, editing || busy, day, !day, "paid-availability?" + new URLSearchParams({ day }));
+  useEffect(() => { void enter().catch(e => setError(String(e))); }, [day]);
   function openSlot(weekday: number, hour: number) {
     setSlot({ weekday, hour }); setQuery(""); setSuggestionIndex(0); setError("");
   }

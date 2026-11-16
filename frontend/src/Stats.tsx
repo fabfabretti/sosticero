@@ -79,21 +79,21 @@ export function Stats() {
   const [metric, setMetric] = useState<Metric>("demand");
   const [data, setData] = useState<StatReport>();
 
-  const [retry, setRetry] = useState(0);
   const [preview, setPreview] = useState(false);
   const [availabilityReady, setAvailabilityReady] = useState(false);
   const range = period === "custom" ? { start, end } : presetRange(period, today, first);
 
-  const scope = JSON.stringify([campus, period, start, end]);
-  const { refresh, loading, ready, loadError } = useQuietRefresh(async () => {
-    if (period === "custom" && (!start || !end || start > end)) throw Error("Seleziona un intervallo di date valido.");
-    const query = new URLSearchParams({ campus, period, ...(period === "custom" ? { start, end } : {}) });
+  const query = new URLSearchParams({ campus, period, ...(period === "custom" ? { start, end } : {}) });
+  const scope = JSON.stringify([today, query.toString()]);
+  const invalidRange = period === "custom" && (!start || !end || start > end);
+  const { refresh, enter, loading, ready, loadError } = useQuietRefresh(async () => {
+    if (invalidRange) throw Error("Seleziona un intervallo di date valido.");
     const response = await sessionFetch("/api/stats?" + query);
     const body = await response.json();
     if (!response.ok) throw Error(typeof body.detail === "string" ? body.detail : "Impossibile caricare le statistiche.");
     return body as StatReport;
-  }, body => { setData(body); if (period === 'all') setFirst(body.start); }, false, scope, true);
-  useEffect(() => { void refresh().catch(() => {}); }, [scope, retry]);
+  }, body => { setData(body); if (period === 'all') setFirst(body.start); }, false, scope, !!invalidRange, 'stats/' + scope);
+  useEffect(() => { void enter().catch(() => {}); }, [scope]);
 
   const selectPreset = (id: string) => {
     setSelectingEnd(false);
@@ -134,7 +134,7 @@ export function Stats() {
       {preview && <div className="stats-preview-actions"><strong>Anteprima report</strong><button disabled={!(ready && data?.days) && !availabilityReady} onClick={() => { if ((ready && data?.days) || availabilityReady) window.print(); }}>Stampa</button><button onClick={() => setPreview(false)}>Torna alle statistiche</button></div>}
       <div className="stats-heading"><h1>Statistiche</h1><div className="stats-actions"><button onClick={download} disabled={!ready || !data?.days}>Esporta CSV</button><button onClick={() => { if ((ready && data?.days) || availabilityReady) setPreview(true); }} disabled={!(ready && data?.days) && !availabilityReady}>Stampa report</button></div></div>
 
-      <LoadingRegion pending={loading} blocked={!ready} error={loadError} retry={() => setRetry(retry + 1)}>
+      <LoadingRegion pending={loading} blocked={!ready} error={loadError} retry={() => void refresh().catch(() => {})}>
       {data && <>
         <p className="stats-scope"><strong>{campuses[data.campus]}</strong> · {data.start} — {data.end} · {data.days} {data.days === 1 ? "giorno registrato" : "giorni registrati"}</p>
         {!data.days ? <section className="stats-panel"><h2>Nessun giorno con assenze registrate</h2><p>Seleziona un altro periodo. Le date future sono escluse dalle statistiche.</p></section> : <>

@@ -100,13 +100,13 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
   }, [draft?.teacher, nameDraft?.teacher]);
   const dirty = !!draft || !!nameDraft;
   const endpoint = (day: string) => 'orari?' + new URLSearchParams({ day });
-  const { refresh: quietRefresh, invalidate: invalidateRefresh, loading, ready, loadError } = useQuietRefresh(
+  const { refresh: quietRefresh, enter, invalidate: invalidateRefresh, loading, ready, loadError } = useQuietRefresh(
     () => api<Orari>(endpoint(viewDay)),
     next => setData(old => JSON.stringify(old) === JSON.stringify(next) && old?.generation === next.generation ? old : next),
     dirty || busy || !!classEdit || !!impact || !!deletion || !!drag,
-    viewDay,
+    viewDay, false, endpoint(viewDay),
   );
-  useEffect(() => { void quietRefresh().catch(e => setError(String(e))); }, [api, viewDay]);
+  useEffect(() => { void enter().catch(e => setError(String(e))); }, [api, viewDay]);
   useEffect(() => {
     if (!dirty) return;
     const unload = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; };

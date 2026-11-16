@@ -25,3 +25,11 @@ None. Permessi's payload optimization preserves existing behavior and requiremen
 ## Impact
 
 Backend permit response construction in `backend/main.py` and date-effective projection helpers; frontend Permessi consumers in `frontend/src/main.tsx`; progressive mounting in `frontend/src/TeacherTimetables.tsx`; focused backend/frontend tests. No database migration, operational record change, dependency addition or shared refresh redesign. Deploy backend/frontend together after isolated verification using the existing deployment script.
+
+## Approved navigation-cache follow-up
+
+Reuse in-memory responses for Supplenze, Permessi and date-scoped Orari on navigation. Refresh quietly when older than 15 seconds and retain the existing polling and save concurrency checks. Clear all page snapshots after successful writes, logout, permission/account changes or database-generation changes. No backend revision protocol or UI redesign. First uncached visits still wait for their response.
+
+## Approved cache extension
+
+Apply the existing session-memory cache to Banca ore, the main statistics report and its A disposizione report. Key each response by endpoint and all effective date/campus/period parameters (including today for relative periods). Preserve forced retries and refresh after saves. Enable 15-second quiet polling for valid statistics selections; invalid ranges remain blocked with validation feedback. Reuse existing write/session invalidation and editing protections.

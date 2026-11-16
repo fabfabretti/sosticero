@@ -1,9 +1,13 @@
+import { clearPageCache } from './pageCache';
 import { ApiError } from './concurrency';
 export type Account = { id: string; username: string; name: string; admin: boolean; campuses: ('centrale' | 'succursale')[] };
 export type Session = { account: Account; csrf: string; generation: number };
 let session: Session | undefined;
 export const currentSession = () => session;
-export function setSession(value: Session | undefined) { session = value; }
+export function setSession(value: Session | undefined) {
+  if (!value || !session || JSON.stringify(value.account) !== JSON.stringify(session.account) || value.generation !== session.generation) clearPageCache();
+  session = value;
+}
 export async function sessionFetch(url: string, options: RequestInit = {}, generation?: number): Promise<Response> {
   const headers = new Headers(options.headers);
   if (options.method && options.method !== 'GET') {
@@ -12,7 +16,12 @@ export async function sessionFetch(url: string, options: RequestInit = {}, gener
   }
   const response = await fetch(url, { ...options, headers });
   const latestGeneration = response.headers.get('X-Data-Generation');
-  if (session && latestGeneration !== null) session.generation = Math.max(session.generation, Number(latestGeneration));
+  if (session && latestGeneration !== null) {
+    const next = Math.max(session.generation, Number(latestGeneration));
+    if (next !== session.generation) clearPageCache();
+    session.generation = next;
+  }
+  if (response.ok && options.method && options.method !== 'GET') clearPageCache();
   if (response.status === 401 && !url.startsWith('/api/auth/')) {
     setSession(undefined);
     window.dispatchEvent(new Event('session-expired'));

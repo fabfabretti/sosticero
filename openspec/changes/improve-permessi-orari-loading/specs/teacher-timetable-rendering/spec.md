@@ -45,3 +45,24 @@ Once the selected date's complete data is ready, PDF export SHALL include all el
 #### Scenario: Export before rendering completes
 - **WHEN** the user downloads the PDF while later grids are still pending and no draft is open
 - **THEN** the PDF contains the complete eligible saved timetable
+
+### Requirement: Cached operational navigation
+Supplenze, Permessi and Orari SHALL reuse endpoint-scoped in-memory snapshots immediately on return, quietly refresh snapshots older than 15 seconds, and retain ongoing refresh without resetting freshness on navigation. Cached content SHALL remain usable during background requests and failures. Active drafts and displayed save baselines SHALL remain protected. Successful writes and authentication/permission/database-generation changes SHALL invalidate all snapshots and prevent obsolete in-flight reads from repopulating them.
+
+#### Scenario: Return to a cached page
+- **WHEN** staff return to a previously loaded page or date
+- **THEN** its cached content appears without awaiting the network
+- **AND** stale data refreshes quietly without blocking interaction
+
+#### Scenario: Save or change account
+- **WHEN** a successful mutation or session identity change occurs
+- **THEN** subsequent navigation cannot reuse an earlier snapshot
+- **AND** previous-account or pre-save pending responses cannot restore it
+
+### Requirement: Cached Banca ore and statistics
+Banca ore and both statistics reports SHALL reuse the shared session-memory cache, separate date/filter selections, and quietly refresh valid selections after 15 seconds. Explicit retry and post-save refresh SHALL fetch current data. Existing validation, editing and export readiness protections SHALL remain in force.
+
+#### Scenario: Return to a report filter
+- **WHEN** staff return to a previously loaded week, campus or statistics period
+- **THEN** the matching cached response appears immediately and stale responses refresh quietly
+- **AND** responses belonging to other selections cannot unlock the current report

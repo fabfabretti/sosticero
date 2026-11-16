@@ -77,16 +77,15 @@ export function StatsAvailability({ campus, onReady }: { campus: string; preview
   const [selected, setSelected] = useState<Category[]>(defaultSelection);
   const [data, setData] = useState<AvailabilityReport>();
 
-  const [retry, setRetry] = useState(0);
   const scope = JSON.stringify([date, campus]);
-  const { refresh, loading, ready, loadError } = useQuietRefresh(async () => {
+  const { refresh, enter, loading, ready, loadError } = useQuietRefresh(async () => {
     if (!date) throw Error('Seleziona una data per vedere la settimana.');
     const response = await sessionFetch("/api/stats/availability?" + new URLSearchParams({ date, campus }));
     const body = await response.json();
     if (!response.ok) throw Error(typeof body.detail === "string" ? body.detail : "Impossibile caricare le disponibilità.");
     return body as AvailabilityReport;
-  }, setData, false, scope, true);
-  useEffect(() => { void refresh().catch(() => {}); }, [scope, retry]);
+  }, setData, false, scope, !date, 'stats-availability/' + scope);
+  useEffect(() => { void enter().catch(() => {}); }, [scope]);
   useLayoutEffect(() => { onReady(ready); return () => onReady(false); }, [ready, scope, onReady]);
 
   return <section className="stats-panel stats-availability">
@@ -99,7 +98,7 @@ export function StatsAvailability({ campus, onReady }: { campus: string; preview
     </div>
     {!date && <p role="alert">Seleziona una data per vedere la settimana.</p>}
 
-    <LoadingRegion local pending={loading} blocked={!ready} error={loadError} retry={() => setRetry(retry + 1)}>{data && <>
+    <LoadingRegion local pending={loading} blocked={!ready} error={loadError} retry={() => void refresh().catch(() => {})}>{data && <>
       <AvailabilityTable data={data} selected={selected} />
       <p className="availability-ratio"><strong>POT disponibili: {fmt(data.pot.enabled)} / {fmt(data.pot.total)} ore · {fmt(data.pot.percentage)}{data.pot.percentage === null ? "" : "%"}</strong><span>Riferimento atteso: {data.pot.reference}%</span></p>
       <p className="stats-method">POT + ALF + PE abilitati / totale in orario nella settimana {data.start} — {data.end}. Ore disabilitate incluse nel totale; DI.S e recuperi esclusi. {data.pot.total === 0 && "Nessuna ora POT/ALF/PE nella sede selezionata."}</p>

@@ -37,7 +37,7 @@ function screen() {
       if(id==='./Tooltip')return {HourHelp:'tooltip'};
       if(id==='./Loading')return {Loading:'loading',LoadingRegion:'region',paintLoading:async()=>{}};
       if(id==='./timetablePdf')return {projectTimetableExport:d=>{exports.push(d);return d;},generateTimetablePdf:()=>({save(){}})};
-      if(id==='./useQuietRefresh')return {useQuietRefresh:(load,apply)=>{accept=apply;refresh=async()=>apply(await load());return {ready:true,loading:false,refresh,invalidate(){}};}};
+      if(id==='./useQuietRefresh')return {useQuietRefresh:(load,apply)=>{accept=apply;refresh=async()=>apply(await load());return {ready:true,loading:false,enter:refresh,refresh,invalidate(){}};}};
       throw Error(id);
     }, URLSearchParams, setTimeout:fn=>{timers.set(++timerId,fn);return timerId;}, clearTimeout:id=>timers.delete(id),
     window:{confirm:()=>true,addEventListener(){},removeEventListener(){}}, document:{addEventListener(){},removeEventListener(){}},

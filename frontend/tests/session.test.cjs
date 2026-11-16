@@ -7,7 +7,7 @@ function transport(){
  const calls=[],events=[],queue=[],exports={};
  class ApiError extends Error{constructor(status,detail){super(typeof detail==='string'?detail:detail.message);this.status=status;}}
  runInNewContext(ts.transpileModule(readFileSync('src/session.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{
-  exports,Headers,Event,require:()=>({ApiError}),window:{dispatchEvent:e=>events.push(e.type)},
+  exports,Headers,Event,require:id=>id==='./pageCache'?{clearPageCache:()=>events.push('cache-cleared')}:{ApiError},window:{dispatchEvent:e=>events.push(e.type)},
   fetch:async(url,options)=>{calls.push({url,options});const item=queue.shift()||{};return{ok:(item.status||200)<400,status:item.status||200,headers:new Headers({'X-Data-Generation':String(item.generation||0)}),json:async()=>item.data||{ok:true}};}
  });
  return {...exports,calls,events,queue};
@@ -28,7 +28,19 @@ test('read generations stay on snapshots and do not enter archive JSON',async()=
  t.queue.push({generation:7,data:{schema:7}});const archive=await t.requestApi('export');assert.equal(JSON.stringify(archive),'{"schema":7}');
 });
 test('expired requests trigger login without replay, permission denials retain session',async()=>{
- const t=transport();const session={account:{id:'a'},csrf:'csrf',generation:1};t.setSession(session);
+ const t=transport();const session={account:{id:'a'},csrf:'csrf',generation:1};t.setSession(session);t.events.length=0;
  t.queue.push({status:403,data:{detail:'Wrong campus'}});await assert.rejects(t.requestApi('assignments',{}),e=>e.status===403);assert.equal(t.currentSession(),session);assert.equal(t.events.length,0);
- t.queue.push({status:401,data:{detail:'Accesso richiesto'}});await assert.rejects(t.requestApi('permessi',{}),e=>e.status===401);assert.equal(t.currentSession(),undefined);assert.deepEqual(t.events,['session-expired']);assert.equal(t.calls.length,2);
+ t.queue.push({status:401,data:{detail:'Accesso richiesto'}});await assert.rejects(t.requestApi('permessi',{}),e=>e.status===401);assert.equal(t.currentSession(),undefined);assert.deepEqual(t.events,['cache-cleared','session-expired']);assert.equal(t.calls.length,2);
+});
+
+test('cache invalidation follows successful writes and identity changes, not routine auth polls or rejected writes',async()=>{
+ const t=transport();const account={id:'a',admin:false,campuses:['centrale']};
+ t.setSession({account,csrf:'x',generation:1});t.events.length=0;
+ t.setSession({account:{...account},csrf:'x',generation:1});assert.equal(t.events.length,0);
+ t.queue.push({generation:1});await t.requestApi('auth/session');assert.equal(t.events.length,0);
+ t.queue.push({generation:1,status:409,data:{detail:'conflict'}});await assert.rejects(t.requestApi('permessi',{}));assert.equal(t.events.length,0);
+ t.queue.push({generation:1});await t.requestApi('permessi',{});assert.deepEqual(t.events,['cache-cleared']);t.events.length=0;
+ t.setSession({account:{...account,campuses:['succursale']},csrf:'x',generation:1});assert.equal(t.events.length,1);t.events.length=0;
+ t.queue.push({generation:2});await t.requestApi('day/today');assert.equal(t.events.length,1);t.events.length=0;
+ t.setSession(undefined);assert.equal(t.events.length,1);
 });
