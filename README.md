@@ -50,7 +50,7 @@ See [Paid substitutions](docs/paid-substitutions.md) for availability and assign
 
 ### Statistiche
 
-Historical analysis includes absence and cover demand, outcomes, daily trends, weekday/period comparisons and a heatmap. Separate tabs show theoretical weekly availability and class/teacher summaries. Filters, CSV export and print preview support review.
+Historical analysis includes absence and cover demand, outcomes, daily trends, weekday/period comparisons and a heatmap. Separate tabs show theoretical weekly availability and class/teacher summaries. Filters, CSV export and print preview support review. Long tables show 10 rows initially and in print; CSV retains all rows. Custom ranges can include recorded future data, which is an estimate and may change.
 
 Historical totals distinguish absent teachers, teacher-hours and class-periods needing cover. Averages use days with recorded absences or permits. Weekly availability is theoretical capacity, not a count of teachers still free after daily absences and bookings; potential recovery opportunities may represent alternative uses of the same debt.
 

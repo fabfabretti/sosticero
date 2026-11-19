@@ -25,6 +25,7 @@ export const formatNumber = (n: number | null) => n === null ? "—" : n.toLocal
 export function reportCsv(data: StatReport): string {
   const rows: (string | number | null)[][] = [
     ["Sosticero — Statistiche"], ["Sede", campuses[data.campus]], ["Periodo", periods[data.period]], ["Dal", data.start, "Al", data.end],
+    ["Stima", data.end > new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Rome" }).format(new Date()) ? "Il periodo include date future; i dati possono cambiare" : "No"],
     ["Giorni con assenze registrate", data.days], ["Denominatore", "Solo giorni con assenze registrate; stesse date per tutte le sedi"],
     ["Unità", "Ore = periodi dell’orario; docenti deduplicati per giorno"],
     ["Ore assenza ricostruite", data.provenance.reconstructed || 0], ["Ore assenza registrate", data.provenance.recorded || 0],

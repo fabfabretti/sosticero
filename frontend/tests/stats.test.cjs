@@ -31,6 +31,7 @@ test('CSV preserves totals, filters, denominators and safely quotes spreadsheet 
   assert.ok(csv.includes('"2026-10-12";"1";"2";"2";"0";"1";"0";"0";"0"'));
   assert.ok(csv.includes('"\'=1+1;""A";"1"'));
   assert.ok(csv.includes('Solo giorni con assenze registrate'));
+  assert.ok(reporting.reportCsv({ ...fixture, end: '2999-01-01' }).includes('Il periodo include date future'));
 });
 
 function screen(storage) {
@@ -49,7 +50,7 @@ function screen(storage) {
     },
   };
   const jsx = (type, props) => ({ type, props });
-  const { Stats } = load('src/Stats.tsx', { react, 'react/jsx-runtime': { jsx, jsxs: jsx }, './stats-report': reporting, './StatsAvailability': { StatsAvailability: 'stats-availability', absenceExplanation: 'Le ore dei docenti assenti includono anche attività senza una classe da sostituire.' }, './StatsCalendar': calendar, './HeatCell': { HeatCell: 'heat-cell' }, './Attachments': { RecordInfo: 'record-info' }, recharts: new Proxy({}, { get: (_, name) => name }) }, {
+  const { Stats } = load('src/Stats.tsx', { react, 'react/jsx-runtime': { jsx, jsxs: jsx }, './stats-report': reporting, './StatsCharts': {CompositionPie:'composition-pie', DemandCalendar:'demand-calendar'}, './StatsAvailability': { StatsAvailability: 'stats-availability', absenceExplanation: 'Le ore dei docenti assenti includono anche attività senza una classe da sostituire.' }, './StatsCalendar': calendar, './HeatCell': { HeatCell: 'heat-cell' }, './Attachments': { RecordInfo: 'record-info' }, recharts: new Proxy({}, { get: (_, name) => name }) }, {
     localStorage: storage, document: { getElementById: () => ({focus() {}}) },
     fetch(url) { return new Promise(resolve => requests.push({ url, resolve: body => resolve({ ok: true, json: async () => body }) })); },
   });
@@ -107,7 +108,7 @@ test('calendar presets highlight ranges and support cross-month navigation', () 
   const moved = [], picked = [];
   const nodes = flatten(calendar.StatsCalendar({ start:'2026-10-30', end:'2026-11-02', today:'2026-11-02', month:'2026-11-01', onMonth: d => moved.push(d), onSelect: d => picked.push(d) }));
   assert.equal(nodes.find(n => n.props['aria-label'] === '2026-11-01').props['aria-pressed'], true);
-  assert.equal(nodes.find(n => n.props['aria-label'] === '2026-11-03').props.disabled, true);
+  assert.notEqual(nodes.find(n => n.props['aria-label'] === '2026-11-03').props.disabled, true);
   nodes.find(n => n.props['aria-label'] === 'Mese precedente').props.onClick();
   assert.equal(moved[0], '2026-10-01');
   nodes.find(n => n.props['aria-label'] === '2026-11-02').props.onClick();
@@ -235,12 +236,12 @@ test('tabs persist and keyboard navigation preserves the complete print preview'
 test('metric help, pie, teacher rows and CSV use absent teacher-hours', async()=>{
   const s=screen();s.render();s.requests[0].resolve(fixture);await settle();const nodes=s.render();
   const help=nodes.filter(n=>n.type==='record-info');assert.equal(help.length,3);assert.ok(help.every(n=>n.props.hover));
-  const pie=nodes.find(n=>n.type==='Pie');assert.equal(pie.props.dataKey,'hours');assert.equal(pie.props.data.length,1);
+  const pie=nodes.find(n=>n.type==='composition-pie');assert.equal(pie.props.slices.filter(s=>s.hours>0).length,1);
   const teacher=nodes.find(n=>typeof n.type==='function' && n.type.name==='Values' && n.props.headings[0]==='Docente');
   assert.equal(teacher.props.rows[0].join(','),'=Nome,2,1');
   const csv=reporting.reportCsv(fixture);assert.ok(csv.includes('"Programmata";"2";"100"'));assert.ok(csv.includes('"\'=Nome";"2";"1"'));
   const empty=screen();empty.render();empty.requests[0].resolve({...fixture,totals:{...counts,teacherHours:0},absenceTypes:[],teacherAbsences:[]});await settle();
-  assert.ok(!empty.render().some(n=>n.type==='Pie'));
+  assert.ok(!empty.render().some(n=>n.type==='composition-pie'));
 });
 
 test('returning to a cached statistics campus restores its own report without another request', async () => {
@@ -251,4 +252,87 @@ test('returning to a cached statistics campus restores its own report without an
   assert.equal(s.requests.length,2);
   assert.ok(nodes.some(n=>n.props.className==='stats-scope'&&JSON.stringify(n.props.children).includes('Totale')));
   assert.equal(nodes.find(n=>n.type===loading.LoadingRegion).props.blocked,false);
+});
+
+test('future report warning and chart data use the selected scope', async () => {
+  const s = screen(); s.render();
+  s.requests[0].resolve({ ...fixture, end: '2999-01-01', types: { C: 2, PAID: 1 }, totals: { ...counts, covered: 3 }, exceptional: 1,
+    absenceTypes: [{kind:'planned',hours:2,percentage:50},{kind:'last_minute',hours:1,percentage:25},{kind:'unclassified',hours:1,percentage:25}] });
+  await settle();
+  const nodes = s.render();
+  assert.ok(nodes.some(n => n.props?.role === 'status' && String(n.props.children).includes('stima')));
+  const pies = nodes.filter(n => n.type === 'composition-pie');
+  assert.equal(pies.length, 2);
+  assert.deepEqual(Array.from(pies[0].props.slices, d => [d.name,d.hours]), [['Compresenza',2],['A pagamento',1]]);
+  assert.deepEqual(Array.from(pies[1].props.slices, d => d.name), ['Programmata','Last minute']);
+  const absenceTable = nodes.find(n => n.props?.caption === 'Percentuali su tutte le ore dei docenti assenti');
+  assert.equal(absenceTable.props.rows.length, 3);
+});
+
+test('unclassified-only and uncovered reports have explicit chart empty states', async () => {
+  const s = screen(); s.render();
+  s.requests[0].resolve({ ...fixture, absenceTypes: [{kind:'unclassified', hours:2, percentage:100}] });
+  await settle();
+  const nodes = s.render();
+  assert.equal(nodes.filter(n => n.type === 'composition-pie').length, 0);
+  assert.ok(nodes.some(n => n.type === 'p' && n.props.children === 'Nessuna ora classificata.'));
+  assert.ok(nodes.some(n => n.type === 'p' && n.props.children === 'Nessuna ora coperta nel periodo.'));
+});
+
+test('long report tables expand on screen but print only the first ten', () => {
+  let expanded = false;
+  const react = { useState: () => [expanded, v => { expanded = v; }] };
+  const { Values } = load('src/Stats.tsx', { react, 'react/jsx-runtime': { jsx, jsxs: jsx }, './stats-report': reporting, './StatsCharts': {CompositionPie:'composition-pie', DemandCalendar:'demand-calendar'}, './StatsAvailability': {}, './StatsCalendar': calendar, './HeatCell': {}, './Attachments': {}, recharts: {} });
+  const props = { headings: ['Name'], caption: 'Test', rows: Array.from({ length: 30 }, (_, i) => [i]) };
+  let nodes = flatten(Values(props));
+  assert.equal(nodes.filter(n => n.type === 'tr').length, 11);
+  nodes.find(n => n.type === 'button').props.onClick();
+  nodes = flatten(Values(props));
+  assert.equal(nodes.filter(n => n.type === 'tr').length, 31);
+  nodes = flatten(Values({ ...props, preview: true }));
+  assert.equal(nodes.filter(n => n.type === 'tr').length, 11);
+  assert.ok(nodes.some(n => n.type === 'p' && n.props.children === '20 righe non mostrate'));
+  assert.ok(reporting.reportCsv({ ...fixture, classes: props.rows.map(([name]) => ({name: String(name), demand:1})) }).includes('"29";"1"'));
+});
+
+test('composition labels and demand calendar describe recorded values', () => {
+  const charts = load('src/StatsCharts.tsx', { 'react/jsx-runtime': { jsx, jsxs: jsx }, './stats-report': reporting });
+  const pie = flatten(charts.CompositionPie({ slices: [{ name:'C', hours:2, color:'red' }, { name:'RP', hours:1, color:'blue' }] }));
+  assert.ok(pie.find(n => n.type === 'svg').props['aria-label'].includes('C: 2 ore, 66,67%'));
+  assert.equal(pie.filter(n => n.type === 'path').length, 4);
+  const days = flatten(charts.DemandCalendar({ start:'2026-10-12', end:'2026-10-14', daily:[{ date:'2026-10-12', demand:4 }, { date:'2026-10-13', demand:0 }] }));
+  assert.ok(days.some(n => n.props?.className === 'demand-day demand-4'));
+  assert.ok(days.some(n => n.props?.className === 'demand-day demand-zero'));
+  assert.ok(days.some(n => n.props?.className === 'demand-day demand-missing'));
+});
+
+test('many uneven pie slices have balanced labels within the chart', () => {
+  const { CompositionPie } = load('src/StatsCharts.tsx', { 'react/jsx-runtime': { jsx, jsxs: jsx }, './stats-report': reporting });
+  const values = [277, 111, 67, 31, 24, 17, 9, 7, 7, 7, 5, 2, 1, 1];
+  const nodes = flatten(CompositionPie({ slices: values.map((hours, i) => ({name:`tipo ${i}`, hours, color:'red'})) }));
+  const svg = nodes.find(n => n.type === 'svg');
+  const height = Number(svg.props.viewBox.split(' ')[3]);
+  const labels = nodes.filter(n => n.type === 'text');
+  assert.equal(labels.length, values.length);
+  assert.ok(labels.filter(n => n.props.textAnchor === 'start').length >= 6);
+  assert.ok(labels.filter(n => n.props.textAnchor === 'end').length >= 6);
+  assert.ok(labels.every(n => n.props.y >= 0 && n.props.y + 15 <= height));
+});
+
+test('pie guide lines stay outside and crowded charts use a matching color key', () => {
+  const { CompositionPie } = load('src/StatsCharts.tsx', { 'react/jsx-runtime': { jsx, jsxs: jsx }, './stats-report': reporting });
+  const values = [268, 108, 60, 28, 24, 14, 8, 7, 6, 5, 4, 2, 1, 1];
+  const crowded = flatten(CompositionPie({ slices: values.map((hours, i) => ({name:`tipo ${i}`, hours, color:'red'})) }));
+  assert.equal(crowded.filter(n => n.type === 'circle' && n.props.r === '3.5').length, values.length);
+  assert.ok(crowded.filter(n => n.type === 'text').every(n => n.props.fill === 'red'));
+  const nodes = flatten(CompositionPie({ slices: values.slice(0, 6).map((hours, i) => ({name:`tipo ${i}`, hours, color:'red'})) }));
+  const svg = nodes.find(n => n.type === 'svg');
+  const cy = Number(svg.props.viewBox.split(' ')[3]) / 2;
+  const guides = nodes.filter(n => n.type === 'path' && n.props.stroke === 'red');
+  assert.equal(guides.length, 6);
+  for (const guide of guides) {
+    const numbers = guide.props.d.match(/-?\d+(?:\.\d+)?(?:e[+-]?\d+)?/gi).map(Number);
+    assert.equal(numbers.length, 10);
+    for (let i = 2; i < numbers.length; i += 2) assert.ok(Math.hypot(numbers[i] - 300, numbers[i+1] - cy) >= 97.99);
+  }
 });

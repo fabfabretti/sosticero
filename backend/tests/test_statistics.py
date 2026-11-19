@@ -150,8 +150,12 @@ class StatisticsTest(unittest.TestCase):
         self.entry(hours=[2], day='2099-10-12').raise_for_status()
         self.assertEqual(self.client.get('/api/stats').json()['days'], 0)
         future = self.client.get('/api/stats', params=dict(period='custom', start='2099-10-01', end='2099-10-20')).json()
-        self.assertEqual(future['days'], 0)
+        self.assertEqual(future['days'], 1)
         self.assertEqual(future['end'], '2099-10-20')
+        mixed = self.client.get('/api/stats', params=dict(period='custom', start='2000-01-01', end='2099-10-20')).json()
+        self.assertEqual(mixed['days'], 1)
+        empty = self.client.get('/api/stats', params=dict(period='custom', start='2099-11-01', end='2099-11-20')).json()
+        self.assertEqual(empty['days'], 0)
         for params in ({'campus': 'x'}, {'period': 'x'}, {'period': 'custom'}, {'period': 'custom', 'start': DAY, 'end': '2026-10-01'}):
             self.assertEqual(self.client.get('/api/stats', params=params).status_code, 422)
         state = copy.deepcopy(EMPTY)

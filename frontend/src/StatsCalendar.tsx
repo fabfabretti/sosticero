@@ -31,7 +31,7 @@ export function StatsCalendar({ start, end, today, month, onMonth, onSelect }: {
         const boundary = date === start || date === end;
         return <button key={date} className={"d" + (selected ? boundary ? " sel" : " in-range" : "")}
           aria-label={date} aria-pressed={selected} aria-current={date === today ? "date" : undefined}
-          disabled={date > today} onClick={() => onSelect(date)}>{i + 1}</button>;
+          onClick={() => onSelect(date)}>{i + 1}</button>;
       })}
     </div>
   </div>;

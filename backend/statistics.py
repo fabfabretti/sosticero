@@ -133,13 +133,14 @@ def report(facts, campus='total', period='all', start=None, end=None, today=None
     today = today or datetime.now(ZoneInfo('Europe/Rome')).date()
     if campus not in ('total', *SITES) or period not in ('all', 'week', 'month', 'custom'):
         raise ValueError('Filtro statistiche non valido.')
-    dates = sorted(d for d, f in facts['days'].items() if f['absences'] and d <= today.isoformat())
+    dates = sorted(d for d, f in facts['days'].items() if f['absences'])
+    historical_dates = [d for d in dates if d <= today.isoformat()]
     if period == 'custom':
         if start is None or end is None or start > end:
             raise ValueError('Seleziona un intervallo di date valido.')
     else:
         start = (today - timedelta(days=today.weekday()) if period == 'week' else
-                 today.replace(day=1) if period == 'month' else date.fromisoformat(dates[0]) if dates else today)
+                 today.replace(day=1) if period == 'month' else date.fromisoformat(historical_dates[0]) if historical_dates else today)
         end = today
     dates = [d for d in dates if start.isoformat() <= d <= end.isoformat()]
     state = state or {}
