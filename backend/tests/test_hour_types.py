@@ -198,3 +198,22 @@ class HourTypesTest(unittest.TestCase):
         self.assertLess(ids.index('ENTRA'), ids.index('dis'))
         self.assertEqual(self.choices()['PE']['tier'], 7)
         self.assertFalse(self.choices()['PE']['sameCdc'])
+
+
+    def test_staf_emergency_policy_uses_existing_configuration(self):
+        raw = fixture()
+        raw['docenti'].append(dict(id='staff', nome_originale='Staff'))
+        raw['orario'].append(dict(docente='staff', giorno='lun', ora=2, classi=[], sede='centrale', attivita_originale='STAF'))
+        import_version(self.client, raw, '2026-10-19').raise_for_status()
+        self.set_type('code:STAF', available=False, visible=True, school=True).raise_for_status()
+        day = '2026-10-19'
+        self.client.post('/api/entries', json=dict(day=day, group='abs', id='absent', hours=[2])).raise_for_status()
+        cs = self.client.get('/api/candidates', params=dict(day=day,key=self.key)).json()
+        self.assertTrue(next(c for c in cs if c['id']=='staff')['exceptional'])
+        self.assertEqual(self.client.post('/api/assignments',json=dict(day=day,key=self.key,value='staff')).status_code,422)
+        self.client.post('/api/assignments',json=dict(day=day,key=self.key,value='staff',exceptional=True)).raise_for_status()
+        report = self.client.get('/api/stats/availability',params=dict(date=day,campus='total')).json()
+        self.assertFalse(any(t['id']=='staff' for cell in report['cells'] for t in cell['available']))
+        self.set_type('code:STAF',available=True).raise_for_status()
+        cs = self.client.get('/api/candidates', params=dict(day=day,key=self.key)).json()
+        self.assertFalse(next(c for c in cs if c['id']=='staff')['exceptional'])

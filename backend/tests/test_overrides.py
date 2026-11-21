@@ -74,3 +74,118 @@ class OverridesTest(unittest.TestCase):
         doc = self.save(doc, target=self.base)
         self.assertEqual(len(doc['records']), 2)
         self.assertFalse(o.selected(doc, 'pot', '2026-10-12')['groups'])
+
+class SupportOverridesTest(unittest.TestCase):
+    def setUp(self):
+        self.history = tt.baseline(normalize_dataset(fixture()))
+        self.ds = self.history['versions'][0]['dataset']
+        self.base = o.cells(self.ds, 'support')
+
+    def propose(self, target, teacher='support'):
+        return o.propose(o.empty(), self.history, dict(teacher=teacher, start='2026-10-12', end=None, cells=target))[0]
+
+    def test_support_move_edit_and_mixed_swap_roundtrip(self):
+        for destination in (None, copy.deepcopy(self.ds['lessons']['pot|lun|2']), dict(self.base['lun|2'], room='other')):
+            with self.subTest(destination=destination):
+                self.ds['lessons'].pop('support|mar|3', None)
+                if destination:
+                    self.ds['lessons']['support|mar|3'] = destination
+                base = o.cells(self.ds, 'support')
+                target = copy.deepcopy(base)
+                target['mar|3'], target['lun|2'] = target['lun|2'], target['mar|3']
+                target['mar|3']['classes'] = ['1A']
+                target['mar|3']['site'] = 'succursale'
+                doc = self.propose(target)
+                self.assertEqual(len(doc['records'][0]['groups']), 1)
+                self.assertEqual(o.validate(doc, self.history), doc)
+                actual = o.apply(doc, self.history['versions'][0], self.ds, '2026-10-13')
+                self.assertEqual(actual['lessons']['support|mar|3']['classes'], ['1A'])
+                self.assertEqual(actual['lessons']['support|mar|3']['room'], base['lun|2']['room'])
+
+    def test_reject_bad_payloads_and_other_roles(self):
+        for update in ({'disabled': True}, {'classes': []}, {'classes': ['unknown']}, {'classes': ['1A', '2A']}, {'site': 'unknown'}, {'room': 'changed'}, {'activities': ['POT'], 'special': 'POT'}):
+            with self.subTest(update=update), self.assertRaises(ValueError):
+                target = copy.deepcopy(self.base)
+                target['lun|2'].update(update)
+                self.propose(target)
+        for teacher in ('absent', 'co'):
+            target = o.cells(self.ds, teacher)
+            target['mar|3'], target['lun|2'] = target['lun|2'], None
+            with self.assertRaises(ValueError):
+                self.propose(target, teacher)
+        for target in ({**self.base, 'lun|2': None}, {**self.base, 'mar|3': self.base['lun|2']}):
+            with self.assertRaises(ValueError):
+                self.propose(target)
+
+    def test_multiclass_move_and_single_class_correction(self):
+        self.ds['lessons']['support|lun|2']['classes'] = ['1A', '2A']
+        self.base = o.cells(self.ds, 'support')
+        target = copy.deepcopy(self.base)
+        target['mar|3'], target['lun|2'] = target['lun|2'], None
+        self.assertEqual(o.validate(self.propose(target), self.history)['schema'], 1)
+        target['mar|3']['classes'] = ['1A']
+        self.assertEqual(o.validate(self.propose(target), self.history)['schema'], 1)
+
+    def test_role_or_cell_change_suspends_whole_swap(self):
+        self.ds['lessons']['support|mar|3'] = copy.deepcopy(self.ds['lessons']['pot|lun|2'])
+        base = o.cells(self.ds, 'support')
+        target = copy.deepcopy(base)
+        target['mar|3'], target['lun|2'] = target['lun|2'], target['mar|3']
+        doc = self.propose(target)
+        for change in ('role', 'source', 'destination'):
+            ds = copy.deepcopy(self.ds)
+            if change == 'role': ds['teachers']['support']['role'] = 'curricolare'
+            else: ds['lessons']['support|' + ('lun|2' if change == 'source' else 'mar|3')]['room'] = 'new'
+            history = copy.deepcopy(self.history)
+            history['versions'].append(dict(id='new', effective='2026-10-19', dataset=ds))
+            reconciled, report = o.reconcile(doc, history)
+            self.assertTrue(any(r['review'] for r in report))
+            self.assertEqual(o.apply(reconciled, history['versions'][-1], ds, '2026-10-19')['lessons'], ds['lessons'])
+            self.assertEqual(o.validate(reconciled, history), reconciled)
+
+    def test_archive_uses_start_version_role_and_detached_original(self):
+        older = copy.deepcopy(self.ds)
+        older['teachers']['support']['role'] = 'curricolare'
+        current = self.history['versions'][0]
+        current['effective'] = '2026-10-12'
+        self.history['versions'].insert(0, dict(id='older', effective=None, dataset=older))
+        target = copy.deepcopy(self.base)
+        target['mar|3'], target['lun|2'] = target['lun|2'], None
+        doc = self.propose(target)
+        self.assertEqual(o.validate(doc, self.history), doc)
+        current['dataset']['lessons']['support|lun|2']['site'] = 'succursale'
+        self.assertEqual(o.validate(doc, self.history), doc)
+        current['dataset']['teachers']['support']['role'] = 'ITP'
+        with self.assertRaises(ValueError): o.validate(doc, self.history)
+
+    def test_effective_support_with_inheritance_groups_receptions_and_availability(self):
+        from backend import appointments, receptions, student_groups
+        from backend.domain import auto_availability
+        from backend.storage import EMPTY
+        target = copy.deepcopy(self.base)
+        target['mar|3'], target['lun|2'] = dict(target['lun|2'], classes=['1A']), None
+        self.history['_overrides'] = self.propose(target)
+        reception = dict(teacher='support', day='mar', hour=3, name='support', time='', location='', site='centrale')
+        self.history['_receptions'] = receptions.replace(receptions.empty(), '2026-10-12', [reception])
+        group = dict(id='g1', teacher='support', day='mar', hour=3, site='centrale', room='20', sources=[{'class':'1A','count':5}], start='2026-10-12', end=None)
+        self.history['_studentGroups'] = dict(schema=1, records=[group])
+        before = copy.deepcopy(self.history)
+        active = tt.dataset(self.history, '2026-10-13')
+        self.assertEqual(active['receptions'], [reception])
+        self.assertEqual(active['studentGroups'], [group])
+        self.assertEqual(active['lessons']['support|mar|3']['classes'], ['1A'])
+        self.assertEqual(self.history, before)
+        # Independent records can constrain availability; check class-out without them.
+        self.history.pop('_receptions'); self.history.pop('_studentGroups')
+        state = copy.deepcopy(EMPTY)
+        state['cf']['2026-10-13'] = {'1A': [3]}
+        self.assertIn(3, auto_availability(tt.dataset(self.history, '2026-10-13'), state, '2026-10-13').get('support', []))
+        doc = appointments.empty()
+        doc['people']['replacement'] = dict(id='replacement', name='Replacement', code='', role='sostegno', classe_concorso='SOS')
+        doc['absences'] = [dict(id='absence',person='support',start='2026-10-12',end=None)]
+        doc['appointments'] = [dict(id='coverage',source='support',person='replacement',start='2026-10-12',end=None)]
+        appointments.validate(doc, self.history)
+        self.history['_appointments'] = doc
+        active = tt.dataset(self.history, '2026-10-13')
+        self.assertEqual(active['lessons']['replacement|mar|3']['classes'], ['1A'])
+        self.assertNotIn('replacement|lun|2', active['lessons'])

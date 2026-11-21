@@ -173,7 +173,9 @@ def rank_candidate(candidate, row):
     if ty == 'SPECIAL':
         return CandidateTier.ENTRY_EXIT
     if ty in ('D', 'DIS'):
-        return CandidateTier.AVAILABLE
+        if not candidate.get('loc') or not row['sede']:
+            return CandidateTier.UNKNOWN_CAMPUS
+        return CandidateTier.AVAILABLE if candidate['loc'] == row['sede'] else CandidateTier.OTHER_CAMPUS
     if ty == 'DIR':
         return CandidateTier.OFFICE
     if ty in ('RP', 'PAID'):
@@ -188,8 +190,8 @@ def rank_candidate(candidate, row):
 
 def candidate_order(candidate):
     if candidate['ty'] == 'PAID':
-        return (candidate['tier'], 1, candidate['paidCount'], candidate['name'].casefold(), candidate['id'])
-    return (candidate['tier'],
+        return (candidate['tier'], 0, 1, candidate['paidCount'], candidate['name'].casefold(), candidate['id'])
+    return (candidate['tier'], -int(candidate['tier'] == CandidateTier.OTHER_CAMPUS and candidate['ty'] in ('D', 'DIS')),
             (0 if candidate.get('convenient') else 2) if candidate['ty'] == 'RP' else 0,
             not (candidate.get('inClass') or candidate.get('sameCdc')),
             candidate['today'], candidate['total'], candidate['name'].casefold(), candidate['id'])

@@ -244,3 +244,44 @@ Production login investigation was read-only: the reported account was enabled, 
 Deployed `incoming-20261106T194509-34560` with source snapshot `cf55fd263914d9d7bb5d8bea9805a38a69bd54688356d109f1eaabf795dd088b` using `./scripts/deploy.sh`. The deployment verified the recovery snapshot and live image; independent HTTPS checks verified testing=false, the expected source marker, `/docenti`, served assets and anonymous API denial. A final read-only account check confirmed the reported teacher remained enabled at revision 3 with a PIN and no active account-level temporary limit. Credentials and attempt counters were not changed by diagnosis or verification.
 
 All 352 backend tests, the full frontend suite, focused interaction tests and the production build passed. Isolated API checks covered bulk first activation, distinct personal logins, padded PIN input, immediate deactivation/revocation and reactivation without resetting the PIN. Browser checks covered email mode, desktop/mobile layouts and pasted-PIN login. The unique testing project was stopped; normal local Compose remained stopped.
+
+## Support timetable overrides — 2026-11-21
+
+Deployed with `./scripts/deploy.sh` as `incoming-20261120T231446-58675`, source
+snapshot `b988e809299ba126c9d871d37a44f26bc2bc93b64029ce88128ee2d4f0cf2edb`.
+The release retains the source changes already deployed before this work and adds
+support lesson movement and dated class/campus editing, without disabling support.
+The script verified the complete recovery snapshot, replacement image and HTTPS
+frontend/source marker. Independent read-only checks verified the running image,
+`/api/environment` reporting production and the unchanged operational `/data`
+mount at `/home/pietroa/server/fabs/containers/sosticero/data`.
+
+Validation included 87 focused backend tests, all 36 frontend test files and a
+successful container build. Synthetic API/browser checks on a unique standalone
+`compose.testing.yaml` project verified the temporary mount, allocated localhost
+port, red TESTING ribbon, support edits and keyboard movement, assignment-impact
+review, expiry and archive round trip. That project was stopped afterwards;
+production data was not used for behavioral tests and the old local operational
+app was not started.
+
+## Campus-first availability and configurable STAF — 2026-11-21
+
+Deployed with `./scripts/deploy.sh` as `incoming-20261121T003718-93093`, source
+snapshot `a796b42ee5391018bfec4e997978740aaa6a94300316742121adb2b1549c05d6`.
+All temporary STAFF-specific code and UI restrictions were removed. The actual
+imported code is STAF: its existing editable policy was changed to
+`available=false`, `visible=true`, `school=true`, preserving label/color and all
+other settings. The intentional configuration update was preceded by SQLite's
+online backup to `snapshots/before-staf-config-20261121T003030Z.sqlite`.
+
+Ordinary availability now follows the substitution campus: local D/DIS, local
+POT/activities, other-campus D/DIS, then other-campus POT/activities. Compresence,
+entry/exit and exceptional categories retain their existing roles; unknown
+campuses follow known-campus ordinary candidates. Existing assignments are retained.
+
+Validation passed 83 backend tests and all 36 frontend test files, plus a built
+isolated Compose test proving the four-category order and STAF policy editability.
+The isolated project was stopped. Read-only release checks verified the image,
+production mount and STAF policy, and confirmed the corrected D/DIS campus order
+for the screenshot's 2026-11-20, first-period 5AE substitution without changing
+operational records.

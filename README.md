@@ -38,7 +38,7 @@ Browse teacher timetables at a selected date, including lessons, activities, roo
 
 Administrators import complete JSON timetables with an effective date and review the impact before confirmation. Versions preserve earlier timetable periods. Teacher IDs must remain stable across imports. Removed teachers remain historical references.
 
-Operators can move, swap or disable eligible special hours through dated overrides, with a preview of affected assignments. Imported lessons remain intact. Overrides incompatible with a later import require review rather than silently changing saved substitutions.
+Operators can move, swap or disable eligible special hours through dated overrides, with a preview of affected assignments. Support (sostegno) class lessons can also be moved or swapped within the same teacher’s week, with dated class/campus corrections and an unchanged weekly hour total; support cannot be disabled. Curricolare/ITP class lessons remain fixed, and imported timetables remain intact. Overrides incompatible with a later import require review rather than silently changing saved substitutions.
 
 Reception schedules are imported separately from XLSX, with teacher matching, optional locations and an effective date. Receptions block their numbered period from permit recovery; unknown locations require review.
 
@@ -212,3 +212,9 @@ si conta una sola volta; sede, aula e provenienze storiche sono conservate.
 L’archivio schema 13 include `studentGroupHours`; gli archivi precedenti non
 cancellano i gruppi esistenti. Il salvataggio usa revisione e generazione dei dati,
 rispetta le sedi autorizzate e crea un backup prima della modifica.
+
+Support overrides use the existing inclusive dates, reset and reviewed deletion. Receptions and student groups remain independent and retain overlap indications. Archives containing support overrides require a compatible release: prefer a forward fix; before reverting to an older binary, export evidence and remove support edits through the reviewed deletion flow. Never restore old snapshots over later operational records.
+
+The STAF activity uses the existing configurable hour-type policy: unavailable for ordinary substitutions, visible among candidates, and at this school places it under **Solo in caso di necessità** and excludes it from **Potenziamenti disponibili**. These settings remain editable.
+
+Ordinary disposable hours are grouped by the substitution campus: local A disposizione/DIS, local POT and other available activities, then A disposizione/DIS from the other campus, then its POT/activities. Existing compresence, entry/exit, office and emergency groups retain their roles.

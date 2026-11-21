@@ -96,3 +96,12 @@ test('staffing projection keeps originals discoverable and explains excluded POT
   assert.ok(rows.some(r=>r.name==='Gambato · Coperto da Sicoli'));
   assert.doesNotThrow(()=>generateTimetablePdf(rows,'2026-10-12',null));
 });
+
+test('support effective placement and independent overlaps are exported without POT conversion', () => {
+  const ds = {teachers:{s:{id:'s',name:'Support',role:'sostegno'}},lessons:{'s|mar|3':{classes:['2A'],room:'12',site:'succursale',activities:[]}},receptions:[{teacher:'s',day:'mar',hour:3,time:'10:00',site:'succursale'}],studentGroups:[]};
+  const row = projectTimetableExport(ds)[0];
+  assert.equal(row.cells[0][1], '');
+  assert.match(row.cells[1][2], /2A.*12 \/ S/);
+  assert.match(row.cells[1][2], /Ricevimento \[sovrapposizione\]/);
+  assert.doesNotMatch(row.cells[1][2], /POT/);
+});

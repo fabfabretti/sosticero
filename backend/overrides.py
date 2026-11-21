@@ -1,4 +1,4 @@
-"""Validated dated special-hour patches; imports have no database side effects."""
+"""Validated dated timetable patches; imports have no database side effects."""
 from collections import Counter
 from copy import deepcopy
 from datetime import date
@@ -22,53 +22,66 @@ def special(value):
     return isinstance(value, dict) and (not value.get('classes') or class_commitment(value)) and bool(activity_codes(value))
 
 
-def clean(value):
+def support(value, role):
+    return role == 'sostegno' and isinstance(value, dict) and bool(value.get('classes')) and not activity_codes(value)
+
+
+def editable(value, role):
+    return special(value) or support(value, role)
+
+
+def clean(value, role=None):
     if not value:
         return None
     result = {k: v for k, v in value.items() if k != 'disabled'}
     if activity_codes(value) in ([code] for code in CLASS_ACTIVITIES):
         result.pop('site', None)
-    if class_commitment(value):
+    if class_commitment(value) or support(value, role):
         result['classes'] = []
+    if support(value, role):
+        result.pop('site', None)
     return result
 
 
-def signature(value):
+def signature(value, role=None):
     import json
-    return json.dumps(clean(value), sort_keys=True)
+    return json.dumps(clean(value, role), sort_keys=True)
 
 
 def cells(ds, teacher):
     return {f'{d}|{h}': deepcopy(ds['lessons'].get(f'{teacher}|{d}|{h}')) for d in DAYS for h in HOURS}
 
 
-def groups(base, target, classes=None):
+def groups(base, target, classes=None, role=None):
     if not isinstance(target, dict) or set(target) != set(base):
         raise ValueError('Invia tutte le celle del docente.')
     changed = set()
     for key, value in target.items():
         if value == base[key]:
             continue
-        if (base[key] is not None and not special(base[key])) or (value is not None and not special(value)):
-            raise ValueError('Le lezioni con classi non possono essere modificate.')
+        if (base[key] is not None and not editable(base[key], role)) or (value is not None and not editable(value, role)):
+            raise ValueError('Si possono modificare solo attività speciali e lezioni di sostegno.')
+        if support(value, role) and value.get('disabled'):
+            raise ValueError('Le ore di sostegno non possono essere disabilitate.')
         if value and 'disabled' in value and type(value['disabled']) is not bool:
             raise ValueError('Stato ora non valido.')
-        if value and activity_codes(value) in ([code] for code in CLASS_ACTIVITIES) and value.get('site') not in (*SITES, None):
+        if value and (support(value, role) or activity_codes(value) in ([code] for code in CLASS_ACTIVITIES)) and value.get('site') not in (*SITES, None):
             raise ValueError('Sede attività non valida.')
         if value and value.get('classes'):
             cs = value['classes']
-            if not isinstance(cs, list) or len(cs) != 1 or not isinstance(cs[0], str) or (classes is not None and cs[0] not in classes):
+            unchanged_classes = support(value, role) and any(support(v, role) and v['classes'] == cs and signature(v, role) == signature(value, role) for v in base.values())
+            if not unchanged_classes and (not isinstance(cs, list) or len(cs) != 1 or not isinstance(cs[0], str) or (classes is not None and cs[0] not in classes)):
                 raise ValueError('Classe attività non valida.')
         changed.add(key)
-    if Counter(signature(v) for v in base.values() if special(v)) != Counter(signature(v) for v in target.values() if special(v)):
-        raise ValueError('Le attività e le sedi devono essere conservate.')
+    if Counter(signature(v, role) for v in base.values() if editable(v, role)) != Counter(signature(v, role) for v in target.values() if editable(v, role)):
+        raise ValueError('Le ore e le attività devono essere conservate.')
     # Connect all cells sharing moved payloads, including identical activities.
     result = []
     while changed:
         connected = {changed.pop()}
         while True:
-            payloads = {signature(v) for k in connected for v in (base[k], target[k]) if v}
-            linked = {k for k in changed if any(v and signature(v) in payloads for v in (base[k], target[k]))}
+            payloads = {signature(v, role) for k in connected for v in (base[k], target[k]) if v}
+            linked = {k for k in changed if any(v and signature(v, role) in payloads for v in (base[k], target[k]))}
             if not linked:
                 break
             connected |= linked
@@ -89,7 +102,9 @@ def selected(document, teacher, day):
 
 def blocked(group, version, ds, teacher):
     suspended = any(v['effective'] is None or v['effective'] <= (version['effective'] or '') for v in group['conflicts'])
-    return suspended or teacher not in ds['teachers'] or any(ds['lessons'].get(f'{teacher}|{k}') != v for k, v in group['before'].items())
+    needs_support = any(support(v, 'sostegno') for v in group['before'].values())
+    wrong_role = needs_support and ds['teachers'].get(teacher, {}).get('role') != 'sostegno'
+    return suspended or wrong_role or teacher not in ds['teachers'] or any(ds['lessons'].get(f'{teacher}|{k}') != v for k, v in group['before'].items())
 
 
 def apply(document, version, ds, day):
@@ -140,7 +155,7 @@ def propose(document, history, data):
     reset = data.get('reset', False)
     if type(reset) is not bool or (reset and end is not None):
         raise ValueError('Ripristino non valido.')
-    edits = [] if reset else groups(cells(imported, teacher), data.get('cells'), imported['classes'])
+    edits = [] if reset else groups(cells(imported, teacher), data.get('cells'), imported['classes'], imported['teachers'][teacher]['role'])
     result = deepcopy(document)
     result['records'].append(dict(id=uuid4().hex, teacher=teacher, start=start, end=end, reset=reset, groups=edits))
     return reconcile(result, history)
@@ -174,20 +189,23 @@ def validate(document, history):
             iso(r['start'])
             if r['end'] is not None and iso(r['end']) < r['start'] or r['reset'] and (r['end'] is not None or r['groups']):
                 raise ValueError()
+            from .timetables import version
+            teacher = version(history, r['start'])['dataset']['teachers'].get(r['teacher'])
+            if teacher is None:
+                teacher = next(v['dataset']['teachers'][r['teacher']] for v in reversed(history['versions']) if r['teacher'] in v['dataset']['teachers'])
             used = set()
             for g in r['groups']:
                 if set(g) != {'before', 'after', 'conflicts'} or not isinstance(g['before'], dict) or not g['before'] or set(g['before']) != set(g['after']) or used & set(g['before']) or set(g['before']) - {f'{d}|{h}' for d in DAYS for h in HOURS}:
                     raise ValueError()
                 used |= set(g['before'])
-                if any(v is not None and not special(v) for v in g['before'].values()):
+                if any(v is not None and not editable(v, teacher['role']) for v in g['before'].values()):
                     raise ValueError()
-                rebuilt = groups(g['before'], g['after'], {c for v in history['versions'] for c in v['dataset']['classes']})
+                rebuilt = groups(g['before'], g['after'], {c for v in history['versions'] for c in v['dataset']['classes']}, teacher['role'])
                 if not rebuilt or any(c != dict(id=c['id'], effective=versions[c['id']]['effective']) for c in g['conflicts']):
                     raise ValueError()
                 # A legacy restore can replace the imported basis; validate detached originals too.
                 from .timetables import validate_dataset
-                teacher = next(v['dataset']['teachers'][r['teacher']] for v in history['versions'] if r['teacher'] in v['dataset']['teachers'])
-                validate_dataset(dict(teachers={r['teacher']: teacher}, lessons={f"{r['teacher']}|{k}": v for k, v in g['before'].items() if v is not None}, classes=[], warnings=[]))
+                validate_dataset(dict(teachers={r['teacher']: teacher}, lessons={f"{r['teacher']}|{k}": v for k, v in g['before'].items() if v is not None}, classes=sorted({c for lesson in g['before'].values() if lesson for c in lesson.get('classes', [])}), warnings=[]))
         for evidence in document['evidence']:
             if set(evidence) != {'record', 'previous', 'assignments'} or evidence['record'] not in ids or not isinstance(evidence['previous'], dict) or not isinstance(evidence['assignments'], dict):
                 raise ValueError()

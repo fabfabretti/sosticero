@@ -28,7 +28,7 @@ class CandidateOrderingTest(unittest.TestCase):
     def test_full_hierarchy_and_campus(self):
         self.ds['lessons']['dis|lun|2']['site'] = 'succursale'
         cs = self.choices()
-        self.assertEqual([c['id'] for c in cs], ['co', 'ENTRA', 'ESCE', 'dis', 'PE', 'pot', 'DIR', 'utc', 'ALF', 'UTS', 'STAFF', 'support', 'UNCOVERED'])
+        self.assertEqual([c['id'] for c in cs], ['co', 'ENTRA', 'ESCE', 'PE', 'pot', 'DIR', 'utc', 'dis', 'ALF', 'UTS', 'STAFF', 'support', 'UNCOVERED'])
         self.assertEqual(next(c for c in cs if c['id'] == 'dis')['loc'], 'succursale')
         self.assertEqual(next(c for c in cs if c['id'] == 'UTS')['tier'], 6)
         self.assertTrue(next(c for c in cs if c['id'] == 'ESCE')['enable'])
@@ -102,7 +102,7 @@ class CandidateOrderingTest(unittest.TestCase):
         self.state['cf'][DAY] = {'2A': [2]}
         self.ds['lessons']['support|lun|2']['site'] = 'succursale'
         candidate = next(c for c in self.choices() if c['id'] == 'support')
-        self.assertEqual((candidate['ty'], candidate['loc'], candidate['tier']), ('D', 'succursale', 3))
+        self.assertEqual((candidate['ty'], candidate['loc'], candidate['tier']), ('D', 'succursale', 6))
         self.state['dis'][DAY] = {'support': [2]}
         self.state['disSites'][DAY] = {'support': 'centrale'}
         self.assertEqual(next(c for c in self.choices() if c['id'] == 'support')['loc'], 'centrale')
@@ -130,3 +130,15 @@ class CandidateOrderingTest(unittest.TestCase):
         base = dict(ty='POT', tier=4, today=0, total=0)
         cs = [dict(base, id='z', name='anna'), dict(base, id='a', name='Anna')]
         self.assertEqual([c['id'] for c in sorted(cs, key=candidate_order)], ['a', 'z'])
+
+
+    def test_dis_and_pot_are_grouped_by_target_campus_before_affinity_and_load(self):
+        for i, code, campus in [('local_dis','DIS','centrale'),('local_pot','POT','centrale'),('cross_dis','DIS','succursale'),('cross_pot','POT','succursale')]:
+            self.ds['teachers'][i] = dict(self.ds['teachers']['pot'],id=i,name=i)
+            self.ds['lessons'][i+'|lun|2'] = dict(self.ds['lessons']['pot|lun|2'],activities=[code],special=code,site=campus)
+        self.ds['teachers']['absent']['classe_concorso']='A041'
+        self.ds['teachers']['cross_pot']['classe_concorso']='A041'
+        for site, expected in [('centrale',['local_dis','local_pot','cross_dis','cross_pot']),('succursale',['cross_dis','cross_pot','local_dis','local_pot'])]:
+            self.row['sede']=site
+            actual=[c['id'] for c in self.choices() if c['id'] in expected]
+            self.assertEqual(actual,expected)

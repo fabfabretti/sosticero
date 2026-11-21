@@ -1246,7 +1246,7 @@ function Supplenze() {
           </table>
           <p className="note">
             Ore libere utilizzabili come RP solo con permessi da recuperare entro scadenza.
-            A disposizione ha priorità su POT anche da altra sede.
+            Prima i docenti della stessa sede: A disposizione, poi POT. Seguono A disposizione e POT dell’altra sede.
             Priorità: compresenze nella classe; ingresso/uscita; disponibilità e DI.S;
             POT e altri tipi disponibili nella stessa sede; dirigente e UTC/UTS nella stessa sede;
             tipi disponibili in altra sede; sede da verificare; recuperi permesso favorevoli; disponibilità a pagamento (meno ore a pagamento prima); altri recuperi permesso;

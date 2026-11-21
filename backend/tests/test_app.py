@@ -100,12 +100,15 @@ class RulesTest(unittest.TestCase):
         self.state['cf'][DAY] = {}
         self.assertEqual(len(rows(self.ds, self.state, DAY)), 2)
 
-    def test_cross_campus_availability_ranks_before_same_campus_pot(self):
+    def test_same_campus_pot_precedes_cross_campus_and_unknown_availability(self):
         self.state['cf'][DAY] = {'2A': [2]}
         self.ds['lessons']['support|lun|2']['site'] = 'succursale'
         ids = [c['id'] for c in self.cs()]
-        self.assertLess(ids.index('support'), ids.index('pot'))
+        self.assertLess(ids.index('pot'), ids.index('support'))
         self.state['dis'][DAY] = {'blank': [2]}
+        ids = [c['id'] for c in self.cs()]
+        self.assertLess(ids.index('pot'), ids.index('blank'))
+        self.state['disSites'][DAY] = {'blank': 'centrale'}
         ids = [c['id'] for c in self.cs()]
         self.assertLess(ids.index('blank'), ids.index('pot'))
 

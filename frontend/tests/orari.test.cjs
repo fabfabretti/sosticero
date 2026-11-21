@@ -519,3 +519,77 @@ test('teachers with only receptions still get a timetable and R markers', async 
   const empty = await loaded(async () => ({ ...current, dataset: { teachers: {}, lessons: {} } }));
   assert.equal(empty.nodes().find(n => n.type === 'button' && n.props.children === 'Scarica PDF completo').props.disabled, true);
  });
+
+test('support movement requires the role and conserves complete lessons in mixed swaps', () => {
+  const support = { classes: ['1A'], activities: [], site: 'centrale', room: '12' };
+  const pot = { classes: [], activities: ['POT'], disabled: true };
+  const cells = { a: support, b: pot, c: null };
+  for (const role of ['curricolare', 'ITP', undefined]) assert.equal(helpers.moveHour(cells, 'a', 'c', role), cells);
+  const moved = helpers.moveHour(cells, 'a', 'c', 'sostegno');
+  assert.equal(moved.a, null); assert.equal(moved.c, support);
+  const swapped = helpers.moveHour(cells, 'b', 'a', 'sostegno');
+  assert.equal(swapped.a, pot); assert.equal(swapped.b, support);
+  assert.equal(helpers.editableHour(support), false, 'support never gets a disable toggle');
+});
+
+test('support dialog, keyboard move and stale save retain class/site without disabling', async () => {
+  const data = structuredClone(orari);
+  data.dataset.teachers.a.role = 'sostegno';
+  let submitted;
+  const s = await loaded(async (url, body) => {
+    if (url.startsWith('orari?')) return data;
+    if (url === 'orari/preview') { submitted = body; return { token: 't', days: [] }; }
+    throw Error('Anteprima scaduta');
+  });
+  s.nodes().find(n => n.props?.['aria-label'] === 'Modifica orario di Anna').props.onClick();
+  const cell = () => s.nodes().find(n => n.props?.['aria-label'] === 'Modifica sostegno Lun 1ª 1A');
+  cell().props.onClick();
+  assert.equal(s.nodes().find(n => n.props?.['aria-label'] === 'Classe sostegno').props.disabled, false);
+  assert.ok(!s.nodes().some(n => n.props?.children === 'Nessuna classe'));
+  assert.ok(!s.nodes().some(n => /^Disabilita Lun/.test(n.props?.['aria-label'] || '')));
+  s.nodes().find(n => n.props?.['aria-label'] === 'Classe sostegno').props.onChange({target:{value:'bad'}});
+  assert.equal(s.nodes().find(n => n.props?.children === 'Applica').props.disabled, true);
+  s.nodes().find(n => n.type === 'dialog').props.onCancel();
+  assert.ok(cell());
+  cell().props.onDoubleClick();
+  s.nodes().find(n => n.type === 'button' && n.props.children === 'Staccata').props.onClick();
+  s.nodes().find(n => n.props?.children === 'Applica').props.onClick();
+  cell().props.onKeyDown({altKey:true,key:'ArrowDown',preventDefault(){}});
+  assert.ok(s.nodes().some(n => n.props?.['aria-label'] === 'Modifica sostegno Lun 2ª 1A'));
+  await s.nodes().find(n => n.type === 'button' && n.props.children === 'Salva').props.onClick();
+  assert.equal(submitted.cells['lun|1'], null);
+  assert.equal(submitted.cells['lun|2'].site, 'succursale');
+  assert.equal(submitted.cells['lun|2'].disabled, undefined);
+  assert.ok(s.nodes().some(n => n.props?.['aria-label'] === 'Modifica sostegno Lun 2ª 1A'));
+});
+
+test('support moves retain independent group and reception overlap indicators', async () => {
+  const data = structuredClone(orari);
+  data.dataset.teachers.a.role = 'sostegno';
+  data.dataset.studentGroups = [{id:'g',teacher:'a',day:'lun',hour:2,site:'centrale',room:'20',sources:[{class:'1A',count:3}]}];
+  data.dataset.receptions = [{teacher:'a',day:'lun',hour:2,time:'',location:'',site:'centrale'}];
+  const s = await loaded(async () => data);
+  s.nodes().find(n => n.props?.['aria-label'] === 'Modifica orario di Anna').props.onClick();
+  s.nodes().find(n => n.props?.['aria-label'] === 'Modifica sostegno Lun 1ª 1A').props.onKeyDown({altKey:true,key:'ArrowDown',preventDefault(){}});
+  assert.ok(s.nodes().some(n => n.props?.['aria-label'] === 'Modifica sostegno Lun 2ª 1A'));
+  assert.ok(s.nodes().some(n => n.props?.text?.startsWith('Ricevimento') && n.props.text.includes('Sovrapposizione')));
+  assert.ok(s.nodes().some(n => n.props?.className === 'orari-group campus-centrale'));
+});
+
+test('support multi-class payload is retained for site edits and replaced on explicit class selection', async () => {
+  const data = structuredClone(orari);
+  data.dataset.teachers.a.role = 'sostegno';
+  data.dataset.lessons['a|lun|1'].classes = ['1A', '2A'];
+  const s = await loaded(async () => data);
+  s.nodes().find(n => n.props?.['aria-label'] === 'Modifica orario di Anna').props.onClick();
+  const open = () => s.nodes().find(n => n.props?.['aria-label']?.startsWith('Modifica sostegno Lun 1ª')).props.onClick();
+  open();
+  s.nodes().find(n => n.type === 'button' && n.props.children === 'Staccata').props.onClick();
+  s.nodes().find(n => n.props?.children === 'Applica').props.onClick();
+  assert.ok(s.nodes().some(n => n.props?.['aria-label'] === 'Modifica sostegno Lun 1ª 1A · 2A'));
+  open();
+  s.nodes().find(n => n.props?.['aria-label'] === 'Classe sostegno').props.onChange({target:{value:'1A'}});
+  s.nodes().find(n => n.props?.role === 'option' && n.props.children[0] === '1A').props.onClick();
+  s.nodes().find(n => n.props?.children === 'Applica').props.onClick();
+  assert.ok(s.nodes().some(n => n.props?.['aria-label'] === 'Modifica sostegno Lun 1ª 1A'));
+});
