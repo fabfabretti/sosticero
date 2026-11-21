@@ -88,3 +88,13 @@ test('drafts survive appends and obsolete date/filter/unmount work is cancelled'
   assert.equal(tables(s).length,6);assert.equal(s.timers.size,1);
   s.unmount();assert.equal(s.timers.size,0);
 });
+
+test('class view groups teachers by class and supports class search', async () => {
+  const s = screen(); s.nodes(); await settle();
+  s.dataset.lessons['00|mar|2'] = { classes: ['2B', '1A'], room: '12', site: 'centrale' };
+  await s.refresh();
+  s.nodes().find(n => n.type === 'button' && n.props.children === 'Classi').props.onClick();
+  assert.deepEqual(tables(s).map(n => n.props['aria-label']), ['Orario della classe 1A', 'Orario della classe 2B']);
+  s.nodes().find(n => n.props?.['aria-label'] === 'Cerca classe').props.onChange({target:{value:'2b'}});
+  assert.deepEqual(tables(s).map(n => n.props['aria-label']), ['Orario della classe 2B']);
+});

@@ -74,6 +74,7 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
   const [error, setError] = useState('');
   const [exporting, setExporting] = useState(false);
   const [query, setQuery] = useState('');
+  const [view, setView] = useState<'teachers' | 'classes'>('teachers');
   const [draft, setDraft] = useState<Draft>();
   const [nameDraft, setNameDraft] = useState<NameDraft>();
   const [nameStatus, setNameStatus] = useState('');
@@ -261,13 +262,14 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
   return <section className="ui-page orari" aria-labelledby="orari-title">
     <h2 className="ui-title" id="orari-title">Orari</h2>
     <p className="sub">{data ? data.effective ? `Orario dal ${dateLabel(data.effective)}` : 'Orario attuale' : ''}</p>
+    <nav className="ui-actions staffing-tabs" aria-label="Viste orari">{(['teachers', 'classes'] as const).map(tab => <button key={tab} type="button" className={'ui-button' + (view === tab ? ' on' : '')} aria-pressed={view === tab} onClick={() => { if (tab !== view && (!dirty || window.confirm('Scartare le modifiche non salvate?'))) { discard(); setQuery(''); setView(tab); } }}>{tab === 'teachers' ? 'Docenti' : 'Classi'}</button>)}</nav>
     <div className="ui-surface orari-toolbar">
-      <label className="orari-filter">Cerca docente<input type="search" aria-label="Cerca docente" value={query} onChange={e => setQuery(e.target.value)} /></label>
+      <label className="orari-filter">Cerca {view === 'teachers' ? 'docente' : 'classe'}<input type="search" aria-label={view === 'teachers' ? 'Cerca docente' : 'Cerca classe'} value={query} onChange={e => setQuery(e.target.value)} /></label>
       <label>Orario al<input type="date" value={viewDay} disabled={busy} onChange={e => {
         if (!e.target.value || (dirty && !window.confirm('Scartare la bozza e cambiare data?'))) return;
         discard(); setViewDay(e.target.value);
       }} /></label>
-      <button type="button" className="ui-button" disabled={!data || data.day !== viewDay || dirty || busy || exporting || !grids.length} onClick={async () => {
+      {view === 'teachers' && <><button type="button" className="ui-button" disabled={!data || data.day !== viewDay || dirty || busy || exporting || !grids.length} onClick={async () => {
         if (!ready || !data || data.day !== viewDay || dirty || busy || exporting) return;
         setExporting(true); setError('');
         try { await paintLoading(); generateTimetablePdf(projectTimetableExport(data.dataset), data.day, data.effective).save(`orari-${data.day}.pdf`); }
@@ -275,8 +277,9 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
         finally { setExporting(false); }
       }}>{exporting ? <Loading label="Generazione…" reserve="Scarica PDF completo" /> : 'Scarica PDF completo'}</button>
       <span className="sub">Salva o annulla le modifiche prima di esportare.</span>
+      </>}
     </div>
-    <div inert={!ready || busy || !!draft || !!nameDraft}><StudentGroupEditor key={viewDay} api={api} day={viewDay} onDirty={setGroupDirty} onSaved={async () => { invalidateRefresh(); await quietRefresh(); }} /></div>
+    {view === 'teachers' && <div inert={!ready || busy || !!draft || !!nameDraft}><StudentGroupEditor key={viewDay} api={api} day={viewDay} onDirty={setGroupDirty} onSaved={async () => { invalidateRefresh(); await quietRefresh(); }} /></div>}
     <div className="orari-legend" aria-label="Legenda sedi">
       <span className="campus-centrale"><i aria-hidden="true" />C · Centrale</span>
       <span className="campus-succursale"><i aria-hidden="true" />S · Succursale</span>
@@ -285,6 +288,7 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
     {error && <p className="ui-notice ui-notice-error" role="alert">{error}</p>}
     {nameStatus && <p className="ui-notice" role="status">{nameStatus}</p>}
     <LoadingRegion pending={loading || busy} label={busy ? "Elaborazione…" : undefined} blocked={!ready || busy || exporting} error={loadError} retry={() => void quietRefresh().catch(() => {})}>
+    {view === 'classes' ? <ClassTimetables dataset={data?.dataset} query={query} scope={viewDay} ready={ready && data?.day === viewDay} /> : <>
     {data && !filtered.length && <p>Nessun docente trovato.</p>}
     <div inert={groupDirty}><ProgressiveTimetables scope={`${viewDay}|${norm(query)}`} ready={ready && data?.day === viewDay}>{filtered.map(g => <TimetableCard key={g.id} render={() => {
       const staffing = data?.dataset.teachers[g.id];
@@ -392,6 +396,7 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
         })}</tr>)}</tbody></table>
       </div>;
     }} />)}</ProgressiveTimetables></div>
+    </>}
     </LoadingRegion>
     {classEdit && editedHour && <dialog ref={activityDialog} className="orari-activity-editor" aria-labelledby="activity-editor-title" onCancel={closeActivityEditor}>
       <div className="orari-activity-header"><div><h3 id="activity-editor-title">Modifica {editedActivity}</h3><p className="sub">{name(classEdit.teacher)} · {DAY_LABELS[classEdit.slot.split('|')[0]]} {classEdit.slot.split('|')[1]}ª ora</p></div><button type="button" className="x" aria-label="Chiudi editor attività" onClick={closeActivityEditor}>×</button></div>
@@ -417,6 +422,35 @@ export function TeacherTimetables({ api }: { api: <T>(url: string, body?: unknow
       <small>{drag.target ? `${draft?.cells[drag.target] ? 'Scambia' : 'Sposta'} · ${DAY_LABELS[drag.target.split('|')[0]]} ${drag.target.split('|')[1]}ª` : 'Posizione non disponibile'}</small>
     </div>}
   </section>;
+}
+
+
+export function ClassTimetables({ dataset, query, scope, ready }: { dataset?: Dataset; query: string; scope: string; ready: boolean }) {
+  const classes = useMemo(() => {
+    if (!dataset) return [];
+    const slots = new Map<string, Map<string, { teacher: string; lesson?: Lesson; group?: StudentGroup }[]>>();
+    const add = (className: string, slot: string, item: { teacher: string; lesson?: Lesson; group?: StudentGroup }) => {
+      if (!slots.has(className)) slots.set(className, new Map());
+      const week = slots.get(className)!;
+      week.set(slot, [...(week.get(slot) || []), item]);
+    };
+    for (const [key, lesson] of Object.entries(dataset.lessons)) {
+      const [teacher, day, hour] = key.split('|');
+      if (dataset.teachers[teacher]?.retired || dataset.teachers[teacher]?.coveredBy) continue;
+      for (const className of new Set(lesson.classes || [])) add(className, `${day}|${hour}`, { teacher, lesson });
+    }
+    for (const group of dataset.studentGroups || []) for (const className of new Set(group.sources.map(s => s.class))) add(className, `${group.day}|${group.hour}`, { teacher: group.teacher, group });
+    return [...slots.entries()].filter(([name]) => norm(name).includes(norm(query))).sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }));
+  }, [dataset, query]);
+  return <>{dataset && !classes.length && <p>Nessuna classe trovata.</p>}<ProgressiveTimetables scope={`${scope}|classes|${norm(query)}`} ready={ready}>{classes.map(([className, slots]) => <div className="ui-surface orari-card" key={className}>
+    <div className="orari-card-header"><h3>{className}</h3></div>
+    <table className="orari-grid" aria-label={`Orario della classe ${className}`}><thead><tr><th scope="col">Ora</th>{DAYS.map(d => <th key={d} scope="col">{DAY_LABELS[d]}</th>)}</tr></thead><tbody>{HOURS.map(h => <tr key={h}><th scope="row">{h}ª</th>{DAYS.map(d => <td key={d}>{slots.get(`${d}|${h}`)?.map(({ teacher, lesson, group }, i) => {
+      const site = group?.site || lesson?.site;
+      const teacherName = dataset?.teachers[teacher]?.name || teacher;
+      const details = group ? `Gruppo · ${groupLabel(group)} · ${group.room}` : [...(lesson?.activities || (lesson?.special ? [lesson.special] : [])), lesson?.room].filter(Boolean).join(' · ');
+      return <span key={`${teacher}-${i}`} className={`orari-session campus-${site || 'unknown'}${lesson?.disabled ? ' orari-disabled' : ''}`}><span className="orari-session-label">{teacherName}{details && <><br /><small>{details}</small></>}</span><span className="orari-site" title={site === 'centrale' ? 'Centrale' : site === 'succursale' ? 'Succursale' : 'Sede ignota'}>{site === 'centrale' ? 'C' : site === 'succursale' ? 'S' : '?'}</span></span>;
+    })}</td>)}</tr>)}</tbody></table>
+  </div>)}</ProgressiveTimetables></>;
 }
 
 export type StudentGroup = { id: string; teacher: string; day: string; hour: number; site: string; room: string; sources: { class: string; count: number | null }[]; start: string; end: string | null };
