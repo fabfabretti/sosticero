@@ -549,7 +549,7 @@ test('credits footer shows only at the end of Settings', () => {
   a.go('/settings');
   const f = a.render().find(n => n.props?.className === 'credits');
   assert.ok(f, 'credits footer on settings');
-  assert.ok(String(f.props.children).includes('Big Pickle'));
+  assert.ok(String(f.props.children).includes('Agentic Fabs'));
   a.go('/');
   assert.ok(!a.render().some(n => n.props?.className === 'credits'));
   a.go('/permessi');

@@ -1,4 +1,9 @@
 import { formatNumber as fmt } from './stats-report';
+import { init, use } from 'echarts/core';
+import { PieChart } from 'echarts/charts';
+import { SVGRenderer } from 'echarts/renderers';
+
+use([PieChart, SVGRenderer]);
 
 export type Slice = { name: string; hours: number; color: string };
 
@@ -15,35 +20,25 @@ export function CompositionPie({ slices }: { slices: Slice[] }) {
     const imbalance = (r: number) => Math.abs(visible.length - 2 * centers.filter(m => Math.cos(m + r) >= 0).length);
     return imbalance(candidate) < imbalance(best) ? candidate : best;
   }, -Math.PI / 2);
-  let angle = rotation;
-  const parts = visible.map(s => {
-    const start = angle;
-    angle += s.hours / total * 2 * Math.PI;
-    const middle = (start + angle) / 2;
-    return { ...s, start, end: angle, middle, side: Math.cos(middle) >= 0 ? 'right' : 'left' };
+  const width = 800;
+  const height = Math.max(280, Math.ceil(visible.length / 2) * 64);
+  const chart = init(null, undefined, { renderer: 'svg', ssr: true, width, height });
+  chart.setOption({
+    animation: false,
+    series: [{
+      type: 'pie', startAngle: -rotation * 180 / Math.PI, radius: 105, center: ['50%', visible.length > 8 ? '42%' : '50%'],
+      avoidLabelOverlap: true, percentPrecision: 2,
+      itemStyle: { borderColor: 'var(--pan)', borderWidth: 1 },
+      label: { show: true, position: 'outer', alignTo: 'labelLine', fontSize: 15, lineHeight: 19,
+        formatter: (p: { name: string; value: number; percent: number }) => `${p.name}\n${fmt(p.value)} ore · ${fmt(p.percent)}%` },
+      labelLine: { show: true, length: 20, length2: 20, lineStyle: { width: 1.7 } },
+      data: visible.map(s => ({ name: s.name, value: s.hours, itemStyle: { color: s.color },
+        label: { color: s.color }, labelLine: { lineStyle: { color: s.color } } })),
+    }],
   });
-  const sides = ['left', 'right'] as const;
-  const maxLabels = Math.max(0, ...sides.map(side => parts.filter(p => p.side === side).length));
-  const height = Math.max(300, maxLabels * 42 + 30);
-  const centerY = height / 2;
-  return <div className="composition-chart">
-    <svg viewBox={`0 0 600 ${height}`} role="img" aria-label={visible.map(s => `${s.name}: ${fmt(s.hours)} ore, ${fmt(s.hours / total * 100)}%`).join('; ')}>
-      {parts.map((p, i) => {
-        const x1 = 300 + 90 * Math.cos(p.start), y1 = centerY + 90 * Math.sin(p.start);
-        const x2 = 300 + 90 * Math.cos(p.end), y2 = centerY + 90 * Math.sin(p.end);
-        return visible.length === 1 ? <circle key={i} cx="300" cy={centerY} r="90" fill={p.color} /> : <path key={i} d={`M 300 ${centerY} L ${x1} ${y1} A 90 90 0 ${p.end - p.start > Math.PI ? 1 : 0} 1 ${x2} ${y2} Z`} fill={p.color} stroke="var(--pan)" />;
-      })}
-      {sides.flatMap(side => parts.filter(p => p.side === side).sort((a, b) => Math.sin(a.middle) - Math.sin(b.middle)).map((p, i, group) => {
-        const y = centerY + (i - (group.length - 1) / 2) * 42;
-        const right = side === 'right', anchorX = 300 + 90 * Math.cos(p.middle), anchorY = centerY + 90 * Math.sin(p.middle);
-        const radius = 104 + Math.min(45, Math.abs(y - centerY) * 0.35);
-        const elbowX = 300 + radius * Math.cos(p.middle), elbowY = centerY + radius * Math.sin(p.middle);
-        const lane = right ? 450 : 150;
-        const edge = right ? 455 : 145, textX = right ? 465 : 135;
-        return <g key={p.name}>{visible.length <= 8 ? <path d={`M ${anchorX} ${anchorY} L ${elbowX} ${elbowY} L ${lane} ${elbowY} L ${edge} ${y} L ${right ? 461 : 139} ${y}`} fill="none" stroke={p.color} strokeWidth="1.7" strokeLinejoin="round" /> : <circle cx={right ? 457 : 143} cy={y + 1} r="3.5" fill={p.color} />}<text x={textX} y={y - 3} textAnchor={right ? 'start' : 'end'} fill={p.color} fontSize="12"><tspan x={textX}>{p.name}</tspan><tspan x={textX} dy="15">{fmt(p.hours)} ore · {fmt(p.hours / total * 100)}%</tspan></text></g>;
-      }))}
-    </svg>
-  </div>;
+  const svg = chart.renderToSVGString();
+  chart.dispose();
+  return <div className="composition-chart" role="img" aria-label={visible.map(s => `${s.name}: ${fmt(s.hours)} ore, ${fmt(s.hours / total * 100)}%`).join('; ')} dangerouslySetInnerHTML={{ __html: svg }} />;
 }
 
 export function DemandCalendar({ start, end, daily }: { start: string; end: string; daily: { date: string; demand: number }[] }) {

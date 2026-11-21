@@ -7,7 +7,7 @@ const ts = require('typescript');
 function load(file, imports = {}, globals = {}) {
   const exports = {};
   runInNewContext(ts.transpileModule(readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText,
-    { exports, require: id => id === './Loading' ? loading : id === './useQuietRefresh' ? quiet(imports.react) : id === './session' ? {sessionFetch:(...args)=>globals.fetch(...args)} : imports[id], URLSearchParams, ...globals });
+    { exports, require: id => id === './Loading' ? loading : id === './useQuietRefresh' ? quiet(imports.react) : id === './session' ? {sessionFetch:(...args)=>globals.fetch(...args)} : (imports[id] ?? (id.startsWith('echarts/') ? require(id) : undefined)), URLSearchParams, ...globals });
   return exports;
 }
 const reporting = load('src/stats-report.ts');
@@ -190,6 +190,10 @@ test('summary omits incomplete coverage and heatmap keeps only demand and absent
   assert.ok(!JSON.stringify(cards).includes('della domanda'));
   const selector = nodes.find(n => n.props['aria-label'] === 'Indicatore della mappa');
   assert.deepEqual(flatten(selector).filter(n => n.type === 'button').map(n => n.props.children), ['Ore da coprire', 'Docenti assenti']);
+  nodes.find(n => n.type === 'button' && n.props.children === 'Stampa report').props.onClick();
+  const previewNodes = s.render();
+  const teacher = previewNodes.find(n => n.type?.name === 'Values' && n.props.headings[0] === 'Docente');
+  assert.equal(teacher.props.rows[0][0], 'Docente 1');
   const css = readFileSync('src/style.css', 'utf8');
   assert.match(css, /\.stats-heatmap\s*\{[^}]*table-layout: fixed/s);
   assert.match(css, /\.stats-scroll \.stats-heatmap thead th:last-child\s*\{[^}]*display: table-cell/s);
@@ -238,7 +242,10 @@ test('metric help, pie, teacher rows and CSV use absent teacher-hours', async()=
   const help=nodes.filter(n=>n.type==='record-info');assert.equal(help.length,3);assert.ok(help.every(n=>n.props.hover));
   const pie=nodes.find(n=>n.type==='composition-pie');assert.equal(pie.props.slices.filter(s=>s.hours>0).length,1);
   const teacher=nodes.find(n=>typeof n.type==='function' && n.type.name==='Values' && n.props.headings[0]==='Docente');
-  assert.equal(teacher.props.rows[0].join(','),'=Nome,2,1');
+  const teacherLabels = flatten(teacher.props.rows[0][0]);
+  assert.equal(teacherLabels.find(n => n.props?.className === 'stats-teacher-name').props.children, '=Nome');
+  assert.deepEqual(Array.from(teacherLabels.find(n => n.props?.className === 'stats-teacher-anonymous').props.children), ['Docente ', 1]);
+  assert.deepEqual(Array.from(teacher.props.rows[0].slice(1)), [2, 1]);
   const csv=reporting.reportCsv(fixture);assert.ok(csv.includes('"Programmata";"2";"100"'));assert.ok(csv.includes('"\'=Nome";"2";"1"'));
   const empty=screen();empty.render();empty.requests[0].resolve({...fixture,totals:{...counts,teacherHours:0},absenceTypes:[],teacherAbsences:[]});await settle();
   assert.ok(!empty.render().some(n=>n.type==='composition-pie'));
@@ -295,44 +302,57 @@ test('long report tables expand on screen but print only the first ten', () => {
   assert.ok(reporting.reportCsv({ ...fixture, classes: props.rows.map(([name]) => ({name: String(name), demand:1})) }).includes('"29";"1"'));
 });
 
-test('composition labels and demand calendar describe recorded values', () => {
+test('composition chart keeps all crowded labels and matching colors in printable SVG', () => {
   const charts = load('src/StatsCharts.tsx', { 'react/jsx-runtime': { jsx, jsxs: jsx }, './stats-report': reporting });
-  const pie = flatten(charts.CompositionPie({ slices: [{ name:'C', hours:2, color:'red' }, { name:'RP', hours:1, color:'blue' }] }));
-  assert.ok(pie.find(n => n.type === 'svg').props['aria-label'].includes('C: 2 ore, 66,67%'));
-  assert.equal(pie.filter(n => n.type === 'path').length, 4);
+  const values = [268, 108, 60, 28, 24, 14, 8, 7, 6, 5, 4, 2, 1, 1];
+  const result = charts.CompositionPie({ slices: values.map((hours, i) => ({name:`tipo ${i}`, hours, color:`#${String(i+100).padStart(6,'0')}`})) });
+  const svg = result.props.dangerouslySetInnerHTML.__html;
+  for (let i = 0; i < values.length; i++) {
+    assert.ok(svg.includes(`tipo ${i}</text>`), `label ${i} is visible`);
+    assert.ok(svg.includes(`#${String(i+100).padStart(6,'0')}`));
+  }
+  assert.ok(svg.includes('viewBox="0 0 800 448"'));
+  assert.equal((svg.match(/viewBox=/g) || []).length, 1);
+  const short = charts.CompositionPie({ slices: values.slice(0, 5).map((hours, i) => ({name:`short ${i}`, hours, color:'#123456'})) }).props.dangerouslySetInnerHTML.__html;
+  assert.ok(short.includes('viewBox="0 0 800 280"'));
+  for (let i = 0; i < 5; i++) assert.ok(short.includes(`short ${i}</text>`));
+  assert.ok(result.props['aria-label'].includes('tipo 0: 268 ore'));
   const days = flatten(charts.DemandCalendar({ start:'2026-10-12', end:'2026-10-14', daily:[{ date:'2026-10-12', demand:4 }, { date:'2026-10-13', demand:0 }] }));
   assert.ok(days.some(n => n.props?.className === 'demand-day demand-4'));
   assert.ok(days.some(n => n.props?.className === 'demand-day demand-zero'));
   assert.ok(days.some(n => n.props?.className === 'demand-day demand-missing'));
 });
 
-test('many uneven pie slices have balanced labels within the chart', () => {
-  const { CompositionPie } = load('src/StatsCharts.tsx', { 'react/jsx-runtime': { jsx, jsxs: jsx }, './stats-report': reporting });
-  const values = [277, 111, 67, 31, 24, 17, 9, 7, 7, 7, 5, 2, 1, 1];
-  const nodes = flatten(CompositionPie({ slices: values.map((hours, i) => ({name:`tipo ${i}`, hours, color:'red'})) }));
-  const svg = nodes.find(n => n.type === 'svg');
-  const height = Number(svg.props.viewBox.split(' ')[3]);
-  const labels = nodes.filter(n => n.type === 'text');
-  assert.equal(labels.length, values.length);
-  assert.ok(labels.filter(n => n.props.textAnchor === 'start').length >= 6);
-  assert.ok(labels.filter(n => n.props.textAnchor === 'end').length >= 6);
-  assert.ok(labels.every(n => n.props.y >= 0 && n.props.y + 15 <= height));
+test('chart escapes category names in generated SVG', () => {
+  const charts = load('src/StatsCharts.tsx', { 'react/jsx-runtime': { jsx, jsxs: jsx }, './stats-report': reporting });
+  const svg = charts.CompositionPie({ slices: [{ name: '</text><script>alert(1)</script>', hours: 1, color: '#123456' }] }).props.dangerouslySetInnerHTML.__html;
+  assert.ok(!svg.includes('<script>'));
+  assert.ok(svg.includes('&lt;script&gt;'));
 });
 
-test('pie guide lines stay outside and crowded charts use a matching color key', () => {
-  const { CompositionPie } = load('src/StatsCharts.tsx', { 'react/jsx-runtime': { jsx, jsxs: jsx }, './stats-report': reporting });
-  const values = [268, 108, 60, 28, 24, 14, 8, 7, 6, 5, 4, 2, 1, 1];
-  const crowded = flatten(CompositionPie({ slices: values.map((hours, i) => ({name:`tipo ${i}`, hours, color:'red'})) }));
-  assert.equal(crowded.filter(n => n.type === 'circle' && n.props.r === '3.5').length, values.length);
-  assert.ok(crowded.filter(n => n.type === 'text').every(n => n.props.fill === 'red'));
-  const nodes = flatten(CompositionPie({ slices: values.slice(0, 6).map((hours, i) => ({name:`tipo ${i}`, hours, color:'red'})) }));
-  const svg = nodes.find(n => n.type === 'svg');
-  const cy = Number(svg.props.viewBox.split(' ')[3]) / 2;
-  const guides = nodes.filter(n => n.type === 'path' && n.props.stroke === 'red');
-  assert.equal(guides.length, 6);
-  for (const guide of guides) {
-    const numbers = guide.props.d.match(/-?\d+(?:\.\d+)?(?:e[+-]?\d+)?/gi).map(Number);
-    assert.equal(numbers.length, 10);
-    for (let i = 2; i < numbers.length; i += 2) assert.ok(Math.hypot(numbers[i] - 300, numbers[i+1] - cy) >= 97.99);
-  }
+
+test('print report identifies Sosticero and hides teacher names, including direct print', async () => {
+  const s = screen(); s.render(); s.requests[0].resolve(fixture); await settle();
+  const nodes = s.render();
+  assert.ok(nodes.some(n => n.props?.className === 'stats-report-header'));
+  assert.ok(nodes.some(n => n.type === 'span' && n.props.children === 'sviluppato da Agentic Fabs'));
+  assert.ok(nodes.some(n => n.type === 'time' && n.props.dateTime));
+  nodes.find(n => n.type === 'button' && n.props.children === 'Stampa report').props.onClick();
+  const previewNodes = s.render();
+  const teacher = previewNodes.find(n => n.type?.name === 'Values' && n.props.headings[0] === 'Docente');
+  assert.equal(teacher.props.rows[0][0], 'Docente 1');
+  const css = readFileSync('src/style.css', 'utf8');
+  assert.match(css, /\.stats-print-preview \.stats-teacher-name\s*\{\s*display:\s*none/);
+  assert.match(css, /@media print\s*\{[^}]*\.stats-teacher-name\s*\{\s*display:\s*none\s*!important/s);
+  assert.match(css, /\.stats-print-preview \.stats-cell-tooltip\s*\{\s*display:\s*none/);
+  assert.match(css, /\.stats-print-preview \.demand-missing\s*\{\s*background:\s*#e5e7e4/);
+  assert.match(css, /\.stats-print-preview\s*\{[^}]*--paper-accent:\s*#4a6a2e/s);
+});
+
+test('reconstructed hours stay in the methodology without a warning banner', async () => {
+  const s = screen(); s.render();
+  s.requests[0].resolve({ ...fixture, provenance: { reconstructed: 2 } }); await settle();
+  const nodes = s.render();
+  assert.ok(!nodes.some(n => n.props?.className === 'stats-warning'));
+  assert.ok(nodes.some(n => n.type === 'p' && String(n.props.className).includes('stats-method') && JSON.stringify(n.props.children).includes('ricostruite')));
 });

@@ -466,7 +466,7 @@ function Shell() {
         <Stub label={tab.label} />
       )}
       {tab.path === "/settings" && (
-        <footer className="credits">Fabs e Big Pickle, 2026</footer>
+        <footer className="credits">Sviluppato da Agentic Fabs</footer>
       )}
     </div>
   );
