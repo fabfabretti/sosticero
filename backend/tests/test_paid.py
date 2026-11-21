@@ -139,6 +139,43 @@ class PaidTest(RecoveryTest):
         cell = next(c for c in stats['cells'] if c['weekday'] == 0 and c['hour'] == 1)
         self.assertIn('rp', [t['id'] for t in cell['paid']])
 
+    def test_occupied_paid_override_requires_confirmation_and_survives_roundtrip(self):
+        self.declare(hours=[2]).raise_for_status()
+        candidate = next(c for c in self.cs(2) if c['id'] == 'rp' and c['ty'] == 'PAID')
+        self.assertFalse(candidate['why'])
+        self.assertTrue(candidate['exceptional'])
+        self.assertIn('Impegnato', candidate['typeLabel'])
+        self.assertEqual(self.choice('PAID', h=2).status_code, 422)
+        body = dict(day=DAY, key='absent|2|1A', value='rp', category='PAID', exceptional=True)
+        self.client.post('/api/assignments', json=body).raise_for_status()
+        self.assertFalse(self.client.get('/api/day/' + DAY).json()['issues'])
+        archive = self.client.get('/api/export').json()
+        saved = archive['asg'][DAY]['absent|2|1A']
+        self.assertTrue(saved['exceptional'])
+        self.assertEqual(saved['t'], 'PAID')
+        self.assertEqual(self.register()['recoveries']['2026-10-05']['rp']['remaining'], 1)
+        self.client.post('/api/import', json=archive).raise_for_status()
+        self.choice('PAID', h=2).raise_for_status()
+        self.assertEqual(self.client.get('/api/export').json()['asg'][DAY]['absent|2|1A'], saved)
+        self.client.post('/api/entries', json=dict(day=DAY, group='abs', id='rp', hours=[2])).raise_for_status()
+        self.assertEqual(self.client.post('/api/assignments', json=body).status_code, 422)
+
+    def test_paid_override_keeps_double_booking_and_undeclared_hours_blocked(self):
+        ds = normalize_dataset(fixture())
+        state = copy.deepcopy(EMPTY)
+        state['paidAvailability'] = {'0': {'rp': [2]}}
+        paid.migrate(state['paidAvailability'])
+        state['asg'] = {DAY: {'other|2|2A': dict(v='rp', t='PAID', c='2A')}}
+        self.assertEqual(paid.slot(ds, state, DAY, 2, 'rp', exceptional=True)['why'], 'Già assegnato in questa ora')
+        self.assertEqual(paid.slot(ds, state, DAY, 3, 'rp', exceptional=True)['why'], 'Disponibilità a pagamento non dichiarata')
+        state['asg'] = {}
+        ds['lessons'].pop('rp|lun|2')
+        ds['receptions'] = [dict(teacher='rp', day='lun', hour=2, site='centrale')]
+        self.assertTrue(paid.slot(ds, state, DAY, 2, 'rp', exceptional=True)['exceptional'])
+        ds['receptions'] = []
+        ds['studentGroups'] = [dict(teacher='rp', day='lun', hour=2, start=DAY, end=None, site='centrale')]
+        self.assertTrue(paid.slot(ds, state, DAY, 2, 'rp', exceptional=True)['exceptional'])
+
     def test_free_day_unknown_campus_and_travel(self):
         ds = normalize_dataset(fixture()); state = copy.deepcopy(EMPTY)
         state['paidAvailability'] = {'0': {'rp': [1, 4, 7]}, '1': {'rp': [1]}}

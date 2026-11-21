@@ -56,7 +56,7 @@ def edit(state, weekday, teacher, selected, account):
         entries.pop(teacher, None)
 
 
-def slot(ds, state, day, hour, teacher, key='', declared=True):
+def slot(ds, state, day, hour, teacher, key='', declared=True, exceptional=False):
     from .domain import lesson, absences, rp_context, SITES
     from .receptions import at
     from . import student_groups
@@ -65,8 +65,10 @@ def slot(ds, state, day, hour, teacher, key='', declared=True):
         return dict(sites=[], uncertain=False, why='Docente non attivo')
     if declared and hour not in hours(state, date.fromisoformat(day).weekday(), teacher):
         return dict(sites=[], uncertain=False, why='Disponibilità a pagamento non dichiarata')
-    why = ('Impegnato nell’orario' if lesson(ds, teacher, day, hour) or student_groups.at(ds, teacher, day, hour) or at(ds, teacher, day, hour) else
-           'Assente' if hour in absences(state, day, ds).get(teacher, []) else
+    occupied = bool(lesson(ds, teacher, day, hour) or student_groups.at(ds, teacher, day, hour) or at(ds, teacher, day, hour))
+    if occupied and not exceptional:
+        return dict(sites=[], uncertain=False, why='Impegnato nell’orario')
+    why = ('Assente' if hour in absences(state, day, ds).get(teacher, []) else
            'A disposizione' if hour in state.get('dis', {}).get(day, {}).get(teacher, []) else
            'Già assegnato in questa ora' if any(k != key and int(k.split('|')[1]) == hour and a['v'] == teacher for k, a in state['asg'].get(day, {}).items()) else '')
     if why:
@@ -77,19 +79,20 @@ def slot(ds, state, day, hour, teacher, key='', declared=True):
         if not blocked:
             sites.append(site)
             uncertain = uncertain or unknown
-    return dict(sites=sites, uncertain=uncertain, why='' if sites else 'Cambio sede senza intervallo')
+    return dict(sites=sites, uncertain=uncertain, why='' if sites else 'Cambio sede senza intervallo', exceptional=occupied)
 
 
 def candidate(ds, state, day, row, teacher):
     i = teacher['id']
     if (teacher.get('retired') or teacher.get('unavailable')) or i in row['ids'] or row['h'] not in hours(state, date.fromisoformat(day).weekday(), i):
         return None
-    info = slot(ds, state, day, row['h'], i, row['k'])
+    info = slot(ds, state, day, row['h'], i, row['k'], exceptional=True)
     why = info['why'] or ('Cambio sede senza intervallo' if row['sede'] and row['sede'] not in info['sites'] else '')
     count = totals(state)[i]
     return dict(id=i, name=teacher['name'], ty='PAID', loc=info['sites'][0] if len(info['sites']) == 1 else None,
-                why=why, tag=why or ('Sede da verificare' if info['uncertain'] else ' / '.join(info['sites'])),
-                typeLabel='A pagamento', paidCount=count, sites=info['sites'], uncertain=info['uncertain'])
+                why=why, tag=why or ('Occupato · Impegnato nell’orario' if info.get('exceptional') else 'Sede da verificare' if info['uncertain'] else ' / '.join(info['sites'])),
+                typeLabel='A pagamento' + (' · Impegnato nell’orario' if info.get('exceptional') else ''),
+                exceptional=info.get('exceptional', False), paidCount=count, sites=info['sites'], uncertain=info['uncertain'])
 
 
 def totals(state):

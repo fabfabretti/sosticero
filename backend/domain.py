@@ -458,7 +458,7 @@ def validate_assignment(ds, state, day, key, value, policies=None, exceptional=F
     old = state['asg'].get(day, {}).get(key)
     if saved and old and old.get('t') == 'PAID' and old['v'] == value:
         from . import paid
-        info = paid.slot(ds, state, day, row['h'], value, key, declared=False)
+        info = paid.slot(ds, state, day, row['h'], value, key, declared=False, exceptional=old.get('exceptional', False))
         if info['why'] or row['sede'] and row['sede'] not in info['sites']:
             raise ValueError(info['why'] or 'Cambio sede senza intervallo')
         return dict(old)

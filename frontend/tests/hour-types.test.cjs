@@ -35,16 +35,17 @@ test('type controls retain saved values on failure and update after successful s
   assert.equal(calls.filter(Boolean).at(-1).id, 'code:PE'); assert.equal(calls.filter(Boolean).at(-1).school, null);
 });
 test('occupied candidates require confirmation and hard blocked buttons stay disabled', () => {
-  for (const accepted of [false, true]) {
+  for (const [ty, label] of [['C', 'Compresenza ITP'], ['PAID', 'A pagamento · Impegnato nell’orario']]) for (const accepted of [false, true]) {
     const assigned = []; const confirmations = [];
     const c = component('src/CandidateDrawer.tsx', message => { confirmations.push(message); return accepted; });
     const nodes = c.render({ open: { h: 2, c: '1A', ids: [] }, name: x => x, busy: false, onClose() {}, onAssign: (...args) => assigned.push(args), cands: [
-      { id: 't', name: 'Teacher', ty: 'C', typeLabel: 'Compresenza ITP', exceptional: true, color: 'purple', why: '', total: 0, today: 0 },
+      { id: 't', name: 'Teacher', ty, typeLabel: label, exceptional: true, color: 'purple', why: '', total: 0, today: 0 },
       { id: 'blocked', name: 'Absent', ty: 'C', exceptional: true, why: 'Assente', total: 0, today: 0 },
     ] });
     const buttons = nodes.filter(n => n.type === 'button' && n.props.className?.includes('c1'));
     buttons[0].props.onClick(); assert.equal(assigned.length, accepted ? 1 : 0);
-    assert.ok(confirmations[0].includes('Compresenza ITP'));
+    assert.ok(confirmations[0].includes(label));
+    if (accepted) assert.deepEqual(assigned[0], ['t', true, ty]);
     assert.equal(buttons[1].props.disabled, true);
     assert.ok(nodes.some(n => n.props.className === 'type-chip palette-purple'));
   }
