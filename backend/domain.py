@@ -159,6 +159,11 @@ def rows(ds, state, day):
         canon = min(members, key=lambda m: m[0])
         result.append(dict(id=canon[0], ids=[m[0] for m in members], h=h, c=c,
                            k=f'{canon[0]}|{h}|{c}', aula=canon[1]['room'], sede=canon[1]['site']))
+    for group in student_groups.reviews(ds, state, day):
+        c = student_groups.row_class(group)
+        result.append(dict(id=group['teacher'], ids=[group['teacher']], h=group['hour'], c=c,
+                           k=f"{group['teacher']}|{group['hour']}|{c}", aula=group['room'],
+                           sede=group['site'], label=student_groups.label(group)))
     return sorted(result, key=lambda r: (r['h'], r['c'], ds['teachers'][r['id']]['name']))
 
 

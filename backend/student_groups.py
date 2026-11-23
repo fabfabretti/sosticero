@@ -64,6 +64,14 @@ def boundaries(document):
     return {r['start'] for r in document['records']} | {(date.fromisoformat(r['end']) + timedelta(days=1)).isoformat() for r in document['records'] if r['end'] and r['end'] != '9999-12-31'}
 
 
+def row_class(group):
+    return 'Gruppo:' + group['id']
+
+
+def label(group):
+    return 'Gruppo: ' + ' + '.join(s['class'] + (f" ({s['count']})" if s['count'] is not None else '') for s in group['sources'])
+
+
 def reviews(ds, state, day):
     from .domain import absences, DAYS
     absent = absences(state, day, ds)

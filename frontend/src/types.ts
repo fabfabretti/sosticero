@@ -15,6 +15,7 @@ export type Row = {
   ids: string[];
   h: number;
   c: string;
+  label?: string;
   k: string;
   aula: string | null;
   sede: string | null;

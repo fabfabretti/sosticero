@@ -13,7 +13,7 @@ Gentile Professore/Professoressa ${recipientName},
 la contatto in quanto, per necessità organizzative dell'Istituto, per le sue ore a disposizione ${hours} del giorno ${notice.day.split("-").reverse().join("/")} è richiesta la sua presenza in sede ${campus(notice.destination)}, anziché ${campus(notice.origin)}.
 
 Al momento le sono state assegnate, in ordine, le seguenti supplenze:
-${rows.map(r => `${r.h}ª ora — classe ${r.c}, aula ${r.aula || "da verificare"}`).join("\n")}
+${rows.map(r => `${r.h}ª ora — classe ${r.label || r.c}, aula ${r.aula || "da verificare"}`).join("\n")}
 
 Ricordo, per favore, di verificare le sostituzioni effettivamente assegnate sul tabellone delle sostituzioni, e di firmare quelle svolte.
 

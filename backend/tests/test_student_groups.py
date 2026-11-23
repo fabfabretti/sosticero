@@ -51,11 +51,11 @@ class GroupRulesTest(unittest.TestCase):
         state = copy.deepcopy(EMPTY)
         state['abs'] = {DAY: {'absent': [3], 'group': [3]}}
         from backend.domain import rows
-        self.assertEqual(len(rows(ds, state, DAY)), 1)
+        self.assertEqual(len(rows(ds, state, DAY)), 2)
         self.assertEqual(len(student_groups.reviews(ds, state, DAY)), 1)
         facts = timetables.sync(self.history, state, statistics.empty())
         self.assertEqual(len(facts['days'][DAY]['absences']), 2)
-        self.assertEqual(len(facts['days'][DAY]['demand']), 1)
+        self.assertEqual(len(facts['days'][DAY]['demand']), 2)
         self.assertEqual(facts['days'][DAY]['absences']['group|3']['group']['room'], 'Aula 20')
         self.history['_studentGroups']['records'][0]['site'] = 'succursale'
         self.assertEqual(timetables.sync(self.history, state, facts), facts)
@@ -127,7 +127,7 @@ class GroupApiTest(unittest.TestCase):
         self.save([record(teacher='absent')]).raise_for_status()
         self.client.post('/api/entries', json=dict(day=DAY, group='abs', id='absent', hours=[3])).raise_for_status()
         daily = self.client.get('/api/day/'+DAY).json()
-        self.assertEqual(len(daily['rows']), 1)
+        self.assertEqual(len(daily['rows']), 2)
         self.assertEqual(len(daily['groupReviews']), 1)
         self.assertEqual(daily['groupReviews'][0]['status'], 'Da valutare')
         self.assertTrue(self.client.get('/api/student-groups?day='+DAY).json()['conflicts'])
@@ -145,6 +145,23 @@ class GroupApiTest(unittest.TestCase):
         self.assertEqual(daily['state']['asg'][DAY]['absent|3|1A'], assignment)
         self.assertTrue(any(issue['key'] == 'absent|3|1A' for issue in daily['issues']))
         self.assertFalse(daily['groupReviews'])
+
+    def test_group_substitution_is_assignable_and_reported_once(self):
+        self.save([record()]).raise_for_status()
+        self.client.post('/api/entries', json=dict(day=DAY, group='dis', id='other', hours=[3])).raise_for_status()
+        self.client.post('/api/entries', json=dict(day=DAY, group='abs', id='group', hours=[3])).raise_for_status()
+        daily = self.client.get('/api/day/' + DAY).json()
+        self.assertEqual(len(daily['rows']), 1)
+        row = daily['rows'][0]
+        self.assertEqual(row['label'], 'Gruppo: 1A (5) + 2A')
+        self.client.post('/api/assignments', json=dict(day=DAY, key=row['k'], value='other')).raise_for_status()
+        daily = self.client.get('/api/day/' + DAY).json()
+        self.assertEqual(daily['state']['asg'][DAY][row['k']]['v'], 'other')
+        archive = self.client.get('/api/export').json()
+        demand = list(archive['statistics']['days'][DAY]['demand'].values())
+        self.assertEqual(len(demand), 1)
+        self.assertEqual(demand[0]['outcome'], 'covered')
+        self.client.post('/api/import', json=archive).raise_for_status()
 
     def test_campus_permissions_and_new_entries_fixture(self):
         from collections import Counter
@@ -171,7 +188,7 @@ class GroupApiTest(unittest.TestCase):
             matching = [r for r in records if r['day'] == DAYS[offset]]
             state['abs'][day] = {i: sorted({r['hour'] for r in matching if r['teacher'] == i}) for i in teachers}
             self.assertEqual(len(student_groups.reviews(ds, state, day)), len(matching))
-            self.assertFalse(rows(ds, state, day))
+            self.assertEqual(len(rows(ds, state, day)), len(matching))
             for r in matching:
                 self.assertIsNotNone(student_groups.at(ds, r['teacher'], day, r['hour']))
         succursale = TestClient(self.app, campus='succursale')

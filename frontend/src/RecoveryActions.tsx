@@ -11,12 +11,12 @@ export function recoveryMessage(day: string, row: Row, permit: RecoveryRequest, 
     const hours = periods.length === 1 ? `alla ${periods[0]} ora` : `alle ore ${periods.slice(0, -1).join(", ")} e ${periods.at(-1)}`;
     clause = `recuperando l'ora di permesso presa il ${date(permit.date)} ${hours}`;
   }
-  return `[Recupero permesso] ${date(day)} · ${row.h}ª ora · ${row.c}
+  return `[Recupero permesso] ${date(day)} · ${row.h}ª ora · ${row.label || row.c}
 
 Gentile Professore/Professoressa ${recipientName},
 
 In assenza di altre soluzioni, richiederei la sua presenza in data/ora
-${date(day)} · ${row.h}ª ora classe ${row.c}, aula ${row.aula || "da verificare"}, ${clause}. Le è possibile?
+${date(day)} · ${row.h}ª ora classe ${row.label || row.c}, aula ${row.aula || "da verificare"}, ${clause}. Le è possibile?
 
 Grazie mille e cordiali saluti,
 ${signature}`;
@@ -43,17 +43,17 @@ export function RecoveryActions({ day, row, recipientName, signature, assignment
     <span className="opt communicated">
       <button type="button" className={assignment.communicated ? "on" : ""} aria-pressed={assignment.communicated === true}
         disabled={busy || !canAssign} title={!canAssign ? reason : undefined}
-        aria-label={`Comunicato ${row.c}, ${row.h}ª ora${!canAssign ? `. ${reason}` : ""}`}
+        aria-label={`Comunicato ${row.label || row.c}, ${row.h}ª ora${!canAssign ? `. ${reason}` : ""}`}
         onClick={() => { if (!busy && canAssign) onCommunicate(); }}>
         {assignment.communicated && <span aria-hidden="true">✓ </span>}Comunicato
       </button>
       <button type="button" className={assignment.accepted ? "on" : ""} aria-pressed={assignment.accepted === true}
         disabled={busy || !canAssign} title={!canAssign ? reason : undefined}
-        aria-label={`Accettata ${row.c}, ${row.h}ª ora${!canAssign ? `. ${reason}` : ""}`}
+        aria-label={`Accettata ${row.label || row.c}, ${row.h}ª ora${!canAssign ? `. ${reason}` : ""}`}
         onClick={() => { if (!busy && canAssign) onAccept(); }}>
         {assignment.accepted && <span aria-hidden="true">✓ </span>}Accettata
       </button>
-      {assignment.t === "RP" && <button type="button" aria-label={`Copia richiesta recupero permesso ${row.c}, ${row.h}ª ora`}
+      {assignment.t === "RP" && <button type="button" aria-label={`Copia richiesta recupero permesso ${row.label || row.c}, ${row.h}ª ora`}
         title={permit ? "Copia richiesta recupero permesso" : missing} disabled={!permit}
         aria-describedby={!permit ? `recovery-${row.k}` : undefined} onClick={() => void copy()}>
         <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="13" rx="2" fill="none" stroke="currentColor" strokeWidth="1.6"/><path d="M15 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h3" fill="none" stroke="currentColor" strokeWidth="1.6"/></svg>
@@ -61,7 +61,7 @@ export function RecoveryActions({ day, row, recipientName, signature, assignment
 
       <button type="button" className="refuse" disabled={busy || !canAssign}
         title={!canAssign ? `Assegnazione riservata alla sede ${row.sede || "non indicata"}` : "Registra il rifiuto e libera la supplenza"}
-        aria-label={`Rifiutata ${row.c}, ${row.h}ª ora`} onClick={() => { if (!busy && canAssign) onRefuse(); }}>Rifiutata</button>
+        aria-label={`Rifiutata ${row.label || row.c}, ${row.h}ª ora`} onClick={() => { if (!busy && canAssign) onRefuse(); }}>Rifiutata</button>
     </span>
     {assignment.t === "RP" && <small id={`recovery-${row.k}`} role="status">{!permit ? missing : feedback}</small>}
   </span>;

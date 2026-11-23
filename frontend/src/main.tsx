@@ -1132,7 +1132,6 @@ function Supplenze() {
               </button>
             </p>
           ))}
-          <section aria-label="Gruppi di alunni da valutare">{(data?.groupReviews || []).filter(g => filter === 'all' || g.site === filter).map(g => <div className="ui-notice" key={g.key}><strong>Da valutare · {g.hour}ª ora · {name(g.teacher)}</strong><p>Gruppo: {g.sources.map(s => s.class + (s.count === null ? '' : ` (${s.count})`)).join(' + ')} · {g.room} · {g.site === 'centrale' ? 'Centrale' : 'Succursale'}</p><p>Docente assente. La gestione del gruppo richiede una decisione della segreteria.</p></div>)}</section>
           <div className="site-filter">
             {[
               ["all", "Entrambe"],
@@ -1182,7 +1181,7 @@ function Supplenze() {
                     .map((r) => (
                       <tr key={r.k}>
                         <td>{r.ids.map(name).join(" / ")}</td>
-                        <td className="c">{r.c}</td>
+                        <td className="c">{r.label || r.c}</td>
                         <td className="room-cell">
                           <b>{r.aula}</b>
                           <br />

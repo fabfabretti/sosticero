@@ -101,7 +101,7 @@ export function CandidateDrawer({
         <header>
           <div>
             <b>
-              {open.h}ª ora{consultation ? " · Disponibilità" : `, classe ${open.c}`}
+              {open.h}ª ora{consultation ? " · Disponibilità" : `, classe ${open.label || open.c}`}
             </b>
             <p>
               {open.ids && <>Sostituisce {open.ids.map(name).join(" / ")} · </>}{open.sede || (consultation ? "Entrambe le sedi" : "sede non indicata")}

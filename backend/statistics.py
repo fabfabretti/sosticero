@@ -49,6 +49,11 @@ def sync(ds, state, facts, days=None, reconstructed=False, revalidate=False):
                 key = f"{slot['h']}|{cls}"
                 row = demands.setdefault(key, dict(h=slot['h'], c=cls, ids=[], site=None))
                 row['ids'].append(slot['teacher'])
+            if slot.get('group'):
+                group = slot['group']
+                cls = student_groups.row_class(group)
+                key = f"{slot['h']}|{cls}"
+                demands[key] = dict(h=slot['h'], c=cls, ids=[slot['teacher']], site=group['site'])
         assignments = state['asg'].get(day, {})
         used = set()
         issues = []
@@ -56,7 +61,8 @@ def sync(ds, state, facts, days=None, reconstructed=False, revalidate=False):
         for key, row in demands.items():
             row['ids'].sort()
             canonical = row['ids'][0]
-            row['site'] = slots[f"{canonical}|{row['h']}"]['site']
+            if row['site'] is None:
+                row['site'] = slots[f"{canonical}|{row['h']}"]['site']
             row['key'] = f"{canonical}|{row['h']}|{row['c']}"
             a = assignments.get(row['key'])
             row.update(outcome='pending', assignment=deepcopy(a), eligible=True, valid=True)
@@ -122,11 +128,16 @@ def validate(facts, ds, state):
             for row in day['demand'].values():
                 if type(row.get('valid')) is not bool or type(row.get('eligible')) is not bool or row.get('outcome') not in OUTCOMES:
                     raise ValueError()
-        if expected != actual or sync(ds, state, facts) != facts:
+        refreshed = sync(ds, state, facts)
+        legacy = deepcopy(refreshed)
+        for day, data in legacy['days'].items():
+            old_demand = facts['days'].get(day, {}).get('demand', {})
+            data['demand'] = {k: v for k, v in data['demand'].items() if k in old_demand or not v['c'].startswith('Gruppo:')}
+        if expected != actual or (refreshed != facts and legacy != facts):
             raise ValueError()
     except (ValueError, TypeError, KeyError, AttributeError, IndexError):
         raise ValueError('Fatti statistici non validi o incoerenti con l’archivio.') from None
-    return facts
+    return refreshed
 
 
 def report(facts, campus='total', period='all', start=None, end=None, today=None, *, state=None, teachers=None):
@@ -189,7 +200,8 @@ def report(facts, campus='total', period='all', start=None, end=None, today=None
             cells[weekday, h].update(counts)
             observations[weekday, h].append(dict(date=d, **counts))
         for r in rows:
-            classes[r['c']] += 1
+            group = next((s.get('group') for s in slots if s['h'] == r['h'] and s.get('group') and student_groups.row_class(s['group']) == r['c']), None)
+            classes[student_groups.label(group) if group else r['c']] += 1
             if r['outcome'] == 'covered':
                 types[r['assignment']['t']] += 1
                 exceptional += bool(r['assignment'].get('exceptional'))

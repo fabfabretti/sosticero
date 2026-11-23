@@ -206,8 +206,8 @@ creano compresenze o domanda di supplenza per l’intera classe. Il docente è
 occupato anche quando le classi di provenienza sono in uscita. Le sovrapposizioni
 con lezioni o ricevimenti sono conservate e segnalate.
 
-L’assenza del docente genera una sola attività **Da valutare**, separata dalle
-supplenze ordinarie: la segreteria decide come gestire il gruppo. L’ora di assenza
+L’assenza del docente genera una sola riga di supplenza per il gruppo, con le
+classi di provenienza e la possibilità di assegnare un supplente. L’ora di assenza
 si conta una sola volta; sede, aula e provenienze storiche sono conservate.
 L’archivio schema 13 include `studentGroupHours`; gli archivi precedenti non
 cancellano i gruppi esistenti. Il salvataggio usa revisione e generazione dei dati,
