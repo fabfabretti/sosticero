@@ -7,7 +7,7 @@ from .domain import rows
 
 METADATA = {
     'abs': ('absenceNotes', 'absenceKinds', 'absenceAttachments'),
-    'cf': (),
+    'cf': ('classAbsenceNotes', 'classAbsenceKinds', 'classAbsenceAttachments'),
     'dis': ('disSites', 'disAttachments'),
     'permessi': ('permitIds', 'permitRequests', 'permitNotes', 'permitKinds', 'permitCreators', 'permitAttachments'),
 }

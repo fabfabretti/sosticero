@@ -249,9 +249,11 @@ def create_app(path=None, seed=None):
         state.setdefault('permitRequests', {})
         state.setdefault('permitIds', {})
         state.setdefault('absenceKinds', {})
+        state.setdefault('classAbsenceKinds', {})
         state.setdefault('permitKinds', {})
         state.setdefault('permitCreators', {})
         state.setdefault('absenceNotes', {})
+        state.setdefault('classAbsenceNotes', {})
         state.setdefault('permitNotes', {})
         state.setdefault('manualPermitNotes', {})
         state.setdefault('manualPermits', {})
@@ -1067,11 +1069,11 @@ def create_app(path=None, seed=None):
 
     @app.post('/api/entries')
     def edit(e: Edit):
-        if 'attachment' in e.model_fields_set and e.group not in ('abs', 'dis'):
+        if 'attachment' in e.model_fields_set and e.group not in ('abs', 'cf', 'dis'):
             raise ValueError('Allegati consentiti solo per assenze o disposizioni docenti.')
-        if 'note' in e.model_fields_set and e.group != 'abs':
+        if 'note' in e.model_fields_set and e.group not in ('abs', 'cf'):
             raise ValueError('Note consentite solo per assenze docenti.')
-        if 'classification' in e.model_fields_set and e.group != 'abs':
+        if 'classification' in e.model_fields_set and e.group not in ('abs', 'cf'):
             raise ValueError('Classificazione consentita solo per assenze docenti.')
         if e.group not in ('abs', 'cf', 'dis'):
             raise ValueError('Gruppo non valido.')
@@ -1087,7 +1089,7 @@ def create_app(path=None, seed=None):
             days = concurrency.entry_days(e, state)
             concurrency.check(e.expected, concurrency.snapshot(state), [concurrency.key(e.group, d, e.id) for d in days])
             attachment = attachments.insert(db, e.attachment.model_dump() if e.attachment else None) if 'attachment' in e.model_fields_set else None
-            attachment_group = {'abs': 'absenceAttachments', 'dis': 'disAttachments'}.get(e.group)
+            attachment_group = {'abs': 'absenceAttachments', 'cf': 'classAbsenceAttachments', 'dis': 'disAttachments'}.get(e.group)
             for d in days:
                 ds, _ = load(db, d)
                 active = timetables.dataset(read_history(db), d)
@@ -1104,21 +1106,21 @@ def create_app(path=None, seed=None):
                 entries = state[e.group].setdefault(d, {})
                 if e.hours is None:
                     entries.pop(e.id, None)
-                    if e.group == 'abs':
-                        state['absenceNotes'].get(d, {}).pop(e.id, None)
-                        state['absenceKinds'].get(d, {}).pop(e.id, None)
+                    if e.group in ('abs', 'cf'):
+                        state['absenceNotes' if e.group == 'abs' else 'classAbsenceNotes'].get(d, {}).pop(e.id, None)
+                        state['absenceKinds' if e.group == 'abs' else 'classAbsenceKinds'].get(d, {}).pop(e.id, None)
                     if e.group == 'dis':
                         state['disSites'].setdefault(d, {}).pop(e.id, None)
                 else:
                     entries[e.id] = default_availability(ds, e.id, d) if e.defaults and e.group == "dis" else sorted(set(e.hours))
-                    if e.group == 'abs' and 'note' in e.model_fields_set:
-                        state['absenceNotes'].get(d, {}).pop(e.id, None)
+                    if e.group in ('abs', 'cf') and 'note' in e.model_fields_set:
+                        state['absenceNotes' if e.group == 'abs' else 'classAbsenceNotes'].get(d, {}).pop(e.id, None)
                         if note := (e.note or '').strip():
-                            state['absenceNotes'].setdefault(d, {})[e.id] = note
-                    if e.group == 'abs' and 'classification' in e.model_fields_set:
-                        state['absenceKinds'].get(d, {}).pop(e.id, None)
+                            state['absenceNotes' if e.group == 'abs' else 'classAbsenceNotes'].setdefault(d, {})[e.id] = note
+                    if e.group in ('abs', 'cf') and 'classification' in e.model_fields_set:
+                        state['absenceKinds' if e.group == 'abs' else 'classAbsenceKinds'].get(d, {}).pop(e.id, None)
                         if e.classification:
-                            state['absenceKinds'].setdefault(d, {})[e.id] = e.classification
+                            state['absenceKinds' if e.group == 'abs' else 'classAbsenceKinds'].setdefault(d, {})[e.id] = e.classification
                     if e.group == 'dis':
                         state['disSites'].setdefault(d, {})[e.id] = e.site or None
             save_state(db, ds, state, days if e.group != 'dis' else [])
@@ -1328,15 +1330,15 @@ def create_app(path=None, seed=None):
                     for i, value in entries.items():
                         if group in attachments.GROUPS:
                             source = attachments.GROUPS[group]
-                            if i not in ds['teachers'] or i not in state[source].get(d, {}) or not isinstance(value, str) or not value:
+                            if i not in (ds['classes'] if source == 'cf' else ds['teachers']) or i not in state[source].get(d, {}) or not isinstance(value, str) or not value:
                                 raise ValueError('Riferimento allegato non valido.')
-                        elif group in ('absenceNotes', 'permitNotes'):
-                            source = 'abs' if group == 'absenceNotes' else 'permessi'
-                            if i not in state[source].get(d, {}) or i not in ds['teachers'] or not isinstance(value, str) or not value.strip():
+                        elif group in ('absenceNotes', 'classAbsenceNotes', 'permitNotes'):
+                            source = {'absenceNotes': 'abs', 'classAbsenceNotes': 'cf', 'permitNotes': 'permessi'}[group]
+                            if i not in state[source].get(d, {}) or i not in (ds['classes'] if source == 'cf' else ds['teachers']) or not isinstance(value, str) or not value.strip():
                                 raise ValueError('Nota senza assenza o permesso valido.')
-                        elif group in ('absenceKinds', 'permitKinds'):
-                            source = 'abs' if group == 'absenceKinds' else 'permessi'
-                            if i not in state[source].get(d, {}) or i not in ds['teachers'] or not isinstance(value, str) or value not in ('planned', 'last_minute', 'trip', 'strike', 'assembly'):
+                        elif group in ('absenceKinds', 'classAbsenceKinds', 'permitKinds'):
+                            source = {'absenceKinds': 'abs', 'classAbsenceKinds': 'cf', 'permitKinds': 'permessi'}[group]
+                            if i not in state[source].get(d, {}) or i not in (ds['classes'] if source == 'cf' else ds['teachers']) or not isinstance(value, str) or value not in ('planned', 'last_minute', 'trip', 'strike', 'assembly'):
                                 raise ValueError('Classificazione assenza non valida.')
                         elif group == 'permitCreators':
                             if i not in state['permessi'].get(d, {}) or not attribution.valid(value):

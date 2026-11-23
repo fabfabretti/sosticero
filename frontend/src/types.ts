@@ -65,6 +65,9 @@ export type Data = {
   };
   state: {
     substitutionRefusals?: Record<string, Record<string, { teacher: string; name: string }[]>>;
+    classAbsenceAttachments?: Record<string, Record<string, string>>;
+    classAbsenceNotes?: Record<string, Record<string, string>>;
+    classAbsenceKinds?: Record<string, Record<string, AbsenceKind>>;
     absenceAttachments?: Record<string, Record<string, string>>;
     permitAttachments?: Record<string, Record<string, string>>;
     disAttachments?: Record<string, Record<string, string>>;

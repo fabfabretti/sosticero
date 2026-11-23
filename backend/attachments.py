@@ -8,7 +8,7 @@ from uuid import uuid4
 
 from PIL import Image, UnidentifiedImageError
 
-GROUPS = {'absenceAttachments': 'abs', 'permitAttachments': 'permessi', 'disAttachments': 'dis'}
+GROUPS = {'absenceAttachments': 'abs', 'classAbsenceAttachments': 'cf', 'permitAttachments': 'permessi', 'disAttachments': 'dis'}
 MAX_BYTES = 5_242_880
 MAX_PIXELS = 25_000_000
 

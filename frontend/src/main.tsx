@@ -725,7 +725,7 @@ function Supplenze() {
       : [];
   const target = chosen || suggestions[selected];
   const duplicate = !!target && Object.hasOwn(entries(target.group === "cf" ? "cf" : kind), target.id);
-  useEffect(() => { if (kind !== "abs" || target?.group === "cf") setEntryNote(""); }, [kind, target?.group]);
+  useEffect(() => { if (kind !== "abs") setEntryNote(""); }, [kind, target?.group]);
   useEffect(() => { setEntryAttachment(undefined); }, [day, kind, target?.id, target?.group]);
   const add = async () => {
     if (busy || conflict || duplicate || adding.current || !target || (!wholeDay && !entryHours.length)) return;
@@ -737,8 +737,8 @@ function Supplenze() {
         day, group, id: target.id,
         hours: wholeDay ? hours : entryHours,
         site, defaults: wholeDay,
-        ...(group !== "cf" ? { attachment: entryAttachment } : {}),
-        ...(group === "abs" ? { classification, note: entryNote } : {}),
+        attachment: entryAttachment,
+        ...(group !== "dis" ? { classification, note: entryNote } : {}),
       });
       if (saved) {
         setEntrySuccess(`${target.label}: registrazione aggiunta.`);
@@ -764,7 +764,7 @@ function Supplenze() {
       const continuous = g === "abs" ? data?.continuousAbsences?.[id] || [] : [];
       const permit = g === "abs" ? data?.state.permessi?.[day]?.[id] || [] : [];
       const requested = g === "abs" ? data?.state.permitRequests?.[day]?.[id] : "";
-      const manualNote = g === "abs" ? data?.state.absenceNotes?.[day]?.[id] : "";
+      const manualNote = g === "abs" ? data?.state.absenceNotes?.[day]?.[id] : g === "cf" ? data?.state.classAbsenceNotes?.[day]?.[id] : "";
       const savedPermitNote = g === "abs" ? data?.state.permitNotes?.[day]?.[id] : "";
       const permitNote = requested ? `Permesso concesso il ${requested.split("-").reverse().join("/")}` : "Permesso";
       const info = [continuous.length ? "Assenza prolungata · gestita in Amministrazione" : "", permit.length ? permitNote : "", manualNote ? `Assenza: ${manualNote}` : "", savedPermitNote ? `Permesso: ${savedPermitNote}` : ""].filter(Boolean).join("\n\n");
@@ -787,6 +787,7 @@ function Supplenze() {
           >
             {g === "cf" ? "Classe " + id : name(id)}
           </button>
+          {g === "cf" && <RecordInfo text={[data?.state.classAbsenceKinds?.[day]?.[id] ? ({ trip: "In gita", strike: "In sciopero", assembly: "In assemblea", planned: "Programmata", last_minute: "Last minute" } as Record<string, string>)[data.state.classAbsenceKinds[day][id]!] : "", manualNote].filter(Boolean).join("\n\n")} links={[{ label: "Apri allegato classe", id: data?.state.classAbsenceAttachments?.[day]?.[id] }]} />}
           {g === "abs" && (
             <RecordInfo text={info} links={[{ label: "Apri allegato assenza", id: data?.state.absenceAttachments?.[day]?.[id] }, { label: "Apri allegato permesso", id: data?.state.permitAttachments?.[day]?.[id] }]} />
           )}
@@ -839,7 +840,7 @@ function Supplenze() {
               <option value="succursale">S</option>
             </select>
           )}
-          {g === "abs" && Object.hasOwn(entries(g), id) && <button className="edit-kind" aria-label={"Modifica assenza di " + name(id)} aria-expanded={editingKind === id} onClick={() => { setEditAttachment(undefined); setEditingDis(undefined); setEditingKind(editingKind === id ? undefined : id); setAbsenceNote(data?.state.absenceNotes?.[day]?.[id] || ""); }}>⋯</button>}
+          {(g === "abs" || g === "cf") && Object.hasOwn(entries(g), id) && <button className="edit-kind" aria-label={"Modifica assenza di " + name(id)} aria-expanded={editingKind === id} onClick={() => { setEditAttachment(undefined); setEditingDis(undefined); setEditingKind(editingKind === id ? undefined : id); setAbsenceNote((g === "cf" ? data?.state.classAbsenceNotes : data?.state.absenceNotes)?.[day]?.[id] || ""); }}>⋯</button>}
           <button
             className="x"
             aria-label={"Rimuovi " + name(id)}
@@ -849,11 +850,11 @@ function Supplenze() {
             ×
           </button>
         </div>
-        {g === "abs" && editingKind === id && Object.hasOwn(entries(g), id) && <div className="absence-editor">
-          <ClassificationChoices value={data?.state.absenceKinds?.[day]?.[id] || null} onChange={value => void mutate("entries", { day, group: "abs", id, hours: hs, classification: value })} />
+        {(g === "abs" || g === "cf") && editingKind === id && Object.hasOwn(entries(g), id) && <div className="absence-editor">
+          <ClassificationChoices value={(g === "cf" ? data?.state.classAbsenceKinds : data?.state.absenceKinds)?.[day]?.[id] || null} onChange={value => void mutate("entries", { day, group: g, id, hours: hs, classification: value })} />
           <label>Note (facoltative)<textarea aria-label={"Note assenza di " + name(id)} value={absenceNote} disabled={busy} onChange={e => setAbsenceNote(e.target.value)} /></label>
-          <AttachmentField key={`abs|${day}|${id}`} value={editAttachment} onPendingChange={setAttachmentPending} saved={data?.state.absenceAttachments?.[day]?.[id]} onChange={setEditAttachment} disabled={busy} />
-          <button className="ui-button" disabled={busy || attachmentPending} onClick={async () => { if (await mutate("entries", { day, group: "abs", id, hours: hs, note: absenceNote, attachment: editAttachment })) { setEditAttachment(undefined); setEditingKind(undefined); } }}>Salva nota e allegato</button>
+          <AttachmentField key={`abs|${day}|${id}`} value={editAttachment} onPendingChange={setAttachmentPending} saved={(g === "cf" ? data?.state.classAbsenceAttachments : data?.state.absenceAttachments)?.[day]?.[id]} onChange={setEditAttachment} disabled={busy} />
+          <button className="ui-button" disabled={busy || attachmentPending} onClick={async () => { if (await mutate("entries", { day, group: g, id, hours: hs, note: absenceNote, attachment: editAttachment })) { setEditAttachment(undefined); setEditingKind(undefined); } }}>Salva nota e allegato</button>
           <button className="ui-button" onClick={() => { setEditingKind(undefined); setEditAttachment(undefined); }}>Annulla</button>
         </div>}
         </div>
@@ -1347,11 +1348,11 @@ function Supplenze() {
               </button>
             </div>
             {!wholeDay && <div className="hrs entry-hours" role="group" aria-label="Ore da aggiungere">{hours.map(h => <button key={h} type="button" aria-label={`Aggiungi ${h}ª ora`} aria-pressed={entryHours.includes(h)} className={entryHours.includes(h) ? "on" : ""} onClick={() => setEntryHours(entryHours.includes(h) ? entryHours.filter(v => v !== h) : [...entryHours, h])}>{h}</button>)}</div>}
-            {kind === "abs" && target?.group !== "cf" && <>
+            {kind === "abs" && <>
               <ClassificationChoices value={classification} onChange={setClassification} />
               <label className="entry-note">Note (facoltative)<textarea aria-label="Note nuova assenza" value={entryNote} disabled={busy} onChange={e => setEntryNote(e.target.value)} /></label>
             </>}
-            {target?.group !== "cf" && <AttachmentField key={`${day}|${kind}|${target?.id}`} value={entryAttachment} onPendingChange={setAttachmentPending} onChange={setEntryAttachment} disabled={busy} />}
+            {<AttachmentField key={`${day}|${kind}|${target?.id}`} value={entryAttachment} onPendingChange={setAttachmentPending} onChange={setEntryAttachment} disabled={busy} />}
             {kind === "dis" && (
               <label className="dis-location">
                 Sede della disposizione
