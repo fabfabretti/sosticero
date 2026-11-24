@@ -588,7 +588,7 @@ test('permit form warns about unscheduled periods and saves them within limit', 
   assert.ok(a.render().some(n => n.props?.tabIndex === 0 && n.props['aria-label']?.includes('nessuna attività')));
   permitForm(a).props.onSubmit({ preventDefault() {} });
   const req = a.requests.shift();
-  assert.deepEqual(JSON.parse(req.options.body), { expected: { 'permessi|2026-10-12|t': 'absent' }, day: '2026-10-12', id: 't', requested_on: todayYmd, note: '', classification: null, hours: [6,7] });
+  assert.deepEqual(JSON.parse(req.options.body), { expected: { 'permessi|2026-10-12|t': 'absent' }, day: '2026-10-12', id: 't', requested_on: todayYmd, note: '', classification: todayYmd === '2026-10-12' ? 'last_minute' : 'planned', hours: [6,7] });
   req.resolve({ ok: true }); await settle();
   a.requests.shift().resolve({ ...permitData, permessi: { '2026-10-12': { t: [6,7] } } }); await settle();
   assert.equal(a.render().filter(n => n.props?.className === 'permit-period').length, 2);
@@ -829,9 +829,9 @@ test('sidebar combines hours once, resolves mixed classifications and allows man
   assert.equal(groupFor(a, 'Anna'), 'Assenze programmate'); assert.equal(groupFor(a, 'Barbara'), 'Assenze last minute');
 });
 test('permit classification loads saved choice and keeps separate creation preference', async () => {
-  const a = await permitsLoaded(); clickText(a, 'Last minute');
+  const a = await permitsLoaded();
   permitTeacher(a).props.onChange({ target: { value: 'cont' } }); permitTeacher(a).props.onKeyDown({ key: 'Enter', preventDefault() {} });
-  permitDay(a).props.onChange({ target: { value: '12/10/2026' } }); permitHour(a, 2).props.onClick(); permitForm(a).props.onSubmit({ preventDefault() {} });
+  permitDay(a).props.onChange({ target: { value: '12/10/2026' } }); if (!pressed(a, 'Last minute')) clickText(a, 'Last minute'); permitHour(a, 2).props.onClick(); permitForm(a).props.onSubmit({ preventDefault() {} });
   assert.equal(JSON.parse(a.requests[0].options.body).classification, 'last_minute');
   a.requests.shift().resolve({ ok: true }); await settle();
   const response = { ...permitData, permessi: { '2026-10-12': { t: [2] } }, permitKinds: { '2026-10-12': { t: 'planned' } } };

@@ -12,6 +12,7 @@ export type InboxStatus = { generation?: number; version?: string; pending: numb
 type Item = { generation?: number; acceptedBy?: {id:string;username:string;name:string} | null; id: string; raw: string[]; status: string; processed?: string; submitted?: string; name?: string; case?: string; start?: string; end?: string; days?: string[]; hours?: number[]; teacher?: string; nameMatched?: boolean; teacherName?: string; teachers?: { id: string; name: string }[]; overlaps?: { day: string; hours: number[] }[]; error: string };
 type HistoryPage = { items: Item[]; hasMore: boolean; generation?: number };
 const date = (value?: string) => value ? value.split("-").reverse().join("/") : "—";
+const defaultClassification = (item: Item): AbsenceKind => item.submitted && item.start ? (item.submitted.slice(0, 10) === item.start ? "last_minute" : "planned") : null;
 const timestamp = (value?: string) => value ? new Date(value).toLocaleString("it-IT") : "Mai";
 
 export function useInboxStatus(api: Api, notify = false) {
@@ -161,7 +162,7 @@ export function AbsenceInbox({ api }: { api: Api }) {
     if (busy || !ready || Object.values(attachmentPending).some(Boolean)) return;
     invalidate(); setBusy(item.id); setError("");
     try {
-      const result = await api<Item & { alreadyProcessed?: boolean }>(`inbox/${item.id}/${action}`, { _generation: item.generation, teacher: teacher || item.teacher, ...(action === "accept" ? drafts[item.id] : {}) });
+      const result = await api<Item & { alreadyProcessed?: boolean }>(`inbox/${item.id}/${action}`, { _generation: item.generation, teacher: teacher || item.teacher, ...(action === "accept" ? { classification: drafts[item.id]?.classification === undefined ? defaultClassification(item) : drafts[item.id].classification, ...drafts[item.id] } : {}) });
       if (action === "preview") { overrides.current.set(item.id, result); setItems(items.map(i => i.id === item.id ? result : i)); }
       else { overrides.current.delete(item.id); setDrafts(old => { const next = { ...old }; delete next[item.id]; return next; }); try { await refresh(); } catch { setError("Operazione salvata. Impossibile aggiornare i dati: usa Riprova."); } if (result.alreadyProcessed) setError(`Comunicazione già ${result.status === "accepted" ? "accettata" : "ignorata"}${result.acceptedBy ? ` da ${result.acceptedBy.name} (${result.acceptedBy.username})` : ""}. Le tue scelte non sono state applicate.`); if (history) window.dispatchEvent(new Event("inbox-changed")); }
     } catch (e) { try { await refresh(); } catch { /* Recovery is exposed by the loading region. */ } setError(String(e)); }
@@ -185,7 +186,7 @@ export function AbsenceInbox({ api }: { api: Api }) {
       {item.status === "pending" && <details className="inbox-metadata">
         <summary>Tipo, note e allegato</summary>
         <fieldset disabled={!!busy}>
-          <ClassificationChoices value={drafts[item.id]?.classification || null} onChange={classification => setDrafts(d => ({ ...d, [item.id]: { ...d[item.id], classification } }))} />
+          <ClassificationChoices value={drafts[item.id]?.classification === undefined ? defaultClassification(item) : drafts[item.id].classification!} onChange={classification => setDrafts(d => ({ ...d, [item.id]: { ...d[item.id], classification } }))} />
           <label>Note (facoltative)<textarea value={drafts[item.id]?.note || ""} onChange={e => setDrafts(d => ({ ...d, [item.id]: { ...d[item.id], note: e.target.value } }))} /></label>
           <AttachmentField value={drafts[item.id]?.attachment} onPendingChange={value => setAttachmentPending(old => ({ ...old, [item.id]: value }))} onChange={attachment => setDrafts(d => ({ ...d, [item.id]: { ...d[item.id], attachment } }))} disabled={!!busy} />
           <p className="sub">Applicati a tutti i giorni della comunicazione. Le note si aggiungono a quelle già presenti.</p>

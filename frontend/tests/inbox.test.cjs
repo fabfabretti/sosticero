@@ -219,3 +219,16 @@ test('Inbox keeps assembly absence details through polling and submits them on a
   assert.equal(body.note, 'Trip notes');
   assert.equal(body.attachment.data, 'example');
 });
+
+test('Inbox defaults classification from submission and first absence dates and allows clearing it', async () => {
+  for (const [start, expected] of [['2026-10-16', 'last_minute'], ['2026-10-19', 'planned']]) {
+    const item = {id:'one',raw:[],status:'pending',error:'',teacher:'a',submitted:'2026-10-16T23:30:00+02:00',start};
+    const h = harness('AbsenceInbox', {'inbox/summary':{pending:1,configured:true},'inbox?history=false':[item],'inbox/one/accept':{ok:true}});
+    h.render(); await settle();
+    const choice = h.render().find(n => n.props?.value === expected && typeof n.props.onChange === 'function');
+    assert.ok(choice);
+    if (expected === 'planned') choice.props.onChange(null);
+    button(h, 'Accetta').props.onClick(); await settle();
+    assert.equal(h.calls.find(c => c.url === 'inbox/one/accept').body.classification, expected === 'planned' ? null : expected);
+  }
+});

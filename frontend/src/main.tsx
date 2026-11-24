@@ -154,7 +154,8 @@ function Permessi() {
   const [attachment, setAttachment] = useState<ImageDraft>();
   const [attachmentPending, setAttachmentPending] = useState(false);
   const [note, setNote] = useState("");
-  const [newClassification, setNewClassification] = useState<AbsenceKind>(null);
+  const [newClassification, setNewClassification] = useState<AbsenceKind | undefined>(undefined);
+  const permitClassification = newClassification === undefined ? (day && requestedOn ? (day === requestedOn ? "last_minute" : "planned") : null) : newClassification;
   const [editClassification, setEditClassification] = useState<AbsenceKind>(null);
   const [teacher, setTeacher] = useState("");
   const [query, setQuery] = useState("");
@@ -249,7 +250,7 @@ function Permessi() {
     <div className="loading-permit-status"><LoadingRegion pending={refreshing || busy} label={busy ? "Salvataggio…" : undefined} blocked={false} error={loadError ? (error || loadError) : undefined} retry={() => void refresh().catch(() => {})} /></div>
     <aside inert={!ready || busy} className={!ready || busy ? "ui-loading-content" : undefined}>
     {conflict && <div role="alert"><p>Il record è cambiato. I valori inseriti sono rimasti nel modulo.</p><button className="ui-button" onClick={async () => { try { await refresh(); reset(); setConflict(false); setError(""); } catch (e) { setError(String(e)); } }}>Ricarica valori salvati</button></div>}
-    <form className="permit-form" onSubmit={e => { e.preventDefault(); if (manual) { if (teacher && Number.isInteger(Number(manualHours)) && Number(manualHours) > 0) void save({ id: teacher, hours: Number(manualHours), note, editing: editingManual }, "manual-permits"); return; } if (invalidDates || !teacher || !selected.length) return; void save({ day, id: teacher, requested_on: requestedOn || null, note, attachment, classification: original ? editClassification : newClassification, hours: selected, ...(original ? { original_day: original.day, original_id: original.id } : {}) }); }}>
+    <form className="permit-form" onSubmit={e => { e.preventDefault(); if (manual) { if (teacher && Number.isInteger(Number(manualHours)) && Number(manualHours) > 0) void save({ id: teacher, hours: Number(manualHours), note, editing: editingManual }, "manual-permits"); return; } if (invalidDates || !teacher || !selected.length) return; void save({ day, id: teacher, requested_on: requestedOn || null, note, attachment, classification: original ? editClassification : permitClassification, hours: selected, ...(original ? { original_day: original.day, original_id: original.id } : {}) }); }}>
       <h2>{manual ? (editingManual ? "Modifica saldo manuale" : "Aggiungi saldo manuale") : original ? "Modifica permesso" : "Aggiungi permesso"}</h2>
       <label className="manual-permit-toggle"><input type="checkbox" checked={manual} disabled={busy} onChange={e => { reset(); setManual(e.target.checked); setError(""); }} />Saldo manuale senza data</label>
       <fieldset disabled={busy || !data}>
@@ -278,9 +279,9 @@ function Permessi() {
           {editingManual && <p className="sub">Il totale include le ore già recuperate: {data?.manualPermits?.[teacher]?.recovered ?? 0}.</p>}
         </> : <>
         <AttachmentField key={`${teacher}|${dayInput}|${manual}`} value={attachment} onPendingChange={setAttachmentPending} saved={original ? data?.permitAttachments?.[original.day]?.[original.id] : undefined} onChange={setAttachment} disabled={busy} />
-        <ClassificationChoices value={original ? editClassification : newClassification} onChange={original ? setEditClassification : setNewClassification} />
-        <label>Data permesso<input required aria-label="Data permesso" type="text" inputMode="numeric" placeholder="gg/mm/aaaa" pattern="[0-9]{2}/[0-9]{2}/[0-9]{4}" value={dayInput} aria-invalid={!!dayInput && !day} onChange={e => setDayInput(e.target.value)} /></label>
-        <label>Data richiesta (facoltativa)<input aria-label="Data richiesta" type="text" inputMode="numeric" placeholder="gg/mm/aaaa" pattern="[0-9]{2}/[0-9]{2}/[0-9]{4}" value={requestedInput} aria-invalid={!!requestedInput && !requestedOn} onChange={e => setRequestedInput(e.target.value)} /></label>
+        <ClassificationChoices value={original ? editClassification : permitClassification} onChange={original ? setEditClassification : setNewClassification} />
+        <label>Data permesso<input required aria-label="Data permesso" type="text" inputMode="numeric" placeholder="gg/mm/aaaa" pattern="[0-9]{2}/[0-9]{2}/[0-9]{4}" value={dayInput} aria-invalid={!!dayInput && !day} onChange={e => { setDayInput(e.target.value); setNewClassification(undefined); }} /></label>
+        <label>Data richiesta (facoltativa)<input aria-label="Data richiesta" type="text" inputMode="numeric" placeholder="gg/mm/aaaa" pattern="[0-9]{2}/[0-9]{2}/[0-9]{4}" value={requestedInput} aria-invalid={!!requestedInput && !requestedOn} onChange={e => { setRequestedInput(e.target.value); setNewClassification(undefined); }} /></label>
         <div className="ui-field"><span>Ore di permesso</span><div className="hrs permit-hours">{hours.map(h => <span className="permit-hour" key={h}>
           <button type="button" aria-label={`Permesso ${h}ª ora`} aria-pressed={selected.includes(h)} className={selected.includes(h) ? "on" : ""} onClick={() => setSelected(selected.includes(h) ? selected.filter(v => v !== h) : [...selected, h])}>{h}</button>
           {teacher && selected.includes(h) && (overLimit || !scheduled(teacher, day, h)) && warning([overLimit ? `Massimo giornaliero: ${maximum} ore di permesso; selezionate ${selected.length}.` : "", !scheduled(teacher, day, h) ? `${h}ª ora: nessuna attività prevista nell’orario per questa ora.` : ""].filter(Boolean).join(" "))}
@@ -503,7 +504,7 @@ function Supplenze() {
     [kind, setKind] = useState<"abs" | "dis">("abs"),
     [wholeDay, setWholeDay] = useState(true),
     [entryHours, setEntryHours] = useState<number[]>([]),
-    [classification, setClassification] = useState<AbsenceKind>(null),
+    [classificationOverride, setClassification] = useState<AbsenceKind | undefined>(undefined),
     [chosen, setChosen] = useState<{ id: string; label: string; group: "abs" | "dis" | "cf" }>(),
     [editingKind, setEditingKind] = useState<string>(),
     [absenceNote, setAbsenceNote] = useState(""),
@@ -519,6 +520,7 @@ function Supplenze() {
     [cands, setCands] = useState<Candidate[]>([]),
     [busy, setBusy] = useState(false),
     [selected, setSelected] = useState(0);
+  const classification = classificationOverride === undefined ? (day === localDate(new Date()) ? "last_minute" : "planned") : classificationOverride;
   const [entryOpen, setEntryOpen] = useState(false);
   const [entrySuccess, setEntrySuccess] = useState("");
   const entryTrigger = useRef<HTMLButtonElement>(null);
@@ -589,6 +591,7 @@ function Supplenze() {
   );
   useEffect(() => {
     ++candidateRequest.current;
+    setClassification(undefined);
     setOpen(undefined);
     setEntryOpen(false);
     clearEntry();
