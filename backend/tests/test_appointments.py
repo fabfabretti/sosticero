@@ -59,6 +59,64 @@ class ModelTest(unittest.TestCase):
         self.assertEqual([(r['day'], r['key']) for r in result['removals']], [(DAY, key)])
         self.assertEqual(state, before)
 
+    def test_appointment_frees_cover_even_without_an_explicit_absence_row(self):
+        current = copy.deepcopy(self.doc)
+        current['appointments'] = []
+        history = dict(self.history, _appointments=current)
+        state = copy.deepcopy(EMPTY)
+        state['asg'][DAY] = {'absent|2|1A': dict(v='normal', t='POT', c='1A')}
+        result = appointments.preview(history, state, dict(schema=1, days={}), self.doc, DAY)
+        self.assertTrue(result['ready'], result['issues'])
+        self.assertEqual([(r['key'], r['substitute']) for r in result['removals']], [('absent|2|1A', 'normal')])
+        self.assertIn('absent|2|1A', state['asg'][DAY])
+
+    def test_absence_pauses_recurring_paid_availability_without_deleting_it(self):
+        state = copy.deepcopy(EMPTY)
+        state['paidAvailability'] = {'0': {'absent': {'2': {'createdBy': None, 'createdFrom': 'centrale'}}}}
+        state['abs'][DAY] = {'absent': [2]}
+        state['asg'][DAY] = {'absent|2|1A': dict(v='normal', t='PAID', c='1A', notified=True, accepted=True)}
+        original = copy.deepcopy(state)
+        absence = appointments.empty()
+        absence['absences'] = [dict(id='long', person='absent', start=DAY, end='2026-10-18')]
+        result = appointments.preview(self.history, state, dict(schema=1, days={}), absence, DAY)
+        self.assertTrue(result['ready'], result['issues'])
+        self.assertEqual(result['pausedPaid'], [dict(person='absent', weekday=0, hours=[2])])
+        self.assertEqual(result['removals'], [])
+        self.assertEqual(state, original)
+        replacement = copy.deepcopy(self.doc)
+        result = appointments.preview(dict(self.history, _appointments=absence), state, dict(schema=1, days={}), replacement, DAY)
+        self.assertTrue(result['ready'], result['issues'])
+        self.assertEqual(result['removals'][0]['category'], 'PAID')
+        self.assertTrue(result['removals'][0]['communicated'])
+        self.assertTrue(result['removals'][0]['accepted'])
+
+    def test_activity_choices_apply_per_hour_and_preserve_legacy_pot(self):
+        history = copy.deepcopy(self.history)
+        base = history['versions'][0]['dataset']
+        sample = copy.deepcopy(base['lessons']['absent|lun|1'])
+        sample.update(activities=['RIT'], special='', classes=[])
+        base['lessons']['absent|mar|3'] = copy.deepcopy(sample)
+        sample.update(activities=['CSS'])
+        base['lessons']['absent|mer|4'] = copy.deepcopy(sample)
+        doc = copy.deepcopy(self.doc)
+        doc['appointments'][0]['activityHours'] = {'lun|1': False, 'mar|3': True, 'mer|4': False}
+        appointments.validate(doc, history)
+        result = appointments.preview(history, copy.deepcopy(EMPTY), dict(schema=1, days={}), doc, DAY)
+        choices = {item['slot']: item for item in result['activityHours']['coverage']}
+        self.assertEqual(choices['lun|1']['codes'], ['POT'])
+        self.assertFalse(choices['lun|1']['disabled'])
+        self.assertTrue(choices['mar|3']['disabled'])
+        ds = result['dataset']
+        self.assertFalse(ds['lessons']['sicoli|lun|1']['disabled'])
+        self.assertTrue(ds['lessons']['sicoli|mar|3']['disabled'])
+        self.assertFalse(ds['lessons']['sicoli|mer|4']['disabled'])
+        self.assertEqual(ds['lessons']['sicoli|lun|2']['classes'], ['1A'])
+        legacy = timetables.dataset(dict(history, _appointments=self.doc), DAY)
+        self.assertNotIn('sicoli|lun|1', legacy['lessons'])
+        self.assertIn('sicoli|lun|1', legacy['excludedPOT'])
+        bad = copy.deepcopy(doc); bad['appointments'][0]['activityHours'] = {'lun|1': 'false'}
+        with self.assertRaises(ValueError): appointments.validate(bad, history)
+
     def test_invalid_periods_and_conflicts(self):
         for mutate in [lambda d: d['appointments'].append(dict(d['appointments'][0], id='overlap')),
                        lambda d: d['appointments'][0].update(person='absent'),
@@ -179,10 +237,9 @@ class ModelTest(unittest.TestCase):
         proposed = appointments.empty()
         proposed['absences'] = [dict(id='long', person='normal', start=DAY, end=None)]
         result = appointments.preview(self.history, state, dict(schema=1, days={}), proposed, DAY)
-        self.assertFalse(result['ready'])
-        self.assertEqual(result['issues'][0]['key'], 'absent|2|1A')
-        self.assertIn('normal', result['issues'][0]['message'])
-        self.assertIn('1A', result['issues'][0]['message'])
+        self.assertTrue(result['ready'], result['issues'])
+        self.assertEqual(result['removals'][0]['reason'], 'unavailable')
+        self.assertEqual(result['removals'][0]['substitute'], 'normal')
         self.assertFalse(any(r['group']=='asg' for r in result['records']))
         proposed['absences'][0]['start']='2026-10-13'
         self.assertTrue(appointments.preview(self.history, state, dict(schema=1, days={}), proposed, DAY)['ready'])
@@ -336,6 +393,58 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(result.status_code,409)
         self.assertEqual(self.client.get('/api/staffing').json()['document'],appointments.empty())
         self.assertEqual(self.preview({}).status_code,422)
+
+    def test_activity_hour_choices_persist_in_substitute_timetable(self):
+        doc = document()
+        doc['absences'][0]['person'] = 'normal'
+        doc['appointments'][0]['source'] = 'normal'
+        doc['appointments'][0]['activityHours'] = {'lun|1': True, 'lun|2': False}
+        preview = self.preview(doc).json()
+        self.assertTrue(preview['ready'], preview['issues'])
+        choices = {r['slot']: r for r in preview['activityHours']['coverage']}
+        self.assertTrue(choices['lun|1']['disabled'])
+        self.assertFalse(choices['lun|2']['disabled'])
+        self.apply(doc).raise_for_status()
+        dataset = self.client.get('/api/orari', params={'day': DAY}).json()['dataset']
+        self.assertTrue(dataset['lessons']['sicoli|lun|1']['disabled'])
+        self.assertFalse(dataset['lessons']['sicoli|lun|2']['disabled'])
+        self.assertEqual(self.client.get('/api/staffing').json()['document']['appointments'][0]['activityHours'], doc['appointments'][0]['activityHours'])
+
+    def test_paid_declarations_survive_absence_and_notified_cover_is_removed_on_replacement(self):
+        self.client.post('/api/entries', json=dict(day=DAY, group='abs', id='absent', hours=[1])).raise_for_status()
+        for person in ('absent', 'rp'):
+            self.client.post('/api/paid-availability', json=dict(weekday=0, id=person, hours=[1], expected={f'paidAvailability|0|{person}': 'absent'})).raise_for_status()
+        finance = self.client.get('/api/paid-finance').json()
+        finance['config']['sites']['centrale'] = dict(budget=10000, laureato=3000, diplomato=2500)
+        self.client.post('/api/paid-finance', json=dict(config=finance['config'], expected=finance['expected'])).raise_for_status()
+        key = 'absent|1|1A'
+        self.client.post('/api/assignments', json=dict(day=DAY, key=key, value='rp', category='PAID')).raise_for_status()
+        report = self.client.get('/api/paid-availability').json()
+        self.assertEqual([(r['date'], r['key']) for r in report['records']], [(DAY, key)])
+        self.assertEqual(report['finance']['sites']['centrale']['cost'], 3000)
+        self.assertEqual(report['finance']['sites']['centrale']['remaining'], 7000)
+        self.client.post('/api/assignments', json=dict(day=DAY, key=key, notified=True)).raise_for_status()
+        self.client.post('/api/assignments', json=dict(day=DAY, key=key, accepted=True)).raise_for_status()
+        before = self.client.get('/api/export').json()
+        absence = document(); absence['appointments'] = []
+        preview = self.preview(absence).json()
+        self.assertTrue(preview['ready'], preview['issues'])
+        self.assertEqual(preview['pausedPaid'][0]['person'], 'absent')
+        self.apply(absence).raise_for_status()
+        self.assertEqual(self.client.get('/api/export').json()['asg'][DAY][key], before['asg'][DAY][key])
+        preview = self.preview(document()).json()
+        self.assertTrue(preview['ready'], preview['issues'])
+        removal = preview['removals'][0]
+        self.assertTrue(removal['category'] == 'PAID' and removal['communicated'] and removal['accepted'])
+        self.apply(document()).raise_for_status()
+        after = self.client.get('/api/export').json()
+        self.assertNotIn(key, after['asg'][DAY])
+        self.assertEqual(after['paidAvailability'], before['paidAvailability'])
+        report = self.client.get('/api/paid-availability').json()
+        self.assertEqual(report['totals'], {})
+        self.assertEqual(report['records'], [])
+        self.assertEqual(report['finance']['sites']['centrale']['cost'], 0)
+        self.assertEqual(report['finance']['sites']['centrale']['remaining'], 10000)
 
     def test_existing_assignment_is_removed_only_on_confirmation(self):
         self.client.post('/api/entries',json=dict(day=DAY,group='abs',id='absent',hours=[1])).raise_for_status()

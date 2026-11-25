@@ -50,9 +50,13 @@ def validate(document, history):
             ids = set()
             for r in records:
                 fields = {'id', field, 'start', 'end'} | ({'person'} if group == 'appointments' else set())
-                if not isinstance(r, dict) or set(r) != fields or not isinstance(r['id'], str) or not r['id'] or r['id'] in ids:
+                if not isinstance(r, dict) or (set(r) != fields and not (group == 'appointments' and set(r) == fields | {'activityHours'})) or not isinstance(r['id'], str) or not r['id'] or r['id'] in ids:
                     raise ValueError()
                 ids.add(r['id'])
+                if group == 'appointments' and 'activityHours' in r:
+                    choices = r['activityHours']
+                    if not isinstance(choices, dict) or any(not isinstance(k, str) or len(k.split('|')) != 2 or k.split('|')[0] not in ('lun','mar','mer','gio','ven') or k.split('|')[1] not in tuple(map(str, range(1, 8))) or type(v) is not bool for k, v in choices.items()):
+                        raise ValueError('Scelte delle attività non valide.')
                 iso(r['start'])
                 if r['end'] is not None and iso(r['end']) < r['start']: raise ValueError()
                 if not isinstance(r['person'], str) or r['person'] not in people or group == 'appointments' and r['source'] not in imported:
@@ -126,7 +130,10 @@ def resolve(ds, document, day):
         if r:
             original = mapping.get(source, source)
             teachers[person].update(retired=False, replaces=original, staffingPeriod=r)
-            if 'POT' in activity_codes(l):
+            if 'activityHours' in r and activity_codes(l):
+                if slot in r['activityHours']:
+                    value['disabled'] = r['activityHours'][slot]
+            elif 'POT' in activity_codes(l):
                 excluded[f'{person}|{slot}'] = deepcopy(l)
                 codes = [c for c in activity_codes(l) if c != 'POT']
                 if not codes: continue
@@ -189,7 +196,7 @@ def preview(history, state, facts, document, day):
     validate(document, history)
     proposed = dict(history, _appointments=document)
     before_dataset, after_dataset = timetables.resolver(history), timetables.resolver(proposed)
-    problems, records, removals = [], [], []
+    problems, records, removals, paused_paid = [], [], [], {}
     state = deepcopy(state)
     removed = set(catalog(history)) - set(catalog(proposed))
     for group in ('manualPermits', 'manualPermitNotes'):
@@ -207,15 +214,14 @@ def preview(history, state, facts, document, day):
         before, after = before_dataset(d), after_dataset(d)
         if before == after:
             continue
-        old_rows = {r['k']: r for r in rows(before, state, d)}
-        new_slots = {(r['h'], r['c']) for r in rows(after, state, d)}
         for key, a in list(state['asg'].get(d, {}).items()):
             person, hour, cls = key.split('|')
             owner = after['teachers'].get(person, {})
-            if (key in old_rows and owner.get('coveredBy')
-                    and owner.get('coveredBy') != before['teachers'].get(person, {}).get('coveredBy')
-                    and (int(hour), cls) not in new_slots):
-                removals.append(dict(day=d, key=key, person=person, substitute=a['v'], hours=[int(hour)]))
+            newly_unavailable = (after['teachers'].get(a['v'], {}).get('unavailable')
+                                 and not before['teachers'].get(a['v'], {}).get('unavailable'))
+            if (owner.get('coveredBy')
+                    and owner.get('coveredBy') != before['teachers'].get(person, {}).get('coveredBy')) or newly_unavailable:
+                removals.append(dict(day=d, key=key, person=person, substitute=a['v'], hours=[int(hour)], reason='unavailable' if newly_unavailable else 'replaced', category=a.get('t'), communicated=bool(a.get('notified') or a.get('communicated')), accepted=bool(a.get('accepted')), campusNotice=a.get('campusNotice')))
                 del state['asg'][d][key]
         changed = {i for i in after['teachers'] if before['teachers'].get(i) != after['teachers'][i]}
         for key, a in state['asg'].get(d, {}).items():
@@ -234,9 +240,7 @@ def preview(history, state, facts, document, day):
                 keys = [f'{i}|{weekday}|{h}' for weekday in ('lun','mar','mer','gio','ven') for h in hours]
                 if i in changed or any(before['lessons'].get(k) != after['lessons'].get(k) for k in keys):
                     records.append(dict(day=d, group=group, person=i, hours=hours))
-                    # Personal historical permits remain readable; no schedule revalidation.
-                    if group == 'dis' and after['teachers'].get(i, {}).get('unavailable'):
-                        problems.append(dict(day=d, key=i, message='Disponibilità manuale incompatibile: risolvere prima la registrazione.'))
+                    # Personal historical records remain readable; unavailable teachers cannot be assigned.
     # Verify imports and recurring declarations at every effective boundary and weekday.
     for start in sorted(set([day, *boundaries(proposed)])):
         for n in range(7):
@@ -252,11 +256,30 @@ def preview(history, state, facts, document, day):
             before = before_dataset(d)
             for i in state.get('paidAvailability', {}).get(str(date.fromisoformat(d).weekday()), {}):
                 if ds['teachers'].get(i, {}).get('unavailable') and not before['teachers'].get(i, {}).get('unavailable'):
-                    problems.append(dict(day=d, key=i, message='Disponibilità a pagamento incompatibile: risolvere prima la dichiarazione.'))
+                    weekday = date.fromisoformat(d).weekday()
+                    paused_paid[(i, weekday)] = dict(person=i, weekday=weekday, hours=paid.hours(state, weekday, i))
     review_people = set(document['people']) | set(document['sources'].values())
     for i in review_people:
         if i in state.get('manualPermits', {}): records.append(dict(day=None, group='manualPermits', person=i, hours=state['manualPermits'][i]['hours']))
+    activity_hours = {}
+    from . import overrides
+    for appointment in document['appointments']:
+        slots = {}
+        starts = {appointment['start'], *(d for d in boundaries(proposed) if d >= appointment['start'] and (not appointment['end'] or d <= appointment['end']))}
+        for start in sorted(starts):
+            version = timetables.version(proposed, start)
+            raw = overrides.apply(proposed.get('_overrides', overrides.empty()), version, version['dataset'], start)
+            for key, lesson in raw['lessons'].items():
+                source, slot = key.split('|', 1)
+                codes = activity_codes(lesson)
+                if source != appointment['source'] or not codes or slot.split('|')[0] not in ('lun','mar','mer','gio','ven'):
+                    continue
+                disabled = appointment.get('activityHours', {}).get(slot, bool(lesson.get('disabled') or ('activityHours' not in appointment and 'POT' in codes)))
+                if slot not in slots:
+                    slots[slot] = dict(slot=slot, codes=[], disabled=disabled)
+                slots[slot]['codes'] = sorted(set(slots[slot]['codes']) | set(codes))
+        activity_hours[appointment['id']] = sorted(slots.values(), key=lambda row: (('lun','mar','mer','gio','ven').index(row['slot'].split('|')[0]), int(row['slot'].split('|')[1])))
     ds = after_dataset(day)
     conflicts = {(p['day'], p['key']) for p in problems}
     records = [r for r in records if (r['day'], r.get('key')) not in conflicts]
-    return dict(ready=not problems, issues=problems, records=records, removals=removals, dataset=ds, document=document)
+    return dict(ready=not problems, issues=problems, records=records, removals=removals, pausedPaid=list(paused_paid.values()), activityHours=activity_hours, dataset=ds, document=document)

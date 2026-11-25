@@ -136,16 +136,16 @@
 .dr-backdrop {
   position: fixed;
   inset: 0;
-  /* Below the drawer (20) but above the sticky top bar (10): clicks land here and close. */
-  z-index: 15;
+  /* Below the drawer (60) but above the sticky top bar (50): clicks land here and close. */
+  z-index: 55;
 }
 .dr {
   position: fixed;
   top: 0;
   right: 0;
   bottom: 0;
-  /* Above the sticky top bar (z-index 10) so the drawer is not covered. */
-  z-index: 20;
+  /* Above the sticky top bar (z-index 50) so the drawer is not covered. */
+  z-index: 60;
   width: 420px;
   max-width: 100%;
   background: var(--pan);

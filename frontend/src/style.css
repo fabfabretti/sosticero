@@ -380,7 +380,7 @@ thead th {
 .bar {
   position: sticky;
   top: 0;
-  z-index: 10;
+  z-index: 50;
   display: flex;
   align-items: center;
   gap: 16px;
@@ -703,6 +703,10 @@ a { color: var(--text); }
 .staffing-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 16px; margin-bottom: 16px; }
 .staffing-fields input, .staffing-fields select { min-height: 44px; }
 .staffing-preview { margin-top: 20px; }
+.staffing-removals { margin: 16px 0; }
+.staffing-removals h4, .staffing-activities h4 { margin: 16px 0 4px; }
+.staffing-removals .ui-table-scroll, .staffing-activities .ui-table-scroll { overflow-x: auto; }
+.staffing-removals .opt { margin: 0; }
 .staffing-week { overflow-x: auto; margin-bottom: 20px; }
 .staffing-week table { border-collapse: collapse; width: 100%; }
 .staffing-week th, .staffing-week td { border: 1px solid var(--ui-border); padding: 10px; text-align: left; }

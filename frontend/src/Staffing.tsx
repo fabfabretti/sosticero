@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { TeacherAccess } from './TeacherAccess';
+import { useAccount } from './Auth';
 import { AdministrationLayout } from './Administration';
 import { requestApi } from './session';
 import { Loading } from './Loading';
@@ -7,20 +8,21 @@ import { TeacherPicker } from './TeacherPicker';
 import { DAYS, HOURS, norm } from './timetables';
 
 type Person = { id: string; name: string; code: string; role: string; classe_concorso: string };
-type Period = { id: string; person: string; start: string; end: string | null; source?: string };
+type Period = { id: string; person: string; start: string; end: string | null; source?: string; activityHours?: Record<string, boolean> };
 type Document = { schema: number; people: Record<string, Person>; sources: Record<string, string>; absences: Period[]; appointments: Period[] };
-type Dataset = { teachers: Record<string, Person>; lessons: Record<string, { classes: string[]; activities?: string[]; special?: string; room?: string | null; site?: string | null }>; excludedPOT?: Record<string, unknown> };
+type Dataset = { teachers: Record<string, Person>; lessons: Record<string, { classes: string[]; activities?: string[]; special?: string; room?: string | null; site?: string | null; disabled?: boolean }>; excludedPOT?: Record<string, unknown> };
 type View = { revision: string; document: Document; people: Record<string, Person>; sources: Record<string, Person>; classCodes: Record<string,string> };
-type Preview = { removals: { day: string; key: string; person: string; substitute: string; hours: number[] }[]; token: string; ready: boolean; dataset: Dataset; records: { day: string | null; group: string; person: string; substitute?: string; hours: number[] | number }[]; issues: { day: string; key: string; message: string }[] };
+type Preview = { activityHours?: Record<string, { slot: string; codes: string[]; disabled: boolean }[]>; removals: { day: string; key: string; person: string; substitute: string; hours: number[]; reason?: string; category?: string; communicated?: boolean; accepted?: boolean; campusNotice?: { communicated?: boolean; accepted?: boolean } }[]; token: string; ready: boolean; dataset: Dataset; records: { day: string | null; group: string; person: string; substitute?: string; hours: number[] | number }[]; issues: { day: string; key: string; message: string }[] };
 type Editor = { kind: 'absence' | 'appointment' | 'person'; record?: string; original?: string; source?: string; person: string; start: string; end: string; name: string; role: string; cdc: string; newPerson: boolean };
 const today = () => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Rome' }).format(new Date());
 const active = (p: Period, day: string) => p.start <= day && (!p.end || p.end >= day);
 const dateLabel = (day: string) => day.split('-').reverse().join('/');
 const periodLabel = (p: Period) => `Dal ${dateLabel(p.start)}${p.end ? ` al ${dateLabel(p.end)}` : ' · senza data di fine'}`;
-const groupLabel: Record<string,string> = { abs:'Assenza', permessi:'Permesso', dis:'Disponibilità', asg:'Supplenza giornaliera', manualPermits:'Saldo ore' };
 
 export function Staffing() {
   const running = useRef(false), form = useRef<HTMLDivElement>(null);
+  const account = useAccount();
+  const [copyFeedback, setCopyFeedback] = useState('');
   const [view, setView] = useState<View>();
   const [accessDirty, setAccessDirty] = useState(false);
   const [section, setSection] = useState<'absences'|'people'>('absences');
@@ -52,7 +54,7 @@ export function Staffing() {
       if(editor.newPerson) { person=crypto.randomUUID(); next.people[person]={ id:person, name:editor.name.trim(), code:'', role:editor.role, classe_concorso:editor.cdc }; }
       if(editor.kind!=='person') {
         const group=editor.kind==='absence'?'absences':'appointments';
-        const record: Period={ id:editor.record || crypto.randomUUID(), person, start:editor.start, end:editor.end || null, ...(group==='appointments'?{source:editor.source}:{}) };
+        const record: Period={ id:editor.record || crypto.randomUUID(), person, start:editor.start, end:editor.end || null, ...(group==='appointments'?{source:editor.source, activityHours: doc.appointments.find(p => p.id === editor.record)?.activityHours || {}}:{}) };
         next[group]=[...next[group].filter(p => p.id!==record.id),record];
       }
       const day=editor.kind==='person'?today():editor.start;
@@ -67,6 +69,26 @@ export function Staffing() {
     catch(e) { setError(String(e)); setPending(undefined); }
     finally { running.current=false; setBusy(false); }
   };
+  const setActivity = async (slot: string, disabled: boolean) => {
+    if (!pending || !editor || running.current) return;
+    const next = structuredClone(pending.document);
+    const record = next.appointments.find(p => p.id === (editor.record || next.appointments.at(-1)?.id));
+    if (!record) return;
+    record.activityHours = { ...record.activityHours, [slot]: disabled };
+    running.current = true; setBusy(true); setError('');
+    try { const result = await requestApi<Preview>('staffing/preview', {document:next, day:pending.day, revision:view?.revision}); setPending({document:next, day:pending.day, result}); }
+    catch(e) { setError(String(e)); }
+    finally { running.current = false; setBusy(false); }
+  };
+  const copyNotice = async (r: Preview['removals'][number]) => {
+    const name = view?.people[r.substitute]?.name || r.substitute;
+    const cls = r.key.split('|')[2];
+    const date = dateLabel(r.day), hour = r.hours.join(', ');
+    const text = `[Variazione supplenza] ${date} · ${hour}ª ora · ${cls}\n\nGentile Professore/Professoressa ${name},\n\n${r.reason === 'unavailable' ? 'A seguito della sua assenza prolungata' : 'Vista la nomina di nuovo personale supplente'}, la sua sostituzione precedentemente richiesta per il ${date}, ${hour}ª ora, classe ${cls}, non è più necessaria.\n\nCordiali saluti,\n${account?.name || ''}`;
+    try { await navigator.clipboard.writeText(text); setCopyFeedback(`Avviso per ${name} copiato.`); }
+    catch { setCopyFeedback('Copia non riuscita: accesso agli appunti non disponibile o negato.'); }
+  };
+  const notices = pending?.result.removals.filter(r => r.communicated || r.accepted || r.campusNotice?.communicated || r.campusNotice?.accepted) || [];
   const valid=!!editor && (editor.newPerson ? !!editor.name.trim() && (!cdcQuery || !!editor.cdc) : !!editor.person) && (editor.kind!=='appointment' || !!editor.source) && (editor.kind==='person' || !!editor.start && (!editor.end || editor.end>=editor.start));
   const title=editor?.kind==='person'?'Nuovo docente':editor?.kind==='absence'?(editor.record?'Modifica assenza prolungata':'Nuova assenza prolungata'):(editor?.record?'Modifica supplenza':'Assegna supplente');
   const profiles = <div className="staffing-fields">
@@ -103,7 +125,7 @@ export function Staffing() {
     {editor && <div ref={form} className="ui-surface staffing-section staffing-editor"><h2>{title}</h2>{editor.original && <p>Cattedra di <strong>{label(editor.original)}</strong></p>}
       <form onSubmit={e => {e.preventDefault(); if(valid) void inspect();}}><fieldset disabled={busy} className="staffing-workspace">
         {editor.kind==='absence' && <TeacherPicker key={editor.record || 'absence'} id="staffing-absent" label="Docente assente" teachers={people} value={editor.person} onChange={person => change({person})} />}
-        {editor.kind==='appointment' && <><p className="settings-muted">Il supplente eredita l’orario del docente assente, escluse le ore POT.</p><div className="ui-actions"><button type="button" className={'ui-button'+(!editor.newPerson?' on':'')} aria-pressed={!editor.newPerson} onClick={() => change({newPerson:false})}>Scegli docente</button><button type="button" className={'ui-button'+(editor.newPerson?' on':'')} aria-pressed={editor.newPerson} onClick={() => change({newPerson:true,person:''})}>Nuovo docente</button></div>
+        {editor.kind==='appointment' && <><p className="settings-muted">Verifica le attività non di lezione nell’anteprima e scegli quali mantenere attive.</p><div className="ui-actions"><button type="button" className={'ui-button'+(!editor.newPerson?' on':'')} aria-pressed={!editor.newPerson} onClick={() => change({newPerson:false})}>Scegli docente</button><button type="button" className={'ui-button'+(editor.newPerson?' on':'')} aria-pressed={editor.newPerson} onClick={() => change({newPerson:true,person:''})}>Nuovo docente</button></div>
           {!editor.newPerson && <TeacherPicker key={editor.record || editor.original} id="staffing-replacement" label="Cerca supplente" teachers={people.filter(p => p.id!==editor.original)} value={editor.person} onChange={person => change({person})} />}</>}
         {editor.newPerson && profiles}
         {editor.kind!=='person' && <div className="staffing-fields"><label className="ui-field">Dal<input type="date" required value={editor.start} onChange={e => change({start:e.target.value})} /></label><label className="ui-field">Fino al (facoltativo, incluso)<input type="date" min={editor.start} value={editor.end} onChange={e => change({end:e.target.value})} /></label></div>}
@@ -111,10 +133,10 @@ export function Staffing() {
       </fieldset></form>
       {pending && <section className="staffing-preview" aria-label="Anteprima modifica"><h3>Riepilogo modifica</h3><p>{editor.kind==='person'?`Nuovo docente: ${editor.name}`:editor.kind==='absence'?`Assenza prolungata: ${label(editor.person)}`:`${editor.newPerson?editor.name:label(editor.person)} sostituisce ${label(editor.original!)}`}</p>
         {pending.result.issues.map((v,n) => <p className="ui-notice ui-notice-error" key={n}>{dateLabel(v.day)} · {v.message}</p>)}
-        {editor.kind==='absence' && <p className="settings-muted">Le assenze e le supplenze già registrate saranno mantenute. I saldi permessi restano personali.</p>}
-        {!!pending.result.removals.length && <div className="ui-notice"><p>Confermando la supplenza saranno eliminate queste coperture giornaliere, non più necessarie nel periodo:</p><ul>{pending.result.removals.map(r => <li key={`${r.day}|${r.key}`}>{dateLabel(r.day)} · {label(r.person)} · ora {r.hours.join(', ')} · classe {r.key.split('|')[2]} · {view?.people[r.substitute]?.name || r.substitute}</li>)}</ul></div>}
-        {!!pending.result.records.length && <details><summary>Registrazioni esistenti mantenute ({pending.result.records.length})</summary><ul>{pending.result.records.map((r,n) => <li key={n}>{r.day?dateLabel(r.day):'Saldo iniziale'} · {label(r.person)} · {r.group==='asg' && r.substitute ? `Copertura: ${view?.people[r.substitute]?.name || r.substitute}` : groupLabel[r.group] || r.group} · ore {Array.isArray(r.hours)?r.hours.join(', '):r.hours}</li>)}</ul></details>}
-        {editor.kind==='appointment' && <div className="staffing-week"><table><caption>Orario ereditato · POT escluso</caption><thead><tr><th>Ora</th>{DAYS.map(d => <th key={d}>{d}</th>)}</tr></thead><tbody>{HOURS.map(h => <tr key={h}><th>{h}</th>{DAYS.map(d => { const person=pending.document.appointments.find(p => p.id===(editor.record || pending.document.appointments.at(-1)?.id))?.person; const key=`${person}|${d}|${h}`, l=pending.result.dataset.lessons[key]; return <td key={d}>{l?[...l.classes,...(l.activities || (l.special?[l.special]:[])),l.room,l.site].filter(Boolean).join(' · '):'—'}{!!pending.result.dataset.excludedPOT?.[key] && <span className="staffing-excluded"><del>POT</del> · non ereditato</span>}</td>; })}</tr>)}</tbody></table></div>}
+        {editor.kind==='absence' && <ul className="settings-muted"><li>Le coperture già assegnate restano invariate</li><li>Le ore a pagamento saranno disabilitate nei giorni di assenza</li><li>I saldi permessi restano personali</li></ul>}
+        {!!pending.result.removals.length && <section className="staffing-removals"><p>Confermando saranno rimosse {pending.result.removals.length} coperture giornaliere.</p>{!!notices.length && <><h4>Variazioni da comunicare</h4><p className="settings-muted">Queste variazioni erano già state comunicate o accettate.</p><div className="ui-table-scroll"><table className="ui-table"><thead><tr><th>Data e ora</th><th>Classe</th><th>Docente</th><th>Stato</th><th><span className="sr-only">Copia avviso</span></th></tr></thead><tbody>{notices.map(r => { const special = ['ENTRA','ESCE','UNCOVERED'].includes(r.substitute); return <tr key={`${r.day}|${r.key}`}><td>{dateLabel(r.day)} · {r.hours.join(', ')}ª</td><td>{r.key.split('|')[2]}</td><td>{special ? `${label(r.person)} · ${r.substitute}` : view?.people[r.substitute]?.name || r.substitute}</td><td>{r.category==='PAID' ? 'A pagamento · ' : r.category==='RP' ? 'Recupero permesso · ' : ''}{[r.communicated && 'Comunicato', r.accepted && 'Accettata', r.campusNotice?.communicated && 'Cambio sede comunicato', r.campusNotice?.accepted && 'Cambio sede accettato'].filter(Boolean).join(' · ')}</td><td>{!special && <span className="opt communicated"><button type="button" title="Copia avviso di variazione" aria-label={`Copia avviso per ${label(r.substitute)}, ${dateLabel(r.day)}, ora ${r.hours.join(', ')}, classe ${r.key.split('|')[2]}`} onClick={() => void copyNotice(r)}><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="13" rx="2" fill="none" stroke="currentColor" strokeWidth="1.6"/><path d="M15 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h3" fill="none" stroke="currentColor" strokeWidth="1.6"/></svg></button></span>}</td></tr>; })}</tbody></table></div><p className="settings-muted" role="status">{copyFeedback}</p></>}</section>}
+        {editor.kind==='appointment' && (() => { const id = editor.record || pending.document.appointments.at(-1)?.id; const activities = id ? pending.result.activityHours?.[id] || [] : []; return !!activities.length && <section className="staffing-activities"><h4>Attività non di lezione</h4><p className="settings-muted">Scegli se mantenere attiva o disabilitare ogni ora nell’orario del supplente.</p><div className="ui-table-scroll"><table className="ui-table"><thead><tr><th>Giorno e ora</th><th>Attività</th><th>Stato per il supplente</th></tr></thead><tbody>{activities.map(a => { const [day,hour] = a.slot.split('|'); return <tr key={a.slot}><td>{({lun:'Lunedì',mar:'Martedì',mer:'Mercoledì',gio:'Giovedì',ven:'Venerdì'} as Record<string,string>)[day]} · {hour}ª</td><td>{a.codes.join(' · ')}</td><td><span>{a.disabled ? 'Disabilitata' : 'Attiva'}</span> <button type="button" className="ui-button" disabled={busy} aria-pressed={a.disabled} aria-label={`${a.disabled ? 'Riattiva' : 'Disabilita'} ${a.codes.join(' ')} ${day} ${hour}ª`} onClick={() => void setActivity(a.slot, !a.disabled)}>{a.disabled ? 'Riattiva' : 'Disabilita'}</button></td></tr>; })}</tbody></table></div></section>; })()}
+        {editor.kind==='appointment' && <div className="staffing-week"><table><caption>Orario ereditato</caption><thead><tr><th>Ora</th>{DAYS.map(d => <th key={d}>{d}</th>)}</tr></thead><tbody>{HOURS.map(h => <tr key={h}><th>{h}</th>{DAYS.map(d => { const person=pending.document.appointments.find(p => p.id===(editor.record || pending.document.appointments.at(-1)?.id))?.person; const key=`${person}|${d}|${h}`, l=pending.result.dataset.lessons[key]; return <td key={d}>{l?[...l.classes,...(l.activities || (l.special?[l.special]:[])),l.room,l.site].filter(Boolean).join(' · '):'—'}{l?.disabled && <span className="staffing-excluded"> · disabilitata</span>}{!!pending.result.dataset.excludedPOT?.[key] && <span className="staffing-excluded"><del>POT</del> · non ereditato</span>}</td>; })}</tr>)}</tbody></table></div>}
         <button className="ui-button ui-button-primary" disabled={busy || !pending.result.ready} onClick={() => void save()}>{editor.kind==='person'?'Salva docente':editor.kind==='absence'?'Conferma assenza prolungata':'Conferma supplenza'}</button>
       </section>}
       {busy && <Loading label="Elaborazione…" />}

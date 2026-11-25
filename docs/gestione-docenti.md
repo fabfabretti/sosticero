@@ -14,7 +14,7 @@ Un’assenza prolungata senza supplente genera automaticamente le assenze nelle 
 
 Usare **Assegna supplente** accanto al docente assente. La cattedra è già individuata: cercare e selezionare il supplente con i suggerimenti per nome o cognome, oppure scegliere **Nuovo docente** per aggiungerlo direttamente. Le frecce e Invio permettono la selezione da tastiera; scrivere un nome non salva automaticamente.
 
-Il supplente eredita tutte le ore tranne POT. PE, DIS e le altre attività restano; nei periodi misti resta la parte non-POT. L’anteprima mostra l’orario ereditato e le ore escluse. Solo le assenze del supplente generano necessità di copertura durante la supplenza. L’originale rimane consultabile in Orari, ma non compare come assente nelle tabelle giornaliere.
+Nell’anteprima, per ogni ora settimanale con attività non di lezione si può scegliere se mantenerla attiva o disabilitarla nell’orario del supplente. Le scelte restano modificabili nel periodo di supplenza; le supplenze già registrate mantengono il comportamento precedente finché non vengono modificate. Solo le assenze del supplente generano necessità di copertura durante la supplenza. L’originale rimane consultabile in Orari, ma non compare come assente nelle tabelle giornaliere.
 
 **Modifica periodo** modifica le date dell’assenza; **Modifica supplenza** modifica le date della copertura. I periodi restano indipendenti. Se la supplenza termina mentre l’assenza originale continua, le necessità giornaliere riprendono. La sezione dei periodi di supplenza permette anche di programmare un successore sulla stessa cattedra. Le sovrapposizioni sono rifiutate.
 
