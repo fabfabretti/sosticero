@@ -68,6 +68,8 @@ test('empty consultation explains the result; real-row cross-campus read-only an
   for (const readOnlyReason of ['Assegnazione riservata alla sede centrale', undefined]) {
     const c = render({ ...base, open, readOnlyReason, cands: [candidate], onAssign: () => assigned++ });
     assert.equal(c.nodes.find(n => n.props?.role === 'dialog').props['aria-label'], 'Scegli il supplente');
+    assert.ok(c.nodes.find(n => n.props?.role === 'dialog').props.className.split(' ').includes('ui-scope'));
+    assert.ok(c.nodes.find(n => n.type === 'button' && n.props.children === 'Assegna manualmente…').props.className.split(' ').includes('ui-button'));
     c.nodes.find(n => n.type === 'button' && n.props.className === 'c1' && n.props.children !== 'Assegna manualmente…').props.onClick();
   }
   assert.equal(assigned, 1);

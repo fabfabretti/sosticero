@@ -46,7 +46,7 @@ export function ManualAssignmentDialog({ teachers, hour, current, currentNote, c
       </div></div>
       {query && !selected && !suggestions.length && <p className="sub" role="status">Nessun docente trovato.</p>}
       <div id="manual-warning" aria-live="polite">{selected?.tag && <p className="ui-notice" role="alert">Attenzione: {selected.tag}. Puoi assegnare comunque il docente.</p>}</div>
-      <fieldset><legend>Tipo di ora</legend><label><input type="radio" name="manual-payment" checked={!paid} onChange={() => setPaid(false)} /> Gratuita</label><label><input type="radio" name="manual-payment" checked={paid} onChange={() => setPaid(true)} /> A pagamento</label></fieldset>
+      <div><span>Tipo di ora</span><div className="opt" role="group" aria-label="Tipo di ora"><button type="button" className={!paid ? "on" : ""} aria-pressed={!paid} onClick={() => setPaid(false)}>Gratuita</button><button type="button" className={paid ? "on" : ""} aria-pressed={paid} onClick={() => setPaid(true)}>A pagamento</button></div></div>
       <label>Nota (facoltativa)<textarea value={note} maxLength={2000} rows={3} onChange={e => setNote(e.target.value)} /></label>
       <div className="ui-actions"><button type="button" className="ui-button" onClick={onClose}>Annulla</button><button className="ui-button ui-button-primary" disabled={!selected}>{selected?.tag ? "Assegna comunque" : "Assegna"}</button></div>
     </form>

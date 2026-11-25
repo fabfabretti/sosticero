@@ -93,7 +93,7 @@ export function CandidateDrawer({
     <>
       <div className="dr-backdrop" aria-hidden="true" onClick={onClose} />
       <div
-        className="dr"
+        className="dr ui-scope"
         role="dialog"
         aria-modal="true"
         aria-label={consultation ? "Consulta disponibilità" : "Scegli il supplente"}
@@ -115,7 +115,7 @@ export function CandidateDrawer({
         <div className="lst">
           <LoadingRegion local pending={pending} error={error}>
           {consultation && !pending && !error && !cands.length && <p role="status">Nessun docente disponibile per questa ora e sede.</p>}
-          {!consultation && <button className="ui-button ui-button-primary manual-assignment-trigger" disabled={!!reason || busy || pending || !!error} onClick={() => setManual(true)}>Assegna manualmente…</button>}
+          {!consultation && <button className="ui-button manual-assignment-trigger" disabled={!!reason || busy || pending || !!error} onClick={() => setManual(true)}>Assegna manualmente…</button>}
           {cands.filter(c => c.ty !== "MANUAL").map((c, index) => {
             const cross = !!(c.loc && open.sede && c.loc !== open.sede);
             return (

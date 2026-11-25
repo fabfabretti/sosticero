@@ -18,6 +18,8 @@ test('manual dialog warns but permits occupied teachers and submits an optional 
   const props = { teachers: [{id: 'busy', name: 'Rossi', tag: 'Ora occupata: 2A'}, {id: 'free', name: 'Bianchi', tag: ''}], hour: 2, onClose() {}, onAssign: (...args) => calls.push(args) };
   function render() { cursor = 0; const nodes = []; (function walk(n) { if (Array.isArray(n)) return n.forEach(walk); if (!n || typeof n !== 'object') return; nodes.push(n); walk(n.props?.children); })(exports.ManualAssignmentDialog(props)); return nodes; }
   let nodes = render();
+  assert.equal(nodes.find(n => n.type === 'button' && n.props.children === 'Gratuita').props['aria-pressed'], true);
+  assert.equal(nodes.find(n => n.type === 'button' && n.props.children === 'A pagamento').props['aria-pressed'], false);
   assert.equal(nodes.find(n => n.type === 'button' && n.props.children === 'Assegna').props.disabled, true);
   assert.ok(!nodes.some(n => n.type === 'select'));
   nodes.find(n => n.type === 'input').props.onChange({target: {value: 'ros'}});
@@ -30,7 +32,8 @@ test('manual dialog warns but permits occupied teachers and submits an optional 
   nodes.find(n => n.type === 'textarea').props.onChange({target: {value: 'Accordo con docente'}});
   render().find(n => n.type === 'form').props.onSubmit({preventDefault() {}});
   assert.deepEqual(calls, [['busy', true, 'MANUAL', 'Accordo con docente']]);
-  render().find(n => n.type === 'input' && n.props.type === 'radio' && !n.props.checked).props.onChange();
+  render().find(n => n.type === 'button' && n.props.children === 'A pagamento').props.onClick();
+  assert.equal(render().find(n => n.type === 'button' && n.props.children === 'A pagamento').props['aria-pressed'], true);
   render().find(n => n.type === 'form').props.onSubmit({preventDefault() {}});
   assert.deepEqual(calls[1], ['busy', true, 'MANUAL_PAID', 'Accordo con docente']);
   render().find(n => n.type === 'input').props.onChange({target: {value: 'bian'}});
@@ -54,7 +57,7 @@ test('manual paid edit restores the teacher, note and payment choice', () => {
   const props = {teachers: [{id:'busy', name:'Rossi', tag:''}], hour:2, current:'busy', currentNote:'Accordo', currentPaid:true, onClose(){}, onAssign:(...args)=>calls.push(args)};
   const nodes = []; (function walk(n) {if (Array.isArray(n)) return n.forEach(walk); if (!n || typeof n !== 'object') return; nodes.push(n); walk(n.props?.children);})(exports.ManualAssignmentDialog(props));
   assert.equal(nodes.find(n => n.type === 'textarea').props.value, 'Accordo');
-  assert.equal(nodes.filter(n => n.type === 'input' && n.props.type === 'radio')[1].props.checked, true);
+  assert.equal(nodes.find(n => n.type === 'button' && n.props.children === 'A pagamento').props['aria-pressed'], true);
   nodes.find(n => n.type === 'form').props.onSubmit({preventDefault(){}});
   assert.deepEqual(calls[0], ['busy', true, 'MANUAL_PAID', 'Accordo']);
 });
