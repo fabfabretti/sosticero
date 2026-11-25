@@ -1,4 +1,5 @@
 import { Loading, LoadingRegion } from './Loading';
+import { TeacherPicker } from './TeacherPicker';
 import { useQuietRefresh } from './useQuietRefresh';
 import { sessionFetch } from './session';
 import { ClassificationChoices } from "./ClassificationChoices";
@@ -14,6 +15,11 @@ type HistoryPage = { items: Item[]; hasMore: boolean; generation?: number };
 const date = (value?: string) => value ? value.split("-").reverse().join("/") : "—";
 const defaultClassification = (item: Item): AbsenceKind => item.submitted && item.start ? (item.submitted.slice(0, 10) === item.start ? "last_minute" : "planned") : null;
 const timestamp = (value?: string) => value ? new Date(value).toLocaleString("it-IT") : "Mai";
+
+function InboxTeacherPicker({ item, busy, onSelect }: { item: Item; busy: boolean; onSelect: (teacher: string) => void }) {
+  const [teacher, setTeacher] = useState(item.teacher || '');
+  return <div className="inbox-teacher"><TeacherPicker id={`inbox-teacher-${item.id}`} label={`Docente associato: ${item.name || item.raw[2]}`} teachers={item.teachers || []} value={teacher} disabled={busy} onChange={value => { setTeacher(value); if (value) onSelect(value); }} /></div>;
+}
 
 export function useInboxStatus(api: Api, notify = false) {
   const [status, setStatus] = useState<InboxStatus>({ pending: 0, configured: false });
@@ -176,7 +182,7 @@ export function AbsenceInbox({ api }: { api: Api }) {
     <LoadingRegion pending={loading || !!busy} label={busy ? "Elaborazione…" : undefined} blocked={!ready || !!busy} error={loadError} retry={() => void refresh().catch(() => {})}>
     {!items.length && ready ? <section className="ui-surface inbox-empty"><h2>{history ? "Nessuna comunicazione elaborata" : "Nessuna comunicazione da esaminare"}</h2><p className="sub">Le nuove risposte compariranno qui automaticamente.</p></section> : items.map(item => <article className="ui-surface inbox-item" key={item.id}>
       <div className="inbox-person"><span className="inbox-name">{item.teacherName || item.name || item.raw[2] || "Docente da verificare"}</span>
-        {item.status === "pending" && !!item.teachers?.length && (item.nameMatched === undefined ? item.teachers.filter(t => t.name === (item.name || item.raw[2])).length !== 1 : !item.nameMatched) && <><span aria-hidden="true">→</span><select className="inbox-teacher" aria-label={`Docente associato: ${item.name || item.raw[2]}`} value={item.teacher || ""} disabled={!!busy} onChange={e => void act(item, "preview", e.target.value)}><option value="">Seleziona docente…</option>{item.teachers.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></>}
+        {item.status === "pending" && !!item.teachers?.length && (item.nameMatched === undefined ? item.teachers.filter(t => t.name === (item.name || item.raw[2])).length !== 1 : !item.nameMatched) && <><span aria-hidden="true">→</span><InboxTeacherPicker item={item} busy={!!busy} onSelect={teacher => void act(item, "preview", teacher)} /></>}
       </div>
       <div className="inbox-absence">
         <strong>Assenza {date(item.start)}{item.end !== item.start && ` – ${date(item.end)}`}</strong>
