@@ -133,3 +133,27 @@ test('paid refusal releases through its own guarded callback', () => {
   button().props.onClick(); assert.equal(refused, 1);
   props.canAssign = false; assert.equal(button().props.disabled, true); button().props.onClick(); assert.equal(refused, 1);
 });
+
+test('financial report filters assignments by sede and offers print and return', () => {
+  let cursor=0, printed=0; const slots=[];
+  const total={cost:1000,unpriced:0,budget:2000,remaining:1000,percent:50};
+  const report={dates:['2026-10-26','2026-10-27','2026-10-28','2026-10-29','2026-10-30'],teachers:{},declarations:{},cells:[],totals:{},concurrency:{records:{}},finance:{sites:{centrale:total,succursale:total},configured:['centrale','succursale'],overall:total,all:total},records:['centrale','succursale'].map((site,i)=>({date:'2026-10-28',key:String(i),teacher:String(i),name:site,hour:1,c:'1A',assignedBy:'centrale',paidContext:{site}}))};
+  const mod=load('src/PaidHours.tsx', {react:{useState(initial){const i=cursor++; if(!(i in slots)) slots[i]=initial; return [slots[i],v=>slots[i]=v];},useEffect(){},useRef(){return {current:null};}},'react/jsx-runtime':{jsx,jsxs:jsx},'./StatsCalendar':{todayInRome:()=> '2026-10-28'},'./attribution':{authorLabel:x=>x},'./useQuietRefresh':{useQuietRefresh(){if(!slots[1]) slots[1]=report;return {ready:true,loading:false,enter:async()=>{},refresh:async()=>{}};}}},{window:{print:()=>printed++}});
+  const render=()=>{cursor=0;return flatten(mod.PaidHours({api:async()=>report}));};
+  let nodes=render(); nodes.find(n=>n.type==='button' && n.props.children==='Centrale').props.onClick(); nodes=render();
+  nodes.find(n=>n.type==='button' && n.props.children==='Stampa report').props.onClick(); nodes=render();
+  const table=nodes.find(n=>n.props.className==='paid-report-table'); assert.match(JSON.stringify(table),/centrale/); assert.doesNotMatch(JSON.stringify(table),/succursale/);
+  nodes.find(n=>n.type==='button' && n.props.children==='Stampa / PDF').props.onClick(); assert.equal(printed,1);
+  nodes.find(n=>n.type==='button' && n.props.children==='Torna a Banca ore').props.onClick(); assert.ok(render().some(n=>n.props.children==='Stampa report'));
+});
+
+test('budget summary preserves missing, zero, partial and combined qualifications', () => {
+  const finance=load('src/paid-finance.ts', {});
+  const summary=load('src/PaidBudgetSummary.tsx', {'./paid-finance':finance,'react/jsx-runtime':{jsx,jsxs:jsx}});
+  const expand=node=>{ if(Array.isArray(node)) return node.map(expand); if(!node || typeof node!=='object') return node; if(typeof node.type==='function') return expand(node.type(node.props)); return {...node,props:{...node.props,children:expand(node.props?.children)}}; };
+  const zero={cost:100,unpriced:1,budget:0,remaining:-100,percent:null}, missing={cost:200,unpriced:0,budget:null,remaining:null,percent:null};
+  const data={sites:{centrale:zero,succursale:missing},configured:['centrale'],overall:zero,all:{...zero,cost:300}};
+  const both=JSON.stringify(expand(summary.PaidBudgetSummary({finance:data}))); assert.match(both,/budget zero/); assert.match(both,/Budget non configurato/); assert.match(both,/totale parziale/); assert.match(both,/esclude la sede senza budget/);
+  const single=JSON.stringify(expand(summary.PaidBudgetSummary({finance:data,site:'centrale'}))); assert.doesNotMatch(single,/Budget non configurato|Totale tutte le sedi/);
+  const exceeded={...zero,budget:100,remaining:-100,percent:200}; const over=JSON.stringify(expand(summary.PaidBudgetSummary({finance:{...data,sites:{...data.sites,centrale:exceeded}},site:'centrale'}))); assert.match(over,/200% utilizzato/); assert.match(over,/Superato di/);
+});

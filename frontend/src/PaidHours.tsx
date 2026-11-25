@@ -27,6 +27,7 @@ const dateLabel = (d: string) => d.split("-").reverse().join("/");
 
 export function PaidHours({ api }: { api: Api }) {
   const [day, setDay] = useState(todayInRome()), [data, setData] = useState<Report>();
+  const [reportSite, setReportSite] = useState("both"), [preview, setPreview] = useState(false), [reportTime, setReportTime] = useState(new Date());
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
   const [query, setQuery] = useState(""), [suggestionIndex, setSuggestionIndex] = useState(0);
@@ -62,6 +63,17 @@ export function PaidHours({ api }: { api: Api }) {
   }
   const assignedGroups = [...assignedTeachers.values()].sort((a, b) => a[0].name.localeCompare(b[0].name, "it"));
   for (const records of assignedGroups) records.sort((a, b) => a.date.localeCompare(b.date) || a.hour - b.hour || a.c.localeCompare(b.c, "it"));
+  if (preview && data?.finance) {
+    const records = assignedGroups.flatMap(group => group.filter(r => reportSite === "both" || r.paidContext.site === reportSite));
+    return <main className="stats-page stats-print-preview paid-report">
+      <div className="stats-preview-actions"><strong>Anteprima report</strong><button disabled={!ready || busy} onClick={() => window.print()}>Stampa / PDF</button><button onClick={() => setPreview(false)}>Torna a Banca ore</button></div>
+      <header className="stats-report-header"><div className="stats-report-brand"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><g fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><circle cx="7" cy="14" r="3.3" /><circle cx="17" cy="14" r="3.3" /><path d="M10.3 13.5a2 2 0 0 1 3.4 0" /><path d="M3.7 12.6 5.2 9.2" /><path d="M20.3 12.6 18.8 9.2" /></g></svg><strong>Sosticero</strong></div><div className="stats-report-meta"><span>sviluppato da Agentic Fabs</span><time dateTime={reportTime.toISOString()}>Generato il {new Intl.DateTimeFormat("it-IT", { dateStyle: "short", timeStyle: "short", timeZone: "Europe/Rome" }).format(reportTime)}</time></div></header>
+      <h1>Report Banca ore</h1><p><strong>{reportSite === "both" ? "Tutte le sedi" : campus(reportSite)}</strong></p>
+      <PaidBudgetSummary finance={data.finance} site={reportSite} />
+      <section><h2>Ore assegnate a pagamento</h2><p>Tutte le ore registrate, incluse quelle future e da verificare, indipendentemente dalla settimana visualizzata.</p>
+      {records.length ? <table className="paid-report-table"><thead><tr>{["Docente", "Data", "Ora", "Classe", "Sede", "Assegnata da", "Tariffa / costo"].map(label => <th scope="col" key={label}>{label}</th>)}</tr></thead><tbody>{records.map(r => <tr key={r.date + r.key}><td>{r.name}</td><td>{dateLabel(r.date)}</td><td>{r.hour}ª</td><td>{r.c}</td><td>{campus(r.paidContext.site)}</td><td>{authorLabel(r.assignedBy)}</td><td>{r.paidPrice ? `${euro(r.paidPrice.cents)} · ${r.paidPrice.classification}` : "Da valorizzare"}</td></tr>)}</tbody></table> : <p>Nessuna supplenza a pagamento registrata.</p>}</section>
+    </main>;
+  }
   return <main className="ui-page paid-page"><header className="paid-heading"><div><h1>Banca ore</h1><p>Disponibilità settimanali per supplenze a pagamento</p></div>
     <div className="ui-actions"><label>Settimana del <input type="date" value={day} disabled={editing || busy} onChange={e => setDay(e.target.value)} /></label>
       <button className="ui-button" disabled={busy || !data || !ready} onClick={() => {
@@ -69,6 +81,8 @@ export function PaidHours({ api }: { api: Api }) {
         try { generatePaidPdf(data).save(`banca-ore-${data.dates[0]}.pdf`); }
         catch (e) { setError(`Impossibile generare il PDF: ${e instanceof Error ? e.message : String(e)}`); }
       }}>Stampa / PDF</button>
+      <div className="paid-report-controls" role="group" aria-label="Sede del report">{[["both", "Tutte le sedi"], ["centrale", "Centrale"], ["succursale", "Succursale"]].map(([id, label]) => <button type="button" key={id} className="ui-button" aria-pressed={reportSite === id} onClick={() => setReportSite(id)}>{label}</button>)}</div>
+      <button className="ui-button" disabled={busy || !ready || !data?.finance} onClick={() => { setReportTime(new Date()); setPreview(true); }}>Stampa report</button>
       <button className="ui-button" aria-pressed={editing} disabled={busy || !data || !ready} onClick={() => { setEditing(!editing); setQuery(""); setError(""); }}>{editing ? "Fine modifica" : "Modifica disponibilità"}</button></div></header>
     {error && <p role="alert" className="ui-notice ui-notice-error">{error}</p>}
     <LoadingRegion pending={loading || busy} label={busy ? "Salvataggio…" : undefined} blocked={!ready || busy} error={loadError} retry={() => void refresh().catch(() => {})}>

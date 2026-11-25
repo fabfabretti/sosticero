@@ -8,12 +8,12 @@ function Total({ title, value }: { title: string; value: FinancialTotal }) {
       <p>{value.remaining !== null && value.remaining < 0 ? <strong>Superato di {euro(-value.remaining)}</strong> : `Residuo ${euro(value.remaining || 0)}`}</p></>}
   </div>;
 }
-export function PaidBudgetSummary({ finance }: { finance: FinanceSummary }) {
+export function PaidBudgetSummary({ finance, site = 'both' }: { finance: FinanceSummary; site?: string }) {
   return <section className="paid-budgets" aria-label="Budget supplenze a pagamento"><h2>Budget supplenze a pagamento</h2>
     <p>Tutte le ore registrate, anche future, indipendentemente dalla settimana visualizzata.</p>
-    <div className="paid-budget-grid">{sites.map(s => <Total key={s} title={campusName(s)} value={finance.sites[s]} />)}
-      {finance.overall && <Total title={finance.configured.length === 2 ? 'Totale sedi' : `Solo budget configurati · ${finance.configured.map(campusName).join(', ')}`} value={finance.overall} />}
+    <div className="paid-budget-grid">{sites.filter(s => site === 'both' || site === s).map(s => <Total key={s} title={campusName(s)} value={finance.sites[s]} />)}
+      {site === 'both' && finance.overall && <Total title={finance.configured.length === 2 ? 'Totale sedi' : `Solo budget configurati · ${finance.configured.map(campusName).join(', ')}`} value={finance.overall} />}
     </div>
-    <p>Totale tutte le sedi: <strong>{euro(finance.all.cost)}</strong> impegnati{finance.all.unpriced > 0 && ` · totale parziale, ${finance.all.unpriced} ore da valorizzare`}.{finance.configured.length === 1 && ' La percentuale complessiva esclude la sede senza budget.'}</p>
+    {site === 'both' && <p>Totale tutte le sedi: <strong>{euro(finance.all.cost)}</strong> impegnati{finance.all.unpriced > 0 && ` · totale parziale, ${finance.all.unpriced} ore da valorizzare`}.{finance.configured.length === 1 && ' La percentuale complessiva esclude la sede senza budget.'}</p>}
   </section>;
 }

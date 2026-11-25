@@ -70,3 +70,13 @@ Gli archivi schema 11 includono configurazione e costi; gli schemi precedenti
 restano importabili con configurazione assente e ore legacy non valorizzate.
 Importare un archivio conserva i costi presenti senza eseguire una valorizzazione
 implicita. Backup SQLite e ripristini conservano entrambi i documenti.
+
+### Report stampabile
+
+In Banca ore, scegli **Tutte le sedi**, **Centrale** o **Succursale** e premi
+**Stampa report** per aprire l'anteprima dei budget e del registro delle ore
+assegnate. Il comando **Stampa / PDF** nell'anteprima apre la stampa del browser,
+che permette anche di salvare in PDF. Il report comprende tutte le assegnazioni
+registrate, incluse quelle future e da verificare, indipendentemente dalla
+settimana selezionata. Il pulsante PDF delle disponibilità settimanali rimane
+separato.
