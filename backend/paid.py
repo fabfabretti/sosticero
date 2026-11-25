@@ -102,6 +102,8 @@ def totals(state):
 def metadata(state, teachers):
     for entries in state['asg'].values():
         for key, a in entries.items():
+            if 'manualPaid' in a and (a['manualPaid'] is not True or a.get('t') != 'PAID' or a.get('exceptional') is not True):
+                raise ValueError('Origine manuale a pagamento non valida.')
             if a.get('t') != 'PAID':
                 if any(k in a for k in ('notified', 'assignedBy', 'paidContext')):
                     raise ValueError('Metadati pagamento senza assegnazione a pagamento.')

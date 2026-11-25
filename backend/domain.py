@@ -437,7 +437,7 @@ def manual_candidates(ds, state, day, row):
             warnings.append('Già assegnato a una supplenza in questa ora')
         if (teacher.get('retired') or teacher.get('unavailable')):
             warnings.append('Docente non attivo')
-        if teacher.get('unavailable'): continue
+        if teacher.get('retired') or teacher.get('unavailable'): continue
         result.append(dict(id=i, name=teacher['name'], ty='MANUAL', loc=None, why='', tag=' · '.join(warnings), today=0, total=0))
     return result
 
@@ -445,16 +445,18 @@ def manual_candidates(ds, state, day, row):
 def validate_assignment(ds, state, day, key, value, policies=None, exceptional=False, saved=False, category=None, daily_rows=None):
     from .receptions import at
     old = state['asg'].get(day, {}).get(key)
-    manual = category == 'MANUAL' or saved and old and old.get('t') == 'MANUAL' and old['v'] == value
+    manual = category in ('MANUAL', 'MANUAL_PAID') or saved and old and (old.get('t') == 'MANUAL' or old.get('manualPaid') is True) and old['v'] == value
     if manual:
         row = daily_rows.get(key) if daily_rows is not None else next((r for r in rows(ds, state, day) if r['k'] == key), None)
         if not row or value not in ds['teachers']:
             raise ValueError('Docente o supplenza non più presente.')
         if not exceptional:
             raise ValueError('Assegnazione manuale: conferma esplicita necessaria.')
-        if ds['teachers'][value].get('unavailable'):
+        if ds['teachers'][value].get('retired') or ds['teachers'][value].get('unavailable'):
             raise ValueError('Docente non attivo: assenza prolungata o cattedra coperta.')
-        return dict(v=value, t='MANUAL', c=row['c'], exceptional=True, **({'note': old['note']} if saved and old and old.get('note') else {}))
+        if saved and old and old.get('manualPaid') is True:
+            return dict(old)
+        return dict(v=value, t='PAID' if category == 'MANUAL_PAID' else 'MANUAL', c=row['c'], exceptional=True, **({'manualPaid': True} if category == 'MANUAL_PAID' else {}), **({'note': old['note']} if saved and old and old.get('note') else {}))
     if value in ds['teachers'] and int(key.split('|')[1]) in absences(state, day, ds).get(value, []):
         raise ValueError('Assente')
     row = daily_rows.get(key) if daily_rows is not None else next((r for r in rows(ds, state, day) if r['k'] == key), None)

@@ -1376,7 +1376,7 @@ function Supplenze() {
           open={open}
           cands={cands.map(c => ({ ...c, name: entryExitLabel(c.id, open.h) || c.name }))}
           current={assigned[open.k]?.v}
-          currentCategory={assigned[open.k]?.t}
+          currentCategory={assigned[open.k]?.manualPaid ? "MANUAL_PAID" : assigned[open.k]?.t}
           currentNote={assigned[open.k]?.note}
           busy={busy}
           pending={loadingCandidates}

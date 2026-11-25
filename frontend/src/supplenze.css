@@ -478,6 +478,8 @@
 .manual-assignment textarea { width: 100%; resize: vertical; }
 
 .manual-assignment-trigger { margin: 12px 20px; }
+.manual-assignment fieldset { border: 0; padding: 0; margin: 0; display: flex; gap: 1rem; }
+.manual-assignment fieldset label { display: inline-flex; align-items: center; gap: .4rem; }
 
 .supplenze .refusal-note { display: block; margin: 6px 0; color: var(--ui-danger); font-size: 12px; line-height: 1.5; }
 .supplenze .communicated button.refuse { color: var(--ui-danger); }

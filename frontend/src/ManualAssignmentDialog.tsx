@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { norm } from "./timetables";
 import type { Candidate } from "./types";
 
-export function ManualAssignmentDialog({ teachers, hour, current, currentNote, onClose, onAssign }: {
-  teachers: Candidate[]; hour: number; current?: string; currentNote?: string;
+export function ManualAssignmentDialog({ teachers, hour, current, currentNote, currentPaid, onClose, onAssign }: {
+  teachers: Candidate[]; hour: number; current?: string; currentNote?: string; currentPaid?: boolean;
   onClose: () => void; onAssign: (id: string, exceptional: boolean, category: string, note: string) => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -11,6 +11,7 @@ export function ManualAssignmentDialog({ teachers, hour, current, currentNote, o
   const [query, setQuery] = useState(teachers.find(t => t.id === current)?.name || "");
   const [highlighted, setHighlighted] = useState(0);
   const [note, setNote] = useState(currentNote || "");
+  const [paid, setPaid] = useState(!!currentPaid);
   const selected = teachers.find(t => t.id === teacher);
   const suggestions = query && !selected
     ? teachers.filter(t => norm(t.name).includes(norm(query)))
@@ -21,7 +22,7 @@ export function ManualAssignmentDialog({ teachers, hour, current, currentNote, o
   useEffect(() => { dialog.current?.showModal(); dialog.current?.querySelector("input")?.focus(); }, []);
   return <dialog ref={dialog} className="entry-dialog supplenze ui-page ui-surface manual-assignment" aria-labelledby="manual-title" onCancel={e => { e.preventDefault(); onClose(); }}>
     <div className="entry-heading"><div><h2 id="manual-title">Assegna manualmente</h2><p>{hour}ª ora</p></div><button className="ui-button" aria-label="Chiudi assegnazione manuale" onClick={onClose}>×</button></div>
-    <form className="entry-form ui-form" onSubmit={e => { e.preventDefault(); if (selected) onAssign(selected.id, true, "MANUAL", note); }}>
+    <form className="entry-form ui-form" onSubmit={e => { e.preventDefault(); if (selected) onAssign(selected.id, true, paid ? "MANUAL_PAID" : "MANUAL", note); }}>
       <label htmlFor="manual-teacher">Cerca docente</label>
       <div className="entry-search"><div className="sw">
         <input id="manual-teacher" autoFocus value={query} placeholder="Docente, es. ros"
@@ -45,6 +46,7 @@ export function ManualAssignmentDialog({ teachers, hour, current, currentNote, o
       </div></div>
       {query && !selected && !suggestions.length && <p className="sub" role="status">Nessun docente trovato.</p>}
       <div id="manual-warning" aria-live="polite">{selected?.tag && <p className="ui-notice" role="alert">Attenzione: {selected.tag}. Puoi assegnare comunque il docente.</p>}</div>
+      <fieldset><legend>Tipo di ora</legend><label><input type="radio" name="manual-payment" checked={!paid} onChange={() => setPaid(false)} /> Gratuita</label><label><input type="radio" name="manual-payment" checked={paid} onChange={() => setPaid(true)} /> A pagamento</label></fieldset>
       <label>Nota (facoltativa)<textarea value={note} maxLength={2000} rows={3} onChange={e => setNote(e.target.value)} /></label>
       <div className="ui-actions"><button type="button" className="ui-button" onClick={onClose}>Annulla</button><button className="ui-button ui-button-primary" disabled={!selected}>{selected?.tag ? "Assegna comunque" : "Assegna"}</button></div>
     </form>

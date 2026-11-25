@@ -115,7 +115,7 @@ export function CandidateDrawer({
         <div className="lst">
           <LoadingRegion local pending={pending} error={error}>
           {consultation && !pending && !error && !cands.length && <p role="status">Nessun docente disponibile per questa ora e sede.</p>}
-          {!consultation && <button className="ui-button manual-assignment-trigger" disabled={!!reason || busy || pending || !!error} onClick={() => setManual(true)}>Assegna manualmente…</button>}
+          {!consultation && <button className="ui-button ui-button-primary manual-assignment-trigger" disabled={!!reason || busy || pending || !!error} onClick={() => setManual(true)}>Assegna manualmente…</button>}
           {cands.filter(c => c.ty !== "MANUAL").map((c, index) => {
             const cross = !!(c.loc && open.sede && c.loc !== open.sede);
             return (
@@ -204,7 +204,7 @@ export function CandidateDrawer({
           </LoadingRegion>
         </div>
       </div>
-      {manual && <ManualAssignmentDialog teachers={cands.filter(c => c.ty === "MANUAL")} hour={open.h} current={currentCategory === "MANUAL" ? current : undefined} currentNote={currentCategory === "MANUAL" ? currentNote : undefined} onClose={() => setManual(false)} onAssign={(...args) => { setManual(false); onAssign(...args); }} />}
+      {manual && <ManualAssignmentDialog teachers={cands.filter(c => c.ty === "MANUAL")} hour={open.h} current={currentCategory === "MANUAL" || currentCategory === "MANUAL_PAID" ? current : undefined} currentNote={currentCategory === "MANUAL" || currentCategory === "MANUAL_PAID" ? currentNote : undefined} currentPaid={currentCategory === "MANUAL_PAID"} onClose={() => setManual(false)} onAssign={(...args) => { setManual(false); onAssign(...args); }} />}
     </>
   );
 }

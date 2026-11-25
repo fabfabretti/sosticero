@@ -30,6 +30,9 @@ test('manual dialog warns but permits occupied teachers and submits an optional 
   nodes.find(n => n.type === 'textarea').props.onChange({target: {value: 'Accordo con docente'}});
   render().find(n => n.type === 'form').props.onSubmit({preventDefault() {}});
   assert.deepEqual(calls, [['busy', true, 'MANUAL', 'Accordo con docente']]);
+  render().find(n => n.type === 'input' && n.props.type === 'radio' && !n.props.checked).props.onChange();
+  render().find(n => n.type === 'form').props.onSubmit({preventDefault() {}});
+  assert.deepEqual(calls[1], ['busy', true, 'MANUAL_PAID', 'Accordo con docente']);
   render().find(n => n.type === 'input').props.onChange({target: {value: 'bian'}});
   nodes = render();
   assert.ok(!nodes.some(n => n.props?.role === 'alert'));
@@ -37,6 +40,21 @@ test('manual dialog warns but permits occupied teachers and submits an optional 
   nodes = render();
   assert.equal(nodes.find(n => n.type === 'input').props.value, 'Bianchi');
   assert.ok(!nodes.some(n => n.props?.role === 'option'));
-  assert.equal(calls.length, 1);
+  assert.equal(calls.length, 2);
 
+});
+
+test('manual paid edit restores the teacher, note and payment choice', () => {
+  let cursor = 0; const slots = []; const calls = []; const jsx = (type, props) => ({type, props}); const exports = {};
+  runInNewContext(ts.transpileModule(readFileSync('src/ManualAssignmentDialog.tsx', 'utf8'), {compilerOptions: {module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX}}).outputText, {exports, require(id) {
+    if (id === './timetables') return {norm: value => value.toLowerCase()};
+    if (id === 'react') return {useRef: () => ({current: null}), useEffect() {}, useState(initial) {const i = cursor++; if (!(i in slots)) slots[i] = initial; return [slots[i], v => slots[i] = v];}};
+    return {jsx, jsxs: jsx};
+  }});
+  const props = {teachers: [{id:'busy', name:'Rossi', tag:''}], hour:2, current:'busy', currentNote:'Accordo', currentPaid:true, onClose(){}, onAssign:(...args)=>calls.push(args)};
+  const nodes = []; (function walk(n) {if (Array.isArray(n)) return n.forEach(walk); if (!n || typeof n !== 'object') return; nodes.push(n); walk(n.props?.children);})(exports.ManualAssignmentDialog(props));
+  assert.equal(nodes.find(n => n.type === 'textarea').props.value, 'Accordo');
+  assert.equal(nodes.filter(n => n.type === 'input' && n.props.type === 'radio')[1].props.checked, true);
+  nodes.find(n => n.type === 'form').props.onSubmit({preventDefault(){}});
+  assert.deepEqual(calls[0], ['busy', true, 'MANUAL_PAID', 'Accordo']);
 });

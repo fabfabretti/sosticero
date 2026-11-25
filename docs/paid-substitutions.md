@@ -6,6 +6,8 @@ Campus feasibility follows permit-recovery travel checks at both sides of the sl
 
 In Supplenze, choose **Disponibile a pagamento** to record paid work. A teacher can appear separately under permit recovery; the clicked category determines accounting. Paid candidates are ordered by ascending paid assignments, including future bookings. Every saved paid assignment counts once immediately across all current data; replacing or removing it adjusts totals. Removing availability does not remove saved work. Review flags retain paid accounting until explicit correction.
 
+**Assegna manualmente** offers **Gratuita** (the default) and **A pagamento**. A manual paid assignment does not require a recurring availability declaration, and does not create one. Existing conflict warnings remain visible; the paid assignment appears in Banca ore and follows the same pricing, budget and notification rules as other paid substitutions.
+
 The Banca ore register shows each paid substitution, the assigning campus account, notification status and per-teacher totals. **Avvisato** and the copy-request button exist only in the **Supplenze table**, following permit-recovery actions. Each copied email asks the teacher to attend one specific paid substitution. Copying neither sends email nor changes Avvisato; notification does not affect accounting.
 
 Stats **Reperibili + Pagamento** unions ordinary availability, favourable permit recovery and paid opportunities, deduplicating teachers per cell and across campuses. Like existing Stats availability, this is theoretical timetable capacity: it does not subtract daily absences or bookings. Unknown paid-campus feasibility is disclosed. The POT ratio is unchanged.

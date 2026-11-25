@@ -1235,14 +1235,17 @@ def create_app(path=None, seed=None):
                 assignments.pop(e.key, None)
             else:
                 old = assignments.get(e.key)
-                unchanged = old and old['v'] == e.value and old.get('t') in ('RP', 'PAID') and (e.category is None or e.category == old['t'])
+                unchanged = old and old['v'] == e.value and old.get('t') in ('RP', 'PAID') and (e.category is None or e.category == old['t'] and not old.get('manualPaid') or e.category == 'MANUAL_PAID' and old.get('manualPaid') is True)
                 if not unchanged:
                     assignments.pop(e.key, None)
                 assignments[e.key] = validate_assignment(ds, state, e.day.isoformat(), e.key, e.value, policies(db, ds), e.exceptional, saved=bool(unchanged), category=e.category)
                 if old and old['v'] == e.value and old.get('t') == assignments[e.key]['t'] and 'campusNotice' in old:
                     assignments[e.key]['campusNotice'] = old['campusNotice']
-                if assignments[e.key]['t'] == 'MANUAL' and e.note and e.note.strip():
-                    assignments[e.key]['note'] = e.note.strip()
+                if assignments[e.key]['t'] == 'MANUAL' or assignments[e.key].get('manualPaid'):
+                    if 'note' in e.model_fields_set:
+                        assignments[e.key].pop('note', None)
+                        if e.note and e.note.strip():
+                            assignments[e.key]['note'] = e.note.strip()
                 if assignments[e.key]['t'] == 'PAID' and not unchanged:
                     row = current_rows[e.key]
                     assignments[e.key].update(assignedBy=attribution.snapshot(request.state.account), notified=False,
