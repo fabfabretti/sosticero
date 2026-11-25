@@ -42,6 +42,7 @@ import { CampusNoticeActions } from "./CampusNoticeActions";
 import { RecoveryActions } from "./RecoveryActions";
 import { HashRouter, Link, useLocation } from "react-router";
 const hours = [1, 2, 3, 4, 5, 6, 7];
+const periodTimes = ["", "07:45–08:35", "08:35–09:30", "09:40–10:35", "10:35–11:30", "11:40–12:35", "12:35–13:25", "13:25–14:15"];
 const campusTag = (site: string) => <span key={site} className={`permit-campus campus-${site}`} aria-label={site === 'centrale' ? 'Centrale' : 'Succursale'} title={site === 'centrale' ? 'Centrale' : 'Succursale'}>{site === 'centrale' ? 'C' : 'S'}</span>;
 const entryExitBoundary = (key: string, assignments: Record<string, Assignment>) => {
   const a = assignments[key];
@@ -1170,7 +1171,7 @@ function Supplenze() {
               {hours.map((h) => (
                 <React.Fragment key={h}>
                   <tr className="h">
-                    <th colSpan={5}>{h}ª ora</th>
+                    <th colSpan={5}>{h}ª ora · {periodTimes[h]}</th>
                   </tr>
                   {!rs.some((r) => r.h === h) && (
                     <tr>
