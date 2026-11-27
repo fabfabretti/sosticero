@@ -85,6 +85,6 @@ class SupportOverrideApiTest(existing.OverrideApiTest):
         next(t for t in raw['docenti'] if t['id'] == 'support')['ruolo'] = 'ITP'
         import_version(self.client, raw, '2026-10-19').raise_for_status()
         result = self.orari('2026-10-19')
-        self.assertEqual(result['dataset']['lessons']['support|lun|2']['classes'], ['2A'])
-        self.assertTrue(result['overrides'][0]['groups'][0]['conflicts'])
+        self.assertEqual(result['dataset']['lessons']['support|lun|2']['classes'], ['1A'])
+        self.assertFalse(result['overrides'][0]['groups'][0]['conflicts'])
         self.client.post('/api/import', json=self.client.get('/api/export').json()).raise_for_status()

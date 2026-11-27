@@ -52,7 +52,7 @@ test('three teachers in one class and hour each list the other two', () => {
     assert.deepEqual([...cell(id, 0, 1).partners].sort(), ['a', 'b', 'c'].filter(x => x !== id).sort());
 });
 
-test('teachers with no lessons are omitted and grids are ordered by name', () => {
+test('teachers without lessons remain editable and grids are ordered by name', () => {
   const grids = buildTeacherTimetables(dataset);
-  assert.deepEqual([...grids.map(g => g.id)], ['a', 'b', 'c']);
+  assert.deepEqual([...grids.map(g => g.id)], ['a', 'b', 'c', 'z']);
 });

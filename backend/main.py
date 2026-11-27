@@ -631,10 +631,11 @@ def create_app(path=None, seed=None):
                     raise ValueError('Carica prima un orario.')
             labels = name_overrides(db)
             ds = dict(ds, receptions=receptions.on_day(store.read(db, 'receptions', receptions.empty()), viewed))
+            hour_types = merge_types(ds, store.read(db, 'hourTypes', {}))
         teachers = {i: dict(t, cdcName=CDC_NAMES.get(t.get('classe_concorso', ''), t.get('classe_concorso', ''))) for i, t in teacher_names.teachers(ds['teachers'], labels).items()}
         return JSONResponse(dict(effective=effective, day=viewed, version=selected['id'] if history else '', dataset=dict(ds, teachers=teachers),
                     basis=timetables.digest(history), imported=selected['dataset'] if history else ds,
-                    overrides=history.get('_overrides', overrides.empty())['records'] if history else []))
+                    overrides=history.get('_overrides', overrides.empty())['records'] if history else [], hourTypes=hour_types))
 
     @app.get('/api/student-groups')
     def get_student_groups(day: date | None = None):
@@ -799,20 +800,13 @@ def create_app(path=None, seed=None):
         if data.get('basis') != timetables.digest(history):
             raise HTTPException(status_code=409, detail='Orario modificato: ricarica e verifica la bozza.')
         deleting = data.get('delete') is True
-        document, report = overrides.remove(history['_overrides'], data) if deleting else overrides.propose(history['_overrides'], history, data)
+        document, report = overrides.remove(history['_overrides'], data) if deleting else overrides.propose(history['_overrides'], history, data, store.read(db, 'hourTypes', {}))
         proposed = dict(history, _overrides=document)
         state = store.read(db, 'state', EMPTY)
         facts = store.read(db, 'statistics', statistics.empty())
-        schedules = {}
+        schedules = {id(history): timetables.resolver(history), id(proposed): timetables.resolver(proposed)}
         def schedule(source, day):
-            selected = timetables.version(source, day)
-            records = source['_overrides']['records']
-            active = tuple(sorted((teacher, record['id'] if record else None) for teacher in {r['teacher'] for r in records}
-                                  if (record := overrides.selected(source['_overrides'], teacher, day))))
-            key = id(source), selected['id'], active
-            if key not in schedules:
-                schedules[key] = timetables.dataset(source, day)
-            return schedules[key]
+            return schedules[id(source)](day)
         rules = merge_types(schedule(proposed, data['start']), store.read(db, 'hourTypes', {}))
         evidence = dict(record=document['records'][-1]['id'], previous={}, assignments={}) if not deleting else None
         days = []
@@ -836,6 +830,36 @@ def create_app(path=None, seed=None):
                 evidence['assignments'][day] = {k: timetables.conflict_context(history, day, k, a) or timetables.context(history, state, day, k, facts, before) for k, a in state['asg'].get(day, {}).items()}
             previous_problems = timetables.issues(before, state, day, rules)
             days.append(dict(day=day, issues=[p for p in problems if p not in previous_problems], assignments=list(state['asg'].get(day, {}))))
+        # Check a representative week at every point where a dated source changes.
+        boundaries = {data['start']} | set(appointments.boundaries(history)) | set(appointments.boundaries(proposed)) | student_groups.boundaries(history['_studentGroups']) | {v['effective'] for v in history['_receptions']['versions']}
+        if data.get('end') and data['end'] != '9999-12-31':
+            boundaries.add((date.fromisoformat(data['end']) + timedelta(days=1)).isoformat())
+        boundaries = sorted(d for d in boundaries if d and d >= data['start'] and (deleting or not data.get('end') or same_start_revision or d <= data['end']))
+        overlaps = []
+        seen_overlaps = set()
+        for index, boundary in enumerate(boundaries):
+            first = date.fromisoformat(boundary)
+            following = boundaries[index + 1] if index + 1 < len(boundaries) else None
+            for offset in range(7):
+                if first.toordinal() + offset > date.max.toordinal():
+                    break
+                day = (first + timedelta(days=offset)).isoformat()
+                if following and day >= following:
+                    break
+                if not deleting and data.get('end') and not same_start_revision and day > data['end']:
+                    break
+                before, after = schedule(history, day), schedule(proposed, day)
+                weekday = DAYS[date.fromisoformat(day).weekday()]
+                for hour in HOURS:
+                    old = before['lessons'].get(f"{data['teacher']}|{weekday}|{hour}")
+                    new = after['lessons'].get(f"{data['teacher']}|{weekday}|{hour}")
+                    if not new or old:
+                        continue
+                    for kind, commitment in (('Ricevimento', receptions.at(after, data['teacher'], day, hour)), ('Gruppo studenti', student_groups.at(after, data['teacher'], day, hour))):
+                        key = (kind, weekday, hour)
+                        if commitment and key not in seen_overlaps:
+                            seen_overlaps.add(key)
+                            overlaps.append(dict(day=day, key=f'{weekday}|{hour}', message=f'{kind}: sovrapposizione con l’ora in orario.'))
         result = deepcopy(facts)
         for day in affected:
             result['days'].pop(day, None)
@@ -852,7 +876,7 @@ def create_app(path=None, seed=None):
         documents = db.execute("SELECT key,value FROM documents WHERE key NOT IN ('googleSheetsStatus','googleSheets') ORDER BY key").fetchall()
         # UUIDs are evidence identities, not part of the preview fingerprint.
         token = timetables.digest([documents, {k: v for k, v in data.items() if k != 'token'}])
-        return document, result, dict(token=token, days=days, overrides=report)
+        return document, result, dict(token=token, days=days, overrides=report, overlaps=overlaps)
 
     @app.post('/api/orari/preview')
     def preview_override(data: dict):
@@ -1285,7 +1309,8 @@ def create_app(path=None, seed=None):
             history = timetables.validate(data.get('timetables'), data.get('teacherAppointments') if data.get('schema') in (10, 11, 12, 13) else None) if data.get('schema') in (4, 5, 6, 7, 8, 9, 10, 11, 12, 13) else read_history(db)
             history['_appointments'] = appointments.validate(data.get('teacherAppointments', appointments.empty()) if data.get('schema') in (10, 11, 12, 13) else appointments.empty(), history)
             retained = store.read(db, 'timetableOverrides', overrides.empty())
-            document = overrides.validate(data.get('timetableOverrides'), history) if data.get('schema') in (5, 6, 7, 8, 9, 10, 11, 12, 13) else retained
+            rules = validate_types(data['hourTypes']) if 'hourTypes' in data else None
+            document = overrides.validate(data.get('timetableOverrides'), history, rules) if data.get('schema') in (5, 6, 7, 8, 9, 10, 11, 12, 13) else retained
             document, restore_review = overrides.reconcile(document, history)
             history['_overrides'] = document
             reception_document = receptions.validate(data.get('receptions', receptions.empty()) if data.get('schema') in (7, 8, 9, 10, 11, 12, 13) else receptions.empty(), teacher_names.catalog(history))
@@ -1300,7 +1325,6 @@ def create_app(path=None, seed=None):
             compatible = identifier == 'v1:'+','.join(sorted(ds['teachers'])) if data.get('schema') in (4, 5, 6, 7, 8, 9, 10, 11, 12, 13) else isinstance(identifier, str) and identifier.startswith('v1:') and set(identifier[3:].split(',')) <= set(ds['teachers'])
             if type(data.get('schema')) is not int or data['schema'] not in (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13) or not compatible:
                 raise ValueError('Archivio non compatibile.')
-            rules = validate_types(data['hourTypes']) if 'hourTypes' in data else None
             from copy import deepcopy
             state = deepcopy({k: data.get(k, {}) for k in EMPTY})
             if data['schema'] < 12:

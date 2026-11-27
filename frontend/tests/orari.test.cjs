@@ -183,7 +183,7 @@ const helpers = load('src/TeacherTimetables.tsx', id => {
   if (id === 'react/jsx-runtime') return {};
   throw Error(id);
 });
-test('special moves and swaps preserve campus and disabled status and reject ordinary lessons', () => {
+test('moves and swaps preserve campus and disabled status for all lessons', () => {
   const pot = { classes: [], activities: ['POT'], site: 'centrale', disabled: true };
   const staff = { classes: [], activities: ['STAFF'], site: 'succursale' };
   const cells = { a: pot, b: staff, c: null, d: { classes: ['1A'] } };
@@ -191,8 +191,8 @@ test('special moves and swaps preserve campus and disabled status and reject ord
   assert.equal(swapped.a, staff); assert.equal(swapped.b, pot);
   const moved = helpers.moveHour(cells, 'a', 'c');
   assert.equal(moved.a, null); assert.equal(moved.c, pot);
-  assert.equal(helpers.moveHour(cells, 'a', 'd'), cells);
-  assert.equal(helpers.moveHour(cells, 'd', 'c'), cells);
+  assert.equal(helpers.moveHour(cells, 'a', 'd').d, pot);
+  assert.equal(helpers.moveHour(cells, 'd', 'c').c, cells.d);
   assert.equal(helpers.moveHour(cells, 'a', 'missing'), cells);
   assert.equal(helpers.editableHour({ classes: ['1A'], activities: ['POT'] }), false);
 });
@@ -239,14 +239,14 @@ test('changing the start date asks only when the draft has unsaved edits', async
   const prompts = [];
   const s = await loaded(undefined, message => { prompts.push(message); return false; });
   s.nodes().find(n => n.props?.['aria-label'] === 'Modifica orario di Anna').props.onClick();
-  s.nodes().find(n => n.props?.['aria-label'] === 'Disabilita Mar 2ª POT').props.onClick();
+  s.nodes().find(n => n.props?.['aria-label'] === 'Modifica POT Mar 2ª POT').props.onKeyDown({altKey:true,key:'ArrowDown',preventDefault(){}});
   const start = s.nodes().find(n => n.type === 'input' && n.props.required);
   const anotherDate = start.props.value === '2026-10-19' ? '2026-10-20' : '2026-10-19';
   await start.props.onChange({ target: { value: anotherDate } });
   assert.equal(prompts.length, 1);
   assert.match(prompts[0], /modifiche non salvate/);
   assert.equal(s.calls.length, 1);
-  assert.ok(s.nodes().some(n => n.props?.['aria-label'] === 'Riattiva Mar 2ª POT'));
+  assert.ok(s.nodes().some(n => n.props?.['aria-label'] === 'Modifica POT Mar 3ª POT'));
 });
 
 test('failed save preserves the edited draft and clears stale preview', async () => {
@@ -257,10 +257,10 @@ test('failed save preserves the edited draft and clears stale preview', async ()
     throw Error('Anteprima scaduta');
   });
   s.nodes().find(n => n.props?.['aria-label'] === 'Modifica orario di Anna').props.onClick();
-  s.nodes().find(n => n.props?.['aria-label'] === 'Disabilita Mar 2ª POT').props.onClick();
+  s.nodes().find(n => n.props?.['aria-label'] === 'Modifica POT Mar 2ª POT').props.onKeyDown({altKey:true,key:'ArrowDown',preventDefault(){}});
   await s.nodes().find(n => n.type === 'button' && n.props.children === 'Salva').props.onClick();
-  assert.equal(previewBody.cells['mar|2'].disabled, true);
-  assert.ok(s.nodes().some(n => n.props?.['aria-label'] === 'Riattiva Mar 2ª POT'));
+  assert.equal(previewBody.cells['mar|3'].activities[0], 'POT');
+  assert.ok(s.nodes().some(n => n.props?.['aria-label'] === 'Modifica POT Mar 3ª POT'));
   assert.ok(s.nodes().some(n => n.props?.role === 'alert' && n.props.children.includes('scaduta')));
   assert.ok(!s.nodes().some(n => n.props?.children === 'Conferma e salva'));
 });
@@ -272,10 +272,10 @@ test('drag shows a floating preview without disabling and keyboard movement rema
   b.props.onPointerMove({ clientX: 20, clientY: 20, preventDefault() {} });
   assert.ok(s.nodes().some(n => n.props?.className === 'orari-drag-preview'));
   b.props.onClick();
-  assert.ok(s.nodes().some(n => n.props?.['aria-label'] === 'Disabilita Mar 2ª POT' && n.props['aria-pressed'] === false));
+  assert.ok(s.nodes().some(n => n.props?.['aria-label'] === 'Disabilita Mar 2ª POT'));
   b.props.onPointerUp({ clientX: 20, clientY: 20 }); await new Promise(r => setTimeout(r, 1));
   s.nodes().find(n => n.props?.['aria-label'] === 'Modifica POT Mar 2ª POT').props.onKeyDown({ altKey: true, key: 'ArrowDown', preventDefault() {} });
-  assert.ok(s.nodes().some(n => n.props?.['aria-label'] === 'Disabilita Mar 3ª POT'));
+  assert.ok(s.nodes().some(n => n.props?.['aria-label'] === 'Modifica POT Mar 3ª POT'));
 });
 
 test('legend names campuses and saving requests confirmation only for affected assignments', async () => {
@@ -402,10 +402,9 @@ test('POT click and double click edit class and campus without toggling availabi
   const s = await loaded();
   assert.ok(!s.nodes().some(n => n.props?.onDoubleClick));
   s.nodes().find(n => n.props?.['aria-label'] === 'Modifica orario di Anna').props.onClick();
-  s.nodes().find(n => n.props?.['aria-label'] === 'Disabilita Mar 2ª POT').props.onClick();
   let pot = s.nodes().find(n => n.props?.['aria-label'] === 'Modifica POT Mar 2ª POT');
   pot.props.onClick(); pot.props.onClick(); pot.props.onDoubleClick();
-  assert.ok(s.nodes().some(n => n.props?.['aria-label'] === 'Riattiva Mar 2ª POT'));
+  assert.ok(s.nodes().some(n => n.props?.['aria-label'] === 'Disabilita Mar 2ª POT'));
   s.nodes().find(n => n.props?.['aria-label'] === 'Classe POT').props.onChange({ target: { value: '1A' } });
   s.nodes().find(n => n.props?.role === 'option' && n.props.children[0] === '1A').props.onClick();
   s.nodes().find(n => n.props?.['aria-label'] === 'Annulla modifica attività').props.onClick();
@@ -419,8 +418,6 @@ test('POT click and double click edit class and campus without toggling availabi
   assert.ok(s.nodes().some(n => n.props?.title === '1A · POT · Centrale'));
   pot.props.onKeyDown({ altKey: true, key: 'ArrowDown', preventDefault() {} });
   assert.ok(s.nodes().some(n => n.props?.['aria-label'] === 'Modifica POT Mar 3ª 1A · POT'));
-  s.nodes().find(n => n.props?.['aria-label'] === 'Riattiva Mar 3ª 1A · POT').props.onClick();
-  assert.ok(s.nodes().some(n => n.props?.['aria-label'] === 'Disabilita Mar 3ª POT'));
 });
 
 test('future overrides are expanded and removable while editing', async () => {
@@ -444,32 +441,30 @@ test('future overrides are expanded and removable while editing', async () => {
 for (const code of ['ALF', 'PE', 'RIT', 'DIS']) test(`${code} uses the class and campus editor on click and double click in edit mode`, async () => {
   const alf = structuredClone(orari);
   alf.dataset.lessons['a|mar|2'].activities = [code];
+  alf.hourTypes = { [`code:${code}`]: { label: code, available: true } };
   const s = await loaded(async () => alf);
   assert.ok(!s.nodes().some(n => n.props?.onDoubleClick));
   s.nodes().find(n => n.props?.['aria-label'] === 'Modifica orario di Anna').props.onClick();
-  s.nodes().find(n => n.props?.['aria-label'] === `Disabilita Mar 2ª ${code}`).props.onClick();
   const cell = s.nodes().find(n => n.props?.['aria-label'] === `Modifica ${code} Mar 2ª ${code}`);
   cell.props.onClick(); cell.props.onClick(); cell.props.onDoubleClick();
-  assert.ok(s.nodes().some(n => n.props?.['aria-label'] === `Riattiva Mar 2ª ${code}`));
+  assert.ok(!s.nodes().some(n => /^(Riattiva|Disabilita) /.test(n.props?.['aria-label'] || '')));
   s.nodes().find(n => n.props?.['aria-label'] === `Classe ${code}`).props.onChange({ target: { value: '1A' } });
   s.nodes().find(n => n.props?.role === 'option' && n.props.children[0] === '1A').props.onClick();
   s.nodes().find(n => n.type === 'button' && n.props.children === 'Centrale').props.onClick();
   s.nodes().find(n => n.props?.children === 'Applica').props.onClick();
   assert.ok(s.nodes().some(n => n.props?.title === `1A · ${code} · Centrale`));
-  s.nodes().find(n => n.props?.['aria-label'] === `Riattiva Mar 2ª 1A · ${code}`).props.onClick();
-  assert.ok(s.nodes().some(n => n.props?.['aria-label'] === `Disabilita Mar 2ª ${code}`));
 });
 
 
 test('activity editor stays outside the grid with keyboard class suggestions and three campus buttons', async () => {
   const s = await loaded();
   s.nodes().find(n => n.props?.['aria-label'] === 'Modifica orario di Anna').props.onClick();
-  s.nodes().find(n => n.props?.['aria-label'] === 'Disabilita Mar 2ª POT').props.onClick();
   s.nodes().find(n => n.props?.['aria-label'] === 'Modifica POT Mar 2ª POT').props.onClick();
   assert.ok(s.nodes().some(n => n.type === 'dialog'));
   function hasDialog(n) { if (!n || typeof n !== 'object') return false; if (Array.isArray(n)) return n.some(hasDialog); return n.type === 'dialog' || hasDialog(n.props?.children); }
   assert.ok(s.nodes().filter(n => n.type === 'td').every(n => !hasDialog(n)));
-  assert.ok(!s.nodes().some(n => n.type === 'select'));
+  assert.ok(s.nodes().some(n => n.props?.role === 'combobox' && n.props?.['aria-label'] === 'Tipo di ora'));
+  assert.ok(!s.nodes().some(n => n.props?.children === ' Disponibile per supplenze'));
   const campus = () => s.nodes().filter(n => n.type === 'button' && ['Centrale', 'Staccata', 'Non indicata'].includes(n.props.children));
   assert.equal(campus().length, 3);
   assert.equal(campus().filter(n => n.props['aria-pressed']).length, 1);
@@ -524,7 +519,7 @@ test('support movement requires the role and conserves complete lessons in mixed
   const support = { classes: ['1A'], activities: [], site: 'centrale', room: '12' };
   const pot = { classes: [], activities: ['POT'], disabled: true };
   const cells = { a: support, b: pot, c: null };
-  for (const role of ['curricolare', 'ITP', undefined]) assert.equal(helpers.moveHour(cells, 'a', 'c', role), cells);
+  for (const role of ['curricolare', 'ITP', undefined]) assert.equal(helpers.moveHour(cells, 'a', 'c', role).c, support);
   const moved = helpers.moveHour(cells, 'a', 'c', 'sostegno');
   assert.equal(moved.a, null); assert.equal(moved.c, support);
   const swapped = helpers.moveHour(cells, 'b', 'a', 'sostegno');
@@ -545,7 +540,7 @@ test('support dialog, keyboard move and stale save retain class/site without dis
   const cell = () => s.nodes().find(n => n.props?.['aria-label'] === 'Modifica sostegno Lun 1ª 1A');
   cell().props.onClick();
   assert.equal(s.nodes().find(n => n.props?.['aria-label'] === 'Classe sostegno').props.disabled, false);
-  assert.ok(!s.nodes().some(n => n.props?.children === 'Nessuna classe'));
+  assert.ok(s.nodes().some(n => n.props?.children === 'Nessuna classe'));
   assert.ok(!s.nodes().some(n => /^Disabilita Lun/.test(n.props?.['aria-label'] || '')));
   s.nodes().find(n => n.props?.['aria-label'] === 'Classe sostegno').props.onChange({target:{value:'bad'}});
   assert.equal(s.nodes().find(n => n.props?.children === 'Applica').props.disabled, true);
@@ -592,4 +587,113 @@ test('support multi-class payload is retained for site edits and replaced on exp
   s.nodes().find(n => n.props?.role === 'option' && n.props.children[0] === '1A').props.onClick();
   s.nodes().find(n => n.props?.children === 'Applica').props.onClick();
   assert.ok(s.nodes().some(n => n.props?.['aria-label'] === 'Modifica sostegno Lun 1ª 1A'));
+});
+
+test('empty cells create hours as drafts and cancellation leaves the timetable unchanged', async () => {
+  let submitted;
+  const data = { ...orari, hourTypes: types.types };
+  const s = await loaded(async (url, body) => {
+    if (url.startsWith('orari?')) return data;
+    if (url === 'orari/preview') { submitted = body; return { token: 't', days: [] }; }
+    throw Error('Anteprima scaduta');
+  });
+  s.nodes().find(n => n.props?.['aria-label'] === 'Modifica orario di Anna').props.onClick();
+  const empty = () => s.nodes().find(n => n.props?.['aria-label'] === 'Aggiungi ora Mer 3ª');
+  empty().props.onClick({ currentTarget: { focus() {} } });
+  s.nodes().find(n => n.props?.['aria-label'] === 'Tipo di ora').props.onChange({ target: { value: 'POT' } });
+  s.nodes().find(n => n.props?.role === 'option' && n.props.children[0] === 'POT').props.onClick();
+  s.nodes().find(n => n.props?.['aria-label'] === 'Annulla modifica attività').props.onClick();
+  assert.ok(empty());
+  empty().props.onClick({ currentTarget: { focus() {} } });
+  s.nodes().find(n => n.props?.['aria-label'] === 'Tipo di ora').props.onChange({ target: { value: 'POT' } });
+  s.nodes().find(n => n.props?.role === 'option' && n.props.children[0] === 'POT').props.onClick();
+  s.nodes().find(n => n.props?.children === 'Applica').props.onClick();
+  await s.nodes().find(n => n.type === 'button' && n.props.children === 'Salva').props.onClick();
+  assert.equal(submitted.cells['mer|3'].special, 'POT');
+  assert.equal(submitted.cells['mer|3'].classes.length, 0);
+  assert.deepEqual(Array.from(submitted.links), []);
+});
+
+test('ordinary hours can be converted or removed while preserving imported classes', async () => {
+  let submitted;
+  const data = structuredClone(orari);
+  data.hourTypes = types.types;
+  data.dataset.lessons['a|lun|1'].classes = ['1A', '2A'];
+  const s = await loaded(async (url, body) => {
+    if (url.startsWith('orari?')) return data;
+    if (url === 'orari/preview') { submitted = body; return { token: 't', days: [] }; }
+    throw Error('Anteprima scaduta');
+  });
+  s.nodes().find(n => n.props?.['aria-label'] === 'Modifica orario di Anna').props.onClick();
+  s.nodes().find(n => n.props?.['aria-label'] === 'Modifica Lun 1ª 1A · 2A').props.onClick({currentTarget:{focus(){}}});
+  s.nodes().find(n => n.props?.['aria-label'] === 'Tipo di ora').props.onChange({ target: { value: 'POT' } });
+  s.nodes().find(n => n.props?.role === 'option' && n.props.children[0] === 'POT').props.onClick();
+  s.nodes().find(n => n.props?.children === 'Applica').props.onClick();
+  s.nodes().find(n => n.props?.['aria-label'] === 'Modifica POT Lun 1ª 1A · 2A · POT').props.onClick({currentTarget:{focus(){}}});
+  s.nodes().find(n => n.props?.children === 'Rimuovi ora').props.onClick();
+  assert.ok(s.nodes().some(n => n.props?.['aria-label'] === 'Aggiungi ora Lun 1ª'));
+  await s.nodes().find(n => n.type === 'button' && n.props.children === 'Salva').props.onClick();
+  assert.equal(submitted.cells['lun|1'], null);
+});
+
+test('overlap warning can be reviewed and confirmed without removing commitments', async () => {
+  const writes = [];
+  const s = await loaded(async (url, body) => {
+    if (url.startsWith('orari?')) return orari;
+    writes.push({url, body});
+    return url === 'orari/preview' ? { token: 't', days: [], overlaps: [{day:'2026-10-19',key:'lun|1',message:'Ricevimento: sovrapposizione'}] } : {ok:true};
+  });
+  s.nodes().find(n => n.props?.['aria-label'] === 'Modifica orario di Anna').props.onClick();
+  await s.nodes().find(n => n.type === 'button' && n.props.children === 'Salva').props.onClick();
+  assert.ok(s.nodes().some(n => n.props?.['aria-label'] === 'Conferma modifica'));
+  assert.ok(s.nodes().some(n => Array.isArray(n.props?.children) && n.props.children.includes('Ricevimento: sovrapposizione')));
+  await s.nodes().find(n => n.props?.children === 'Conferma e salva').props.onClick();
+  assert.equal(writes.at(-1).url, 'orari/override');
+  assert.equal(writes.at(-1).body.token, 't');
+});
+
+test('hour type uses searchable keyboard suggestions and applies the new type policy', async () => {
+  const data = structuredClone(orari);
+  data.hourTypes = types.types;
+  data.dataset.lessons['a|mar|2'].disabled = true;
+  let submitted;
+  const s = await loaded(async (url, body) => {
+    if (url.startsWith('orari?')) return data;
+    if (url === 'orari/preview') { submitted = body; return { token: 't', days: [] }; }
+    throw Error('Anteprima scaduta');
+  });
+  s.nodes().find(n => n.props?.['aria-label'] === 'Modifica orario di Anna').props.onClick();
+  s.nodes().find(n => n.props?.['aria-label'] === 'Modifica POT Mar 2ª POT').props.onClick();
+  const kind = () => s.nodes().find(n => n.props?.['aria-label'] === 'Tipo di ora');
+  kind().props.onChange({target:{value:'ALF'}});
+  assert.equal(kind().props['aria-expanded'], true);
+  assert.equal(s.nodes().find(n => n.props?.children === 'Applica').props.disabled, true);
+  kind().props.onKeyDown({key:'Enter',preventDefault(){}});
+  assert.equal(kind().props.value, 'ALF');
+  assert.ok(!s.nodes().some(n => n.type === 'input' && n.props.type === 'checkbox'));
+  s.nodes().find(n => n.props?.children === 'Applica').props.onClick();
+  await s.nodes().find(n => n.type === 'button' && n.props.children === 'Salva').props.onClick();
+  assert.equal(submitted.cells['mar|2'].disabled, undefined);
+  assert.deepEqual(Array.from(submitted.cells['mar|2'].activities), ['ALF']);
+});
+
+test('POT availability can be disabled and re-enabled without losing its class', async () => {
+  const data = structuredClone(orari);
+  data.dataset.lessons['a|mar|2'].classes = ['1A'];
+  let submitted;
+  const s = await loaded(async (url, body) => {
+    if (url.startsWith('orari?')) return data;
+    if (url === 'orari/preview') { submitted = body; return { token: 't', days: [] }; }
+    throw Error('Anteprima scaduta');
+  });
+  s.nodes().find(n => n.props?.['aria-label'] === 'Modifica orario di Anna').props.onClick();
+  s.nodes().find(n => n.props?.['aria-label'] === 'Disabilita Mar 2ª 1A · POT').props.onClick();
+  assert.ok(s.nodes().some(n => n.props?.['aria-label'] === 'Riattiva Mar 2ª 1A · POT'));
+  await s.nodes().find(n => n.type === 'button' && n.props.children === 'Salva').props.onClick();
+  assert.equal(submitted.cells['mar|2'].disabled, true);
+  assert.deepEqual(Array.from(submitted.cells['mar|2'].classes), ['1A']);
+  s.nodes().find(n => n.props?.['aria-label'] === 'Riattiva Mar 2ª 1A · POT').props.onClick();
+  await s.nodes().find(n => n.type === 'button' && n.props.children === 'Salva').props.onClick();
+  assert.equal(submitted.cells['mar|2'].disabled, undefined);
+  assert.deepEqual(Array.from(submitted.cells['mar|2'].classes), ['1A']);
 });

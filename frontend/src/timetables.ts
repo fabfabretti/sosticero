@@ -45,11 +45,8 @@ export function buildTeacherTimetables(dataset: Dataset): TeacherTimetable[] {
     const [id, day, hour] = key.split("|");
     for (const c of l.classes || []) (byClass[`${day}|${hour}|${c}`] ||= []).push(id);
   }
-  const scheduled = new Set(Object.keys(dataset.lessons || {}).map(k => k.split("|")[0]));
-  for (const reception of dataset.receptions || []) scheduled.add(reception.teacher);
-  for (const group of dataset.studentGroups || []) scheduled.add(group.teacher);
   return Object.entries(dataset.teachers || {})
-    .filter(([id, t]) => !t.retired && (scheduled.has(id) || t.coveredBy || t.continuousAbsence || t.replaces))
+    .filter(([, t]) => !t.retired)
     .map(([id, t]) => ({
       id,
       name: t.name,

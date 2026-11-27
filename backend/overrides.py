@@ -19,7 +19,7 @@ def iso(value):
 
 
 def special(value):
-    return isinstance(value, dict) and (not value.get('classes') or class_commitment(value)) and bool(activity_codes(value))
+    return isinstance(value, dict) and (not value.get('classes') or value.get('disabled') and class_commitment(value)) and bool(activity_codes(value))
 
 
 def support(value, role):
@@ -36,7 +36,7 @@ def clean(value, role=None):
     result = {k: v for k, v in value.items() if k != 'disabled'}
     if activity_codes(value) in ([code] for code in CLASS_ACTIVITIES):
         result.pop('site', None)
-    if class_commitment(value) or support(value, role):
+    if value.get('disabled') and class_commitment(value) or support(value, role):
         result['classes'] = []
     if support(value, role):
         result.pop('site', None)
@@ -90,6 +90,57 @@ def groups(base, target, classes=None, role=None):
     return result
 
 
+def full_groups(base, target, classes, codes, role=None, links=None, rules=None, preserved_classes=()):
+    """Validate normalized cells and build patches against the imported week."""
+    if not isinstance(target, dict) or set(target) != set(base):
+        raise ValueError('Invia tutte le celle del docente.')
+    from .timetables import validate_dataset
+    for value in target.values():
+        if value is None:
+            continue
+        if not isinstance(value, dict) or ('disabled' in value and type(value['disabled']) is not bool):
+            raise ValueError('Stato ora non valido.')
+        lesson = {k: v for k, v in value.items() if k != 'disabled'}
+        cs = lesson.get('classes')
+        if not isinstance(cs, list) or any(not isinstance(c, str) or c not in classes for c in cs):
+            raise ValueError('Classe attività non valida.')
+        if len(cs) > 1 and cs not in preserved_classes and not any(v and v.get('classes') == cs for v in base.values()):
+            raise ValueError('Classe attività non valida.')
+        if not isinstance(lesson.get('activities', []), list) or any(not isinstance(c, str) or c not in codes for c in activity_codes(lesson)):
+            raise ValueError('Tipo ora non valido.')
+        if not cs and not activity_codes(lesson):
+            raise ValueError('Seleziona una classe o un tipo di attività.')
+        if value.get('disabled') and rules is not None:
+            keys = ['code:' + c for c in activity_codes(lesson)] or ['derived:support' if role == 'sostegno' else 'derived:itp' if (role or '').upper() == 'ITP' else 'derived:lesson']
+            if not all(rules.get(k, {}).get('available', False) for k in keys):
+                raise ValueError('Questo tipo di ora non è disponibile per supplenze.')
+        teacher = dict(id='teacher', name='teacher', code='', role='curricolare', classe_concorso='')
+        validate_dataset(dict(teachers={'teacher': teacher}, lessons={'teacher|lun|1': lesson}, classes=sorted(set(cs)), warnings=[]))
+    changed = {k for k in base if base[k] != target[k]}
+    if links is not None and (not isinstance(links, list) or any(not isinstance(link, list) or len(link) < 2 or any(not isinstance(k, str) or k not in base for k in link) or len(set(link)) != len(link) for link in links)):
+        raise ValueError('Collegamenti tra ore non validi.')
+    result = []
+    while changed:
+        connected = {changed.pop()}
+        traversed = set(connected)
+        while True:
+            if links is None:
+                payloads = {signature(v, role) for k in connected for v in (base[k], target[k]) if v}
+                linked = {k for k in changed if any(v and signature(v, role) in payloads for v in (base[k], target[k]))}
+            else:
+                neighbours = {k for link in links if traversed.intersection(link) for k in link} - traversed
+                traversed |= neighbours
+                linked = neighbours & changed
+                if neighbours and not linked:
+                    continue
+            if not linked:
+                break
+            connected |= linked
+            changed -= linked
+        result.append(dict(before={k: base[k] for k in sorted(connected)}, after={k: target[k] for k in sorted(connected)}, conflicts=[]))
+    return result
+
+
 def selected(document, teacher, day):
     records = [r for r in document['records'] if r['teacher'] == teacher]
     latest = {}
@@ -100,10 +151,10 @@ def selected(document, teacher, day):
     return max(applicable, key=lambda r: r['start'], default=None)
 
 
-def blocked(group, version, ds, teacher):
+def blocked(group, version, ds, teacher, legacy=True):
     suspended = any(v['effective'] is None or v['effective'] <= (version['effective'] or '') for v in group['conflicts'])
     needs_support = any(support(v, 'sostegno') for v in group['before'].values())
-    wrong_role = needs_support and ds['teachers'].get(teacher, {}).get('role') != 'sostegno'
+    wrong_role = legacy and needs_support and ds['teachers'].get(teacher, {}).get('role') != 'sostegno'
     return suspended or wrong_role or teacher not in ds['teachers'] or any(ds['lessons'].get(f'{teacher}|{k}') != v for k, v in group['before'].items())
 
 
@@ -114,7 +165,7 @@ def apply(document, version, ds, day):
         if not record or record['reset']:
             continue
         for group in record['groups']:
-            if blocked(group, version, ds, teacher):
+            if blocked(group, version, ds, teacher, record.get('format') != 2):
                 continue
             for key, value in group['after'].items():
                 slot = f'{teacher}|{key}'
@@ -135,16 +186,16 @@ def reconcile(document, history):
             if (record['end'] and start > record['end']) or (following and following <= record['start']):
                 continue
             for index, group in enumerate(record['groups']):
-                conflict = blocked(group, version, version['dataset'], record['teacher'])
+                conflict = blocked(group, version, version['dataset'], record['teacher'], record.get('format') != 2)
                 if conflict and not any(c['id'] == version['id'] for c in group['conflicts']):
                     group['conflicts'].append(dict(id=version['id'], effective=version['effective']))
                 report.append(dict(teacher=record['teacher'], start=record['start'], version=version['id'], group=index, review=bool(conflict)))
     return result, report
 
 
-def propose(document, history, data):
+def propose(document, history, data, rules=None):
     from .timetables import version
-    if set(data) - {'teacher', 'start', 'end', 'cells', 'reset', 'basis', 'token'}:
+    if set(data) - {'teacher', 'start', 'end', 'cells', 'reset', 'basis', 'token', 'links'}:
         raise ValueError('Campi modifica non validi.')
     teacher, start, end = data.get('teacher'), iso(data.get('start')), data.get('end')
     if end is not None and iso(end) < start:
@@ -155,9 +206,17 @@ def propose(document, history, data):
     reset = data.get('reset', False)
     if type(reset) is not bool or (reset and end is not None):
         raise ValueError('Ripristino non valido.')
-    edits = [] if reset else groups(cells(imported, teacher), data.get('cells'), imported['classes'], imported['teachers'][teacher]['role'])
+    codes = set(CLASS_ACTIVITIES) | {'UTC', 'UTS'} | {c for v in history['versions'] for lesson in v['dataset']['lessons'].values() for c in activity_codes(lesson)}
+    codes |= {key[5:] for key in (rules or {}) if key.startswith('code:')}
+    from .hour_types import merge_types
+    rule_lessons = dict(imported['lessons'])
+    if isinstance(data.get('cells'), dict):
+        rule_lessons.update({f'edit-{k}': v for k, v in data['cells'].items() if isinstance(v, dict) and isinstance(v.get('activities', []), list) and all(isinstance(c, str) for c in v.get('activities', [])) and isinstance(v.get('special', ''), str)})
+    known_rules = merge_types(dict(imported, lessons=rule_lessons), rules or {}) if rules is not None else None
+    classes = {c for v in history['versions'] for c in v['dataset']['classes']}
+    edits = [] if reset else full_groups(cells(imported, teacher), data.get('cells'), classes, codes, imported['teachers'][teacher]['role'], data.get('links'), known_rules)
     result = deepcopy(document)
-    result['records'].append(dict(id=uuid4().hex, teacher=teacher, start=start, end=end, reset=reset, groups=edits))
+    result['records'].append(dict(id=uuid4().hex, teacher=teacher, start=start, end=end, reset=reset, groups=edits, format=2))
     return reconcile(result, history)
 
 
@@ -175,7 +234,7 @@ def remove(document, data):
     return result, []
 
 
-def validate(document, history):
+def validate(document, history, rules=None):
     try:
         if not isinstance(document, dict) or set(document) != {'schema', 'records', 'evidence'} or type(document['schema']) is not int or document['schema'] != 1 or not isinstance(document['records'], list) or not isinstance(document['evidence'], list):
             raise ValueError()
@@ -183,7 +242,8 @@ def validate(document, history):
         catalog = {i for v in history['versions'] for i in v['dataset']['teachers']}
         versions = {v['id']: v for v in history['versions']}
         for r in document['records']:
-            if set(r) != {'id', 'teacher', 'start', 'end', 'reset', 'groups'} or not isinstance(r['id'], str) or not r['id'] or r['id'] in ids or r['teacher'] not in catalog or type(r['reset']) is not bool or not isinstance(r['groups'], list):
+            legacy = 'format' not in r
+            if set(r) != ({'id', 'teacher', 'start', 'end', 'reset', 'groups'} if legacy else {'id', 'teacher', 'start', 'end', 'reset', 'groups', 'format'}) or (not legacy and (type(r['format']) is not int or r['format'] != 2)) or not isinstance(r['id'], str) or not r['id'] or r['id'] in ids or r['teacher'] not in catalog or type(r['reset']) is not bool or not isinstance(r['groups'], list):
                 raise ValueError()
             ids.add(r['id'])
             iso(r['start'])
@@ -198,9 +258,13 @@ def validate(document, history):
                 if set(g) != {'before', 'after', 'conflicts'} or not isinstance(g['before'], dict) or not g['before'] or set(g['before']) != set(g['after']) or used & set(g['before']) or set(g['before']) - {f'{d}|{h}' for d in DAYS for h in HOURS}:
                     raise ValueError()
                 used |= set(g['before'])
-                if any(v is not None and not editable(v, teacher['role']) for v in g['before'].values()):
+                if legacy and any(v is not None and not editable(v, teacher['role']) for v in g['before'].values()):
                     raise ValueError()
-                rebuilt = groups(g['before'], g['after'], {c for v in history['versions'] for c in v['dataset']['classes']}, teacher['role'])
+                classes = {c for v in history['versions'] for c in v['dataset']['classes']} | {c for lesson in g['before'].values() if lesson for c in lesson.get('classes', [])}
+                codes = set(CLASS_ACTIVITIES) | {'UTC', 'UTS'} | {c for v in history['versions'] for lesson in v['dataset']['lessons'].values() for c in activity_codes(lesson)} | {c for lesson in g['before'].values() if lesson for c in activity_codes(lesson)}
+                codes |= {key[5:] for key in (rules or {}) if key.startswith('code:')}
+                preserved_classes = [lesson['classes'] for v in history['versions'] for lesson in v['dataset']['lessons'].values() if lesson.get('classes')]
+                rebuilt = groups(g['before'], g['after'], classes, teacher['role']) if legacy else full_groups(g['before'], g['after'], classes, codes, teacher['role'], preserved_classes=preserved_classes)
                 if not rebuilt or any(c != dict(id=c['id'], effective=versions[c['id']]['effective']) for c in g['conflicts']):
                     raise ValueError()
                 # A legacy restore can replace the imported basis; validate detached originals too.

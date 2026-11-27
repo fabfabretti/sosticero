@@ -255,7 +255,7 @@ class OverrideApiTest(unittest.TestCase):
         self.assertEqual(self.client.post('/api/orari/preview', json=request).status_code, 422)
 
     def test_pot_class_validation_dates_moves_and_portability(self):
-        for classes, disabled in [(['missing'], True), (['1A', '2A'], True), (['1A'], False)]:
+        for classes, disabled in [(['missing'], True), (['1A', '2A'], True)]:
             data = self.draft()
             data['cells']['lun|2'].update(classes=classes, disabled=disabled)
             self.assertEqual(self.client.post('/api/orari/preview', json=data).status_code, 422)
@@ -283,9 +283,9 @@ class OverrideApiTest(unittest.TestCase):
         self.save(data)
         choice = next(c for c in self.candidates() if c['id'] == 'pot')
         self.assertEqual(choice['ty'], 'CP')
-        self.assertEqual(choice['typeLabel'], 'Compresenza - POT')
-        self.assertFalse(choice['exceptional'])
-        self.client.post('/api/assignments', json=dict(day=DAY, key='absent|2|1A', value='pot')).raise_for_status()
+        self.assertEqual(choice['typeLabel'], 'Compresenza - POT · Ora disabilitata')
+        self.assertTrue(choice['exceptional'])
+        self.client.post('/api/assignments', json=dict(day=DAY, key='absent|2|1A', value='pot', exceptional=True)).raise_for_status()
         self.assertEqual(self.client.get('/api/export').json()['asg'][DAY]['absent|2|1A']['t'], 'CP')
         report = self.client.get('/api/stats', params=dict(period='custom', start=DAY, end=DAY)).json()
         self.assertEqual(report['types']['CP'], 1)
@@ -298,11 +298,11 @@ class OverrideApiTest(unittest.TestCase):
         ds = self.orari()['dataset']
         state = copy.deepcopy(EMPTY)
         state['cf'][DAY] = {'1A': [2]}
-        self.assertIn(2, auto_availability(ds, state, DAY)['pot'])
+        self.assertNotIn('pot', auto_availability(ds, state, DAY))
         row = dict(k='support|2|2A', ids=['support'], h=2, c='2A', sede='centrale', aula=None)
         c = eligibility(ds, state, DAY, row, ds['teachers']['pot'], merge_types(ds, {}))
-        self.assertEqual(c['ty'], 'D')
-        self.assertFalse(c['exceptional'])
+        self.assertEqual(c['ty'], 'POT')
+        self.assertTrue(c['exceptional'])
 
     def test_pot_absence_rows_and_hard_restrictions(self):
         from backend.domain import rows, eligibility
@@ -335,7 +335,7 @@ class OverrideApiTest(unittest.TestCase):
         data = self.draft()
         data['cells']['lun|2'].update(classes=['1A'], disabled=True)
         self.save(data)
-        self.client.post('/api/assignments', json=dict(day=DAY, key='absent|2|1A', value='pot')).raise_for_status()
+        self.client.post('/api/assignments', json=dict(day=DAY, key='absent|2|1A', value='pot', exceptional=True)).raise_for_status()
         reset = self.draft(); reset['reset'] = True
         self.save(reset)
         self.assertEqual(self.orari()['dataset']['lessons']['pot|lun|2']['classes'], [])
@@ -381,15 +381,15 @@ class OverrideApiTest(unittest.TestCase):
         data['cells']['lun|2'].update(classes=['1A'], disabled=True, site='centrale')
         self.save(data)
         choices = {c['id']: c for c in self.candidates(day)}
-        self.assertEqual(choices['pot']['typeLabel'], 'Compresenza - ALF')
-        self.assertFalse(choices['pot']['exceptional'])
-        self.client.post('/api/assignments', json=dict(day=day, key='absent|2|1A', value='pot')).raise_for_status()
+        self.assertEqual(choices['pot']['typeLabel'], 'Compresenza - ALF · Ora disabilitata')
+        self.assertTrue(choices['pot']['exceptional'])
+        self.client.post('/api/assignments', json=dict(day=day, key='absent|2|1A', value='pot', exceptional=True)).raise_for_status()
         self.assertEqual(self.client.get('/api/export').json()['asg'][day]['absent|2|1A']['t'], 'CA')
         self.client.post('/api/assignments', json=dict(day=day, key='absent|2|1A', value=None)).raise_for_status()
         archive = self.client.get('/api/export').json()
         self.client.post('/api/import', json=archive).raise_for_status()
         self.client.post('/api/entries', json=dict(day=day, group='cf', id='1A', hours=[2])).raise_for_status()
-        self.assertIn('2', self.client.get('/api/day/'+day).json()['autoDis'][day]['pot'])
+        self.assertNotIn('pot', self.client.get('/api/day/'+day).json()['autoDis'][day])
 
     def test_pe_rit_dis_class_campus_and_availability_edits(self):
         for code, day in [('PE', '2026-10-19'), ('RIT', '2026-10-26'), ('DIS', '2026-11-02')]:
@@ -402,8 +402,8 @@ class OverrideApiTest(unittest.TestCase):
                 data['cells']['lun|2'].update(classes=['1A'], disabled=True, site='centrale')
                 self.save(data)
                 choice = next(c for c in self.candidates(day) if c['id'] == 'pot')
-                self.assertEqual(choice['typeLabel'], 'Compresenza - '+code)
-                self.assertFalse(choice['exceptional'])
+                self.assertEqual(choice['typeLabel'], 'Compresenza - '+code+' · Ora disabilitata')
+                self.assertTrue(choice['exceptional'])
                 data = self.draft(start=day)
                 data['cells']['lun|2'].update(classes=[], disabled=False, site='succursale')
                 self.save(data)
@@ -414,7 +414,7 @@ class OverrideApiTest(unittest.TestCase):
                 archive = self.client.get('/api/export').json()
                 self.client.post('/api/import', json=archive).raise_for_status()
                 self.assertEqual(self.orari(day)['dataset']['lessons']['pot|lun|2'], saved)
-                for invalid in [dict(site='invalid'), dict(classes=['missing'], disabled=True), dict(classes=['1A'], disabled=False)]:
+                for invalid in [dict(site='invalid'), dict(classes=['missing'], disabled=True)]:
                     data = self.draft(start=day)
                     data['cells']['lun|2'].update(invalid)
                     self.assertEqual(self.client.post('/api/orari/preview', json=data).status_code, 422)

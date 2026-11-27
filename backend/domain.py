@@ -137,7 +137,7 @@ def validate_permit(ds, teacher, hours):
 
 
 def class_commitment(l):
-    return bool(l and l.get('disabled') and l.get('classes') and activity_codes(l) in ([code] for code in CLASS_ACTIVITIES))
+    return bool(l and l.get('classes') and activity_codes(l) in ([code] for code in CLASS_ACTIVITIES))
 
 
 def rows(ds, state, day):
@@ -218,7 +218,7 @@ def eligibility(ds, state, day, row, teacher, policies=None):
     released = l and l['classes'] and all(class_out(state, day, c, h, row['k']) for c in l['classes'])
     disabled = bool(l and l.get('disabled'))
     same_class_activity = class_commitment(l) and row['c'] in l['classes'] and l['site'] and l['site'] == row['sede'] and same_room
-    if (manual or released) and (not disabled or released and class_commitment(l)):
+    if (manual or released) and not disabled:
         ty, keys = 'D', ['derived:available']
     elif same_class_activity:
         code = activity_codes(l)[0]
@@ -249,7 +249,7 @@ def eligibility(ds, state, day, row, teacher, policies=None):
     if policy and not all(p['visible'] for p in policy):
         return None
     # Staying in the covered class does not release a teacher from another lesson.
-    exceptional = (disabled and not same_class_activity and ty not in ('CP', 'CA', 'D')) or (ty == 'TC' and policies is None) or bool(ty not in ('C', 'CP', 'CA') and policy and not all(p['available'] for p in policy))
+    exceptional = disabled or (ty == 'TC' and policies is None) or bool(ty not in ('C', 'CP', 'CA') and policy and not all(p['available'] for p in policy))
     if exceptional and policy and not all(p['school'] is True for p in policy):
         return None
     loc = state['disSites'].get(day, {}).get(i) if manual else None
@@ -262,7 +262,7 @@ def eligibility(ds, state, day, row, teacher, policies=None):
         label = LABELS[ty]
     elif same_class_activity:
         label = 'Compresenza - ' + activity_codes(l)[0]
-    if disabled and not same_class_activity and ty not in ('CP', 'CA', 'D'):
+    if disabled:
         label += ' · Ora disabilitata'
     if ty == 'C' and not same_class_activity and teacher['role'] not in ('sostegno', 'ITP'):
         label = LABELS['C']
@@ -514,7 +514,7 @@ def auto_availability(ds, state, day):
         hours = {}
         for h in HOURS:
             l = lesson(ds, i, day, h)
-            if student_groups.at(ds, i, day, h) or not l or not l['classes'] or h in absences(state, day, ds).get(i, []):
+            if student_groups.at(ds, i, day, h) or not l or l.get('disabled') or not l['classes'] or h in absences(state, day, ds).get(i, []):
                 continue
             reasons = []
             for c in l['classes']:
@@ -530,4 +530,4 @@ def auto_availability(ds, state, day):
 
 
 def default_availability(ds, teacher, day):
-    return [h for h in HOURS if not student_groups.at(ds, teacher, day, h) and not (lesson(ds, teacher, day, h) or {}).get('classes')]
+    return [h for h in HOURS if not student_groups.at(ds, teacher, day, h) and not (lesson(ds, teacher, day, h) or {}).get('classes') and not (lesson(ds, teacher, day, h) or {}).get('disabled')]

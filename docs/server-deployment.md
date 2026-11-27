@@ -285,3 +285,34 @@ The isolated project was stopped. Read-only release checks verified the image,
 production mount and STAF policy, and confirmed the corrected D/DIS campus order
 for the screenshot's 2026-11-20, first-period 5AE substitution without changing
 operational records.
+
+Full-hour overrides use version 2 records. Older releases do not understand
+these records; after deployment, use a forward fix or a reviewed migration for
+rollback. Do not discard overrides or restore a database snapshot merely to
+make an older binary start.
+
+### Full timetable hour editing — 2026-11-27
+
+Deployed using `./scripts/deploy.sh` as `incoming-20261127T165805-58905`,
+source snapshot `40185a5d7e8ffbc6091abb415f8cd95d8114eeb2d4b8198e6a0a7cc3705c8937`.
+The deployment created and verified its recovery snapshot. Read-only checks
+confirmed the running image, production `/data` mount, HTTPS source marker and
+`testing=false`. New version 2 override records require a forward fix or a
+reviewed migration if reverting to older software.
+
+Verification covered 98 focused backend tests, the timetable frontend tests,
+and production builds. A unique isolated Compose project with a temporary data
+mount and allocated localhost port verified `testing=true`, the red ribbon,
+creation, conversion, availability, expiry, import conflicts, keyboard focus,
+and reception/group overlap confirmation; it was stopped afterward. The full
+frontend suite also reported existing failures in Inbox and sidebar tests outside
+this change; the focused timetable test files passed. No production behavioral
+tests or production data changes were performed.
+
+The follow-up release `incoming-20261127T182847-354343`, source snapshot
+`da92b7d6bb5022f662e62aca8a382b41b8dd523bb11d408973967a61046364e4`,
+restored the per-hour POT enable/disable control and the searchable hour-type
+selector. The deployment verified the production mount and HTTPS release.
+The isolated test project was stopped after the build and testing-mode checks;
+43 timetable UI tests passed. Read-only comparisons confirmed all 36 timetable
+overrides were identical to the snapshots before both deployments.

@@ -42,15 +42,10 @@ class OverridesTest(unittest.TestCase):
         self.assertIsNone(o.selected(doc, 'pot', '2026-10-11'))
 
     def test_invalid_edits(self):
-        for target in ({}, {**self.base, 'lun|2': None}, {**self.base, 'mar|3': self.base['lun|2']}):
-            with self.assertRaises(ValueError):
-                self.save(target=target if target else {'x': None})
+        with self.assertRaises(ValueError):
+            self.save(target={'x': None})
         with self.assertRaises(ValueError):
             self.save(end='2026-10-11')
-        target = copy.deepcopy(o.cells(self.ds, 'absent'))
-        target['mar|3'], target['lun|2'] = target['lun|2'], None
-        with self.assertRaises(ValueError):
-            o.groups(o.cells(self.ds, 'absent'), target)
 
     def test_import_conflict_sticky_and_atomic(self):
         doc = self.save(target=self.moved())
@@ -102,8 +97,8 @@ class SupportOverridesTest(unittest.TestCase):
                 self.assertEqual(actual['lessons']['support|mar|3']['classes'], ['1A'])
                 self.assertEqual(actual['lessons']['support|mar|3']['room'], base['lun|2']['room'])
 
-    def test_reject_bad_payloads_and_other_roles(self):
-        for update in ({'disabled': True}, {'classes': []}, {'classes': ['unknown']}, {'classes': ['1A', '2A']}, {'site': 'unknown'}, {'room': 'changed'}, {'activities': ['POT'], 'special': 'POT'}):
+    def test_reject_bad_payloads_and_allow_other_roles(self):
+        for update in ({'classes': ['unknown']}, {'classes': ['1A', '2A']}, {'site': 'unknown'}, {'disabled': 'yes'}):
             with self.subTest(update=update), self.assertRaises(ValueError):
                 target = copy.deepcopy(self.base)
                 target['lun|2'].update(update)
@@ -111,11 +106,7 @@ class SupportOverridesTest(unittest.TestCase):
         for teacher in ('absent', 'co'):
             target = o.cells(self.ds, teacher)
             target['mar|3'], target['lun|2'] = target['lun|2'], None
-            with self.assertRaises(ValueError):
-                self.propose(target, teacher)
-        for target in ({**self.base, 'lun|2': None}, {**self.base, 'mar|3': self.base['lun|2']}):
-            with self.assertRaises(ValueError):
-                self.propose(target)
+            self.assertTrue(self.propose(target, teacher)['records'][0]['groups'])
 
     def test_multiclass_move_and_single_class_correction(self):
         self.ds['lessons']['support|lun|2']['classes'] = ['1A', '2A']
@@ -132,7 +123,7 @@ class SupportOverridesTest(unittest.TestCase):
         target = copy.deepcopy(base)
         target['mar|3'], target['lun|2'] = target['lun|2'], target['mar|3']
         doc = self.propose(target)
-        for change in ('role', 'source', 'destination'):
+        for change in ('source', 'destination'):
             ds = copy.deepcopy(self.ds)
             if change == 'role': ds['teachers']['support']['role'] = 'curricolare'
             else: ds['lessons']['support|' + ('lun|2' if change == 'source' else 'mar|3')]['room'] = 'new'
@@ -156,7 +147,7 @@ class SupportOverridesTest(unittest.TestCase):
         current['dataset']['lessons']['support|lun|2']['site'] = 'succursale'
         self.assertEqual(o.validate(doc, self.history), doc)
         current['dataset']['teachers']['support']['role'] = 'ITP'
-        with self.assertRaises(ValueError): o.validate(doc, self.history)
+        self.assertEqual(o.validate(doc, self.history), doc)
 
     def test_effective_support_with_inheritance_groups_receptions_and_availability(self):
         from backend import appointments, receptions, student_groups
